@@ -1,8 +1,27 @@
 ---
-status: synced_from_master
+status: needs_update
 source: /Users/unterlantas/Downloads/ДИССЕР.md
 last_synced: 2026-05-29
 chapter: 2_concept
+needs_update_reason: >-
+  2026-09-13 Q05 sync: EV-SG-CLARIFY-001/CL-SG-CLARIFY-001 record the unwrapped clarification
+  wire across Swift/OpenAPI/external service and the added local server round cap
+  (local_verify.sh exit 0, 57/115 service tests, live HTTP roundtrip), while staging/production,
+  real App Attest device roundtrip and deployment remain open. EV-CA-REGISTRY-001/CL-CA-030
+  (not_a_stable_contract; production qualificationRef is external) and EV-CA-COORD-001/CL-CA-032
+  (v3/N11 contract proven but not wired into preprocessing or AnalysisPipeline) bound any
+  architecture prose that would present these as delivered runtime capabilities.
+  2026-09-13 Q05 round 3: EV-REL-NEURAL-001/CL-REL-NEURAL-001 (no production neural model in the
+  built Release bundle — only NIMA + DETR; the SETCompositionNet contract producer has no
+  production consumer, EV-CA-SETCONTRACT-001/CL-CA-051) bound any architecture prose that would
+  present on-device neural composition inference as delivered. EV-REL-FREEZE-001/CL-REL-FREEZE-001
+  records the P02 freeze-receipt mechanism.
+  2026-09-13 Q05 round 4: EV-REL-POLICY-001/CL-REL-POLICY-001 turn the §5.1/§5.2 acceptance
+  thresholds into a versioned executable policy behaviorally bound to the gate instrument in both
+  directions (silent drift exit 1 / versioned change exit 2, proven on the real policy), and
+  EV-REL-DEFGAP-001/CL-REL-DEFGAP-001 record that ten of the 26 §5.1 rows have a threshold and no
+  operational definition anywhere in the repository (a prepared decision package, not a defined
+  metric). Do not describe the acceptance table as fully implemented or measurable.
 ---
 
 # **2\. Концепция программного решения** {#2.-концепция-программного-решения}

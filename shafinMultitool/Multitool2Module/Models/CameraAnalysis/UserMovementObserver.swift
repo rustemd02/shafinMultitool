@@ -25,6 +25,61 @@ enum UserMovementActionFamily: String, Codable, CaseIterable, Equatable, Hashabl
     static var light: Self { .lightExposure }
 }
 
+/// C04.2/N4 visibility of one commanded or protected entity on one frame.
+/// `absent` is an explicit owner statement ("the entity is not in the scene");
+/// it is never inferred from a missing optional or from a detector returning
+/// no box. The verifier must distinguish "observed leaving" from "not found".
+enum UserMovementEntityVisibility: String, Codable, CaseIterable, Equatable, Sendable {
+    case visible
+    case partial
+    case absent
+}
+
+/// C04.2/N7 one entity-scoped observation. `entityRef` is the action-local
+/// reference; `trackID` is the frozen track binding when the identity owner
+/// produced one. A visible/partial observation carries a valid region; an
+/// absent observation must not carry one, so a stale rectangle cannot be read
+/// as a current sighting.
+struct UserMovementEntityObservation: Equatable, Sendable {
+    let entityRef: String
+    let trackID: String?
+    let visibility: UserMovementEntityVisibility
+    let region: NormalizedRect?
+
+    init?(entityRef: String,
+          trackID: String? = nil,
+          visibility: UserMovementEntityVisibility,
+          region: NormalizedRect? = nil) {
+        let trimmedRef = entityRef.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRef.isEmpty else { return nil }
+        let trimmedTrack = trackID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if visibility == .absent {
+            guard region == nil else { return nil }
+        } else {
+            guard let region,
+                  region.x.isFinite,
+                  region.y.isFinite,
+                  region.width.isFinite,
+                  region.height.isFinite,
+                  !region.isDegenerate,
+                  region.x >= 0,
+                  region.y >= 0,
+                  region.x + region.width <= 1,
+                  region.y + region.height <= 1 else {
+                return nil
+            }
+        }
+        self.entityRef = trimmedRef
+        self.trackID = (trimmedTrack?.isEmpty == false) ? trimmedTrack : nil
+        self.visibility = visibility
+        self.region = region
+    }
+
+    var isObserved: Bool {
+        visibility != .absent && region != nil
+    }
+}
+
 /// Values copied from the production feature snapshot. Missing values stay
 /// missing; the observer never substitutes a timer or an unrelated feature.
 struct UserMovementMetrics: Equatable, Sendable {
@@ -130,30 +185,7 @@ struct UserMovementSubjectBinding: Sendable {
     /// Vision-y-up ↔ coaching-y-down conversion. Rotation/mirroring is still
     /// owned by `CameraDisplayTransform`/Vision request orientation.
     var coachingRegion: NormalizedRect? {
-        switch coordinateSpace {
-        case .subjectTarget:
-            return region
-        case .vision:
-            let topLeft = CameraSpacePointV2(
-                space: .vision,
-                x: region.x,
-                y: region.y + region.height
-            ).flippedVertically
-            let bottomRight = CameraSpacePointV2(
-                space: .vision,
-                x: region.x + region.width,
-                y: region.y
-            ).flippedVertically
-            let converted = NormalizedRect(
-                x: topLeft.x,
-                y: topLeft.y,
-                width: bottomRight.x - topLeft.x,
-                height: bottomRight.y - topLeft.y
-            )
-            return converted.isDegenerate ? nil : converted
-        default:
-            return nil
-        }
+        region.converted(from: coordinateSpace, to: .subjectTarget)
     }
 }
 
@@ -253,6 +285,10 @@ struct UserMovementFrame: Equatable, Sendable {
     let motionIsStill: Bool
     let metrics: UserMovementMetrics
     let evidence: UserMovementEvidence?
+    /// C04.2/N7 entity-scoped observations for the action target and the
+    /// protected refs. Empty for legacy frames; the verifier then fails closed
+    /// for any declared target/protected scope.
+    let entityObservations: [UserMovementEntityObservation]
 
     init(frameID: String,
          subjectRegion: NormalizedRect?,
@@ -270,13 +306,22 @@ struct UserMovementFrame: Equatable, Sendable {
          meanLuma: Double,
          motionIsStill: Bool,
          metrics: UserMovementMetrics,
-         evidence: UserMovementEvidence? = nil) {
+         evidence: UserMovementEvidence? = nil,
+         entityObservations: [UserMovementEntityObservation] = []) {
         self.frameID = frameID
         self.subjectRegion = subjectRegion
         self.meanLuma = meanLuma
         self.motionIsStill = motionIsStill
         self.metrics = metrics
         self.evidence = evidence
+        self.entityObservations = entityObservations
+    }
+
+    /// Exact-ref lookup. Two observations with the same ref are a producer bug
+    /// and are treated as missing so a duplicated ref cannot widen scope.
+    func entityObservation(for entityRef: String) -> UserMovementEntityObservation? {
+        let matches = entityObservations.filter { $0.entityRef == entityRef }
+        return matches.count == 1 ? matches[0] : nil
     }
 
     /// Adapter at the existing feature/envelope boundary. Subject-dependent
@@ -501,16 +546,28 @@ enum UserMovementObserver {
     static func observe(previous: UserMovementFrame,
                         current: UserMovementFrame,
                         actionID: String,
+                        targetRefs: [String] = [],
                         asOf: Date? = nil) -> UserMovementVerdict {
-        compare(previous: previous, current: current, actionID: actionID, asOf: asOf).verdict
+        compare(previous: previous,
+                current: current,
+                actionID: actionID,
+                targetRefs: targetRefs,
+                asOf: asOf).verdict
     }
 
     /// Returns the existing action-aware comparison plus the finite metric
     /// used to classify it. The action mapping and deadbands remain owned by
     /// this observer; M2-025 only consumes the extracted detail.
+    ///
+    /// C04.2: `targetRefs` scopes a displacement/scale comparison to the
+    /// commanded entity instead of the primary subject. Movement of a
+    /// different object (for example `lampB` when `lampA` was commanded) must
+    /// not be read as the commanded change. An empty list preserves the legacy
+    /// subject-region behaviour.
     static func compare(previous: UserMovementFrame,
                         current: UserMovementFrame,
                         actionID: String,
+                        targetRefs: [String] = [],
                         asOf: Date? = nil) -> UserMovementComparison {
         guard let intent = intent(for: actionID) else {
             return .uncertain(reason: "unsupported_action")
@@ -521,7 +578,10 @@ enum UserMovementObserver {
                                         asOf: asOf) {
             return .uncertain(reason: reason, family: intent.family, metric: metricID(for: intent.metric, displacement: intent.displacement))
         }
-        return evaluate(previous: previous, current: current, intent: intent)
+        return evaluate(previous: previous,
+                        current: current,
+                        intent: intent,
+                        targetRefs: targetRefs)
     }
 
     /// Compares a coordinator baseline and final frame without re-aging the
@@ -530,7 +590,8 @@ enum UserMovementObserver {
     /// policy intact while allowing a bounded episode to span several frames.
     static func compareAtOwnEvaluationTimes(previous: UserMovementFrame,
                                             current: UserMovementFrame,
-                                            actionID: String) -> UserMovementComparison {
+                                            actionID: String,
+                                            targetRefs: [String] = []) -> UserMovementComparison {
         guard let intent = intent(for: actionID) else {
             return .uncertain(reason: "unsupported_action")
         }
@@ -545,7 +606,10 @@ enum UserMovementObserver {
                 metric: metricID(for: intent.metric, displacement: intent.displacement)
             )
         }
-        return evaluate(previous: previous, current: current, intent: intent)
+        return evaluate(previous: previous,
+                        current: current,
+                        intent: intent,
+                        targetRefs: targetRefs)
     }
 
     /// Descriptive alias for callers that want to make the before/after
@@ -553,8 +617,13 @@ enum UserMovementObserver {
     static func detailedComparison(previous: UserMovementFrame,
                                   current: UserMovementFrame,
                                   actionID: String,
+                                  targetRefs: [String] = [],
                                   asOf: Date? = nil) -> UserMovementComparison {
-        compare(previous: previous, current: current, actionID: actionID, asOf: asOf)
+        compare(previous: previous,
+                current: current,
+                actionID: actionID,
+                targetRefs: targetRefs,
+                asOf: asOf)
     }
 
     static func actionFamily(for actionID: String) -> UserMovementActionFamily? {
@@ -611,8 +680,14 @@ enum UserMovementObserver {
             return scalar(.scaleDistance, .depth, .increase)
         case SemanticActionType.levelHorizon.rawValue:
             return scalar(.horizonRotation, .horizon, .decrease)
-        case SemanticActionType.changeCameraAngle.rawValue:
-            return scalar(.horizonRotation, .horizon, .absoluteChange)
+        // C04.1 (runbook 2026-09-13): changeCameraAngle is prescribed for
+        // background/merger cleanup, but an absolute horizon rotation is not
+        // evidence that the obstruction was fixed — a lateral move with a level
+        // horizon changes nothing here, while a tilt changes this metric
+        // without cleaning the background. No qualified contour/occlusion
+        // signal exists yet, so the action resolves to
+        // `.uncertain(reason: "unsupported_action")` instead of a fabricated
+        // improvement. Re-point this at a contour metric when C04/C05 land one.
         case SemanticActionType.rotateSubjectTowardLight.rawValue:
             return scalar(.lightExposure, .separation, .increase)
         case SemanticActionType.addFrontFillLight.rawValue:
@@ -850,7 +925,8 @@ enum UserMovementObserver {
 
     private static func evaluate(previous: UserMovementFrame,
                                  current: UserMovementFrame,
-                                 intent: ActionIntent) -> UserMovementComparison {
+                                 intent: ActionIntent,
+                                 targetRefs: [String] = []) -> UserMovementComparison {
         if intent.family != .stability, !current.motionIsStill {
             return .uncertain(
                 reason: "camera_motion",
@@ -860,8 +936,32 @@ enum UserMovementObserver {
         }
 
         if let desired = intent.displacement {
-            guard let before = previous.subjectRegion,
-                  let after = current.subjectRegion,
+            // C04.2: a commanded target is measured, not the primary subject.
+            // A frame that does not observe the commanded entity cannot prove
+            // the action; it is `target_missing`, never a zero-delta noOp.
+            let before: NormalizedRect?
+            let after: NormalizedRect?
+            if let targetRef = targetRefs.first {
+                guard let beforeObservation = previous.entityObservation(for: targetRef),
+                      beforeObservation.isObserved,
+                      let beforeRegion = beforeObservation.region,
+                      let afterObservation = current.entityObservation(for: targetRef),
+                      afterObservation.isObserved,
+                      let afterRegion = afterObservation.region else {
+                    return .uncertain(
+                        reason: "target_missing",
+                        family: intent.family,
+                        metric: .placement
+                    )
+                }
+                before = beforeRegion
+                after = afterRegion
+            } else {
+                before = previous.subjectRegion
+                after = current.subjectRegion
+            }
+            guard let before,
+                  let after,
                   !before.isDegenerate,
                   !after.isDegenerate else {
                 return .uncertain(
@@ -1063,11 +1163,15 @@ struct UserMovementTracker {
     let desiredDisplacement: (dx: Double, dy: Double)
     let requiredRelevantFrames: Int
     private let actionID: String?
+    /// C04.2: the commanded entity refs for a target-scoped action. Empty for
+    /// frame-global / legacy trackers.
+    let targetRefs: [String]
 
     init(desiredDisplacement: (dx: Double, dy: Double), requiredRelevantFrames: Int = 2) {
         self.desiredDisplacement = desiredDisplacement
         self.requiredRelevantFrames = max(1, requiredRelevantFrames)
         self.actionID = nil
+        self.targetRefs = []
     }
 
     init(action: SemanticActionType, requiredRelevantFrames: Int = 2) {
@@ -1078,10 +1182,11 @@ struct UserMovementTracker {
         self.init(actionID: action.rawValue, requiredRelevantFrames: requiredRelevantFrames)
     }
 
-    init(actionID: String, requiredRelevantFrames: Int = 2) {
+    init(actionID: String, targetRefs: [String] = [], requiredRelevantFrames: Int = 2) {
         self.desiredDisplacement = (0, 0)
         self.requiredRelevantFrames = max(1, requiredRelevantFrames)
         self.actionID = actionID
+        self.targetRefs = targetRefs
     }
 
     @discardableResult
@@ -1094,6 +1199,7 @@ struct UserMovementTracker {
                 verdict = UserMovementObserver.observe(previous: previous,
                                                        current: frame,
                                                        actionID: actionID,
+                                                       targetRefs: targetRefs,
                                                        asOf: asOf)
             } else {
                 verdict = UserMovementObserver.observe(previous: previous,

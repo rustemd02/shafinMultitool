@@ -1,0 +1,302 @@
+{
+  "schema_id": "camera-5-1-definition-packet",
+  "schema_version": "1.0.0",
+  "status": "awaiting_owner_decision",
+  "decision_required": "Pick one reading per row (or write a different one). Nothing here is decided: these are the readings the repository can already support, so the choice is traceable instead of invented.",
+  "why_this_exists": "Ten rows of the runbook 5.1 table carry a threshold but no numerator or denominator anywhere in the repository (see datasets/camera-coach/v1/evaluation-policy-v1.json runbook_5_1_rows). A threshold without a definition cannot be passed or failed, only guessed at.",
+  "rows": {
+    "direction_horizon_precision": {
+      "threshold": "point >=0.95, Wilson lower 95% >=0.90",
+      "options": [
+        {
+          "id": "A",
+          "reading": "Precision of issued direction/horizon advice: of the records where the app issued a direction or horizon action, the share whose label also expects such an action.",
+          "formula": "hits = records with an issued action in the direction/horizon group AND that action in expected_actions; n = records with an issued action in that group",
+          "evidence": "eval rows carry candidate_actions/expected_actions (docs/cameraanalysis/eval/camera-baseline-v0/*/scored/case_results.jsonl); the direction/horizon group would have to be enumerated from the frozen action list",
+          "needs_from_owner": "the group membership list (which of the frozen actions count as direction/horizon)",
+          "implication": "penalises over-advising; ignores missed expectations (that is expected_action_hit's job)"
+        },
+        {
+          "id": "B",
+          "reading": "Agreement between the app's direction/horizon advice and the verifier's result on the same record (issued advice whose verified outcome is correct).",
+          "formula": "hits = records where a direction/horizon action was issued and the verification result is pass; n = same denominator",
+          "evidence": "the N7 verification contract and ActionVerifier decisions (improved/unchanged/worse, incomparable reasons)",
+          "needs_from_owner": "the group membership list; and a decision that verified-effect, not label agreement, is the intended meaning",
+          "implication": "measures effect, not label agreement; needs episodes/verification, which do not exist yet"
+        },
+        {
+          "id": "C",
+          "reading": "Keep the row but compute it only over the protected safety subset, so precision is not diluted by ordinary frames.",
+          "formula": "hits/n as in A, restricted to records carrying a protected ref",
+          "evidence": "registry carries protected_refs per operation; the verifier has a protectedRegressions path",
+          "needs_from_owner": "the group list plus the decision that the subset is the intended scope"
+        }
+      ]
+    },
+    "light_exposure_precision": {
+      "threshold": "point >=0.92, Wilson lower 95% >=0.87",
+      "options": [
+        {
+          "id": "A",
+          "reading": "As direction/horizon A, for light/exposure actions (increase_exposure, reduce_exposure, refocus_subject and any other light/exposure action the owner groups).",
+          "formula": "hits = issued light/exposure action that the label also expects; n = records with an issued light/exposure action",
+          "evidence": "eval rows carry candidate_actions/expected_actions; the registry's metric vocabulary has exposure_bias_value and light_on_receiver with their polarity",
+          "needs_from_owner": "the light/exposure group list"
+        },
+        {
+          "id": "B",
+          "reading": "Direction-correctness reading: of the issued light/exposure advice, the share whose sign matches the measured exposure bias (increase when the frame is underexposed, reduce when overexposed).",
+          "formula": "hits = issued exposure action whose sign agrees with exposure_bias_value's sign; n = same denominator",
+          "evidence": "exposure_bias_value metric with its polarity in docs/cameraanalysis/operations-registry.v3-draft.json",
+          "needs_from_owner": "confirmation that sign agreement is the intended reading, and the frame-level threshold for 'underexposed'"
+        }
+      ]
+    },
+    "accepted_coverage_overall": {
+      "threshold": ">=0.65",
+      "options": [
+        {
+          "id": "A",
+          "reading": "Share of evaluated records that received actionable advice (a corrective action rather than KEEP or ABSTAIN).",
+          "formula": "accepted = records whose candidate_actions are not exactly ['keep_current_setup'] and not empty; denominator = all evaluated records",
+          "evidence": "eval rows carry candidate_actions per record; the builder already computes keep_rate over the same field",
+          "needs_from_owner": "confirmation that 'accepted' means actionable advice issued"
+        },
+        {
+          "id": "B",
+          "reading": "Share of records where the advice was 'accepted' in the human sense (reviewer or operator acted on it).",
+          "formula": "accepted = episodes with performed_change non-empty; denominator = all episode attempts",
+          "evidence": "attempt-record-schema.md 2.3 performed_change and its completeness rule",
+          "needs_from_owner": "confirmation that acceptance is human action, not advice issuance",
+          "implication": "needs episodes, which do not exist yet"
+        }
+      ]
+    },
+    "accepted_coverage_ordinary": {
+      "threshold": ">=0.55",
+      "options": [
+        {
+          "id": "A",
+          "reading": "Same formula as accepted_coverage_overall, restricted to the ordinary class.",
+          "formula": "as overall, over records whose class is not difficult_light or a protected/exception class",
+          "evidence": "per-record source_bucket and tags exist; the class taxonomy is the same open question as scene_class_min",
+          "needs_from_owner": "the class list that counts as 'ordinary'"
+        },
+        {
+          "id": "B",
+          "reading": "Define 'ordinary' by exclusion: every class that is neither difficult-light nor a protected/exception class.",
+          "formula": "as accepted_coverage_overall, over records excluded from the difficult-light class and from any exception class",
+          "evidence": "the per-record tags and source_bucket support an exclusion rule without a new taxonomy",
+          "needs_from_owner": "confirmation of the exclusion rule and of which classes count as exceptions",
+          "implication": "reuses the difficult-light decision instead of requiring a parallel class list"
+        }
+      ]
+    },
+    "accepted_coverage_difficult_light": {
+      "threshold": ">=0.35",
+      "options": [
+        {
+          "id": "A",
+          "reading": "Same formula as accepted_coverage_overall, restricted to difficult-light records.",
+          "formula": "as overall, over records whose lighting condition is difficult",
+          "evidence": "the pipeline has underexposure/overexposure/low_light technical issues; which frames count as the difficult-light class is unstated",
+          "needs_from_owner": "the definition of the difficult-light class"
+        },
+        {
+          "id": "B",
+          "reading": "Define difficult light by measurement rather than by label: records where the critique detects underexposure, overexposure or low light.",
+          "formula": "as accepted_coverage_overall, over records carrying those measured issues",
+          "evidence": "the pipeline exposes underexposure/overexposure/low_light technical issues (CameraAnalysisDomainContracts TechnicalQualityIssue)",
+          "needs_from_owner": "confirmation that a measured condition, not a labelled class, is the intended scope",
+          "implication": "independent of the class taxonomy, at the cost of being defined by the candidate's own detector"
+        }
+      ]
+    },
+    "abstention_correctness": {
+      "threshold": ">=0.90",
+      "options": [
+        {
+          "id": "A",
+          "reading": "An abstention is correct when the pair genuinely could not be compared (machine-verified incomparability).",
+          "formula": "correct = ABSTAIN records whose episode outcome is incomparable; denominator = all ABSTAIN records",
+          "evidence": "episode-schema.json outcome vocabulary includes incomparable; the N7 verifier has explicit incomparable reasons (nonFiniteMetric, safetyRegression, metricUnavailable)",
+          "needs_from_owner": "confirmation that machine incomparability is the truth for abstention"
+        },
+        {
+          "id": "B",
+          "reading": "An abstention is correct when an independent human review says the advice would have been misleading or unexecutable on that frame.",
+          "formula": "correct = ABSTAIN records whose blind review marks the advice harmful or unexecutable; denominator = all ABSTAIN records",
+          "evidence": "attempt-record-schema.md 4.1 harmful/executable fields",
+          "needs_from_owner": "confirmation that human judgement is the truth, which requires the blind review population"
+        }
+      ]
+    },
+    "verification_accuracy": {
+      "threshold": ">=0.90",
+      "options": [
+        {
+          "id": "A",
+          "reading": "Share of comparable episodes where the verifier's decision matches the independent truth.",
+          "formula": "agreement over {improved, unchanged, worse} versus the outcome vocabulary mapped to the same three directions; denominator = comparable episodes",
+          "evidence": "ActionVerifier decisions and episode outcomes; build_episode_metrics already maps outcomes to improved/non-improved",
+          "needs_from_owner": "the mapping from the six outcome values to the three verifier directions, and the decision that this is not a second false_improved"
+        },
+        {
+          "id": "B",
+          "reading": "Share of verified claims whose protected refs and safety scope were correctly maintained (a structural, not directional, reading).",
+          "formula": "correct = episodes with no protected regression and no safety regression; denominator = all verified episodes",
+          "evidence": "verifier's protectedRegressions and safetyRegressions fields",
+          "needs_from_owner": "confirmation of the structural reading"
+        }
+      ]
+    },
+    "critical_forbidden_observed": {
+      "threshold": "=0",
+      "options": [
+        {
+          "id": "A",
+          "reading": "A forbidden violation is critical when the same violation also causes a safety regression in the verifier.",
+          "formula": "count of records whose issued action is in the record's forbidden_actions AND whose pair has a safety regression",
+          "evidence": "eval rows carry forbidden_actions per record; the N7 verifier treats a safety regression as making the pair incomparable",
+          "needs_from_owner": "confirmation of the safety-regression reading"
+        },
+        {
+          "id": "B",
+          "reading": "Critical means a designated subset of operations that the owner enumerates as safety-critical.",
+          "formula": "count of violations of actions in that enumerated set",
+          "evidence": "the frozen registry carries no criticality field (checked: no crit/safety/forbid key on any of the 20 operations), so the set has to be written down",
+          "needs_from_owner": "the enumerated safety-critical action list"
+        },
+        {
+          "id": "C",
+          "reading": "Critical means the violation touched a protected ref.",
+          "formula": "count of violations where protected_refs are affected",
+          "evidence": "registry carries protected_refs per operation",
+          "needs_from_owner": "confirmation"
+        }
+      ]
+    },
+    "wrong_direction_false_success": {
+      "threshold": "=0",
+      "options": [
+        {
+          "id": "A",
+          "reading": "Zero records where the app confirmed an improvement for a direction/horizon action whose verified outcome is not an improvement.",
+          "formula": "count of episodes: issued direction/horizon action AND app claimed improvement AND truth is not correct",
+          "evidence": "the false_improved machinery and the action grouping question share this; empty until episodes exist",
+          "needs_from_owner": "the direction/horizon group list and confirmation this is the same family as false_improved"
+        },
+        {
+          "id": "B",
+          "reading": "Zero records where the advice was issued for the wrong target (a different entity than the one the advice addressed).",
+          "formula": "count of episodes where the resolved target ref differs from the issued target ref",
+          "evidence": "the verifier's entity-scope checks and target_refs",
+          "needs_from_owner": "confirmation that wrong-target is what this row means"
+        },
+        {
+          "id": "C",
+          "reading": "Restrict the zero requirement to the enumerated obligatory safety cases instead of all records.",
+          "formula": "as A or B, over the obligatory safety case set",
+          "evidence": "the runbook says 'in obligatory safety cases' but no document enumerates that set",
+          "needs_from_owner": "the enumerated obligatory safety case set"
+        }
+      ]
+    },
+    "wrong_target_false_success": {
+      "threshold": "=0",
+      "options": [
+        {
+          "id": "A",
+          "reading": "Same as wrong_direction_false_success option B, stated for the target axis.",
+          "formula": "as B",
+          "evidence": "as above",
+          "needs_from_owner": "confirmation and the obligatory case set if the subset reading is chosen"
+        },
+        {
+          "id": "B",
+          "reading": "Restrict the zero requirement to the enumerated obligatory safety cases, as in the direction row.",
+          "formula": "as option A, over the obligatory safety case set",
+          "evidence": "the runbook says 'in obligatory safety cases'; no document enumerates that set",
+          "needs_from_owner": "the enumerated obligatory safety case set"
+        }
+      ]
+    }
+  },
+  "how_to_apply_a_decision": {
+    "step_1": "Pick an option (or write a different reading) per row in this file.",
+    "step_2": "In datasets/camera-coach/v1/evaluation-policy-v1.json set the row's definition_status to defined_by_schema or defined_in_runbook_prose and record the chosen formula in definition_source, then bump schema_version.",
+    "step_3": "python3 tools/release/freeze_receipt.py --check (expect exit 2 with 'requires impact list'), record the impact in revision_history, then --write and --check again for PASS.",
+    "step_4": "The row's key stops being a documented gap; a producer can then be written without inventing a denominator."
+  },
+  "option_interactions": {
+    "why": "Some combinations of readings measure the same quantity under two names. That is not a decision for anyone but the owner, but it is worth seeing before choosing, because two gates over one quantity make one of them redundant and can make the other read as near-zero by construction.",
+    "pairs": [
+      {
+        "rows": [
+          "verification_accuracy",
+          "critical_forbidden_observed"
+        ],
+        "options": [
+          "B",
+          "A"
+        ],
+        "overlap": "both are statements about safety and protected-entity regressions over verified episodes",
+        "if_both": "one of the two gates stops carrying independent information: verification_accuracy B counts episodes with no regression, while critical_forbidden A counts the violations that cause them",
+        "prefer": "keep exactly one of these as the safety-regression statement; the other row is better served by a different reading (verification_accuracy A, or critical_forbidden B/C)"
+      },
+      {
+        "rows": [
+          "verification_accuracy",
+          "critical_forbidden_observed"
+        ],
+        "options": [
+          "B",
+          "C"
+        ],
+        "overlap": "both are about protected-entity damage",
+        "if_both": "the two gates would fail together on the same episodes",
+        "prefer": "same as above"
+      },
+      {
+        "rows": [
+          "direction_horizon_precision",
+          "verification_accuracy"
+        ],
+        "options": [
+          "B",
+          "A"
+        ],
+        "overlap": "precision option B takes 'the verification result is pass' as its hit condition, so it consumes the same verdict the accuracy row grades",
+        "if_both": "a verifier error moves both gates at once, and neither then isolates advice quality from verifier quality",
+        "prefer": "pair precision option B with a structural verification reading (B), or use precision option A which compares against the label"
+      },
+      {
+        "rows": [
+          "wrong_direction_false_success",
+          "false_improved"
+        ],
+        "options": [
+          "A",
+          "(already defined)"
+        ],
+        "overlap": "option A is the false_improved numerator restricted to the direction/horizon action group",
+        "if_both": "the row adds no independent quantity: it is a subset of a ratio that is already reported",
+        "prefer": "if the row is meant to isolate direction errors, say so; otherwise option B (wrong target) or C (restricted to the obligatory safety cases) carries different information"
+      },
+      {
+        "rows": [
+          "accepted_coverage_overall",
+          "abstention_correctness"
+        ],
+        "options": [
+          "B",
+          "B"
+        ],
+        "overlap": "both draw their truth from the same blind human review of episodes",
+        "if_both": "the two gates are correlated: a weak or non-blind review population degrades both at once, so passing both is weaker evidence than two independent gates",
+        "prefer": "keep at least one of the two on a machine-checked basis (coverage option A, abstention option A) if independence between the gates matters to the reading"
+      }
+    ],
+    "note": "Nothing here picks a reading; it only states which pairs overlap so the ten choices can be made coherently."
+  }
+}

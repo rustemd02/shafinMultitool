@@ -1,0 +1,46 @@
+{
+  "artifacts": [
+    {
+      "bytes": 506459,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-probe-instrumentation/m4-001-fullruntime-174-drift-r1-probe-instrumented.jsonl",
+      "sha256": "ffa2e8b0822ef299500ff8031f3d9a351f9568a6fb05a023cbd67094df0c22f4"
+    },
+    {
+      "bytes": 5195,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-probe-instrumentation/probe-dominance-analysis.json",
+      "sha256": "31359f132c6cea05b41568865f69406522ba72c8eed3dd328651954092cd5222"
+    },
+    {
+      "bytes": 1535,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-probe-instrumentation/parity-analysis.json",
+      "sha256": "22d52eafd771ff624f9bd6319f541622c5ed7d4c84f974fbf0162429cd9e611b"
+    }
+  ],
+  "behaviour_neutrality": "All 348 rows are byte-identical to the technical-override lane except for the four added debug keys technical_issue_count, technical_dominant_count, technical_max_severity and technical_max_confidence.",
+  "captured_at": "2026-09-12T22:45:46+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Instrumentation and parity evidence only; no release measurement.",
+  "control_run": {
+    "delta_vs_technical_override": "none: identical counts to the technical-override lane, matching the row-identity check that the change only adds debug keys",
+    "failures_path_note": "The phase lists are in the session log; the still-failing motion test is the only record of that expectation test that changes behaviour, and it is not fixed by instrumentation.",
+    "fixed_tests_confirmed_still_passing": [
+      "testStillImageReplayMapsSmallUnderlitLightObjectToFrontFill",
+      "testStillImageReplayMapsUnknownBlurToSimplifyBackground"
+    ],
+    "phase_a": "18 total / 17 passed / 1 failed (the deterministic Neural drift, unchanged)",
+    "phase_b": "177 / 142 passed / 35 failed",
+    "recipe": "scripts/run_camera_certification.sh",
+    "simulator": "iPhone 17e 1F680A42-CEB3-43E8-9CED-52F874962A62 (iOS 26.5)",
+    "still_failing_motion_test": "testStillImageReplaySuppressesFalseKeepForBadTechnicalFrames"
+  },
+  "lane_id": "camera-label-drift-174-probe-instrumentation",
+  "purpose": "Export the technical probe's own issues into the eval debug features, validate the dominant-issue trigger on data, and record the detector signal-parity finding.",
+  "schema_version": 1,
+  "source_pins": {
+    "detr_wrapper_path": "shafinMultitool/Multitool2Module/Models/CoreMLWrappers/DETRDetector.swift",
+    "detr_wrapper_sha256": "254eeff6f4ae60a7753610bfdeed4516113a477a03ba482e844ca57bd72e0a13",
+    "historical_detr_wrapper_sha256": "384db39 (blob id from git diff against 2a5145f)",
+    "pipeline_path": "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift",
+    "pipeline_sha256": "9391c81bd8ba08ec4c72b8e4587f65246456ebea5bd1f020b58cbe7db77f400a"
+  },
+  "status": "instrumentation_evidence_research_only"
+}

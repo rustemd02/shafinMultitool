@@ -72,3 +72,43 @@ its recorded artifact; partial completion may not be reported as a PASS.
 Every step's artifact recorded; zero fabricated surfaces/anchors; every
 failure path surfaces its localized typed recovery; no duplicate anchors or
 project references after restore/interruption/teardown.
+
+## v3 case checks (AR / multi-object) — added Q03, not yet executed
+
+These checks extend the v1 steps with the multi-object and review cases from
+`camera-coach.domain.v3-draft.1` (`docs/cameraanalysis/03-domain-contracts.md`
+N9–N12) and the release runbook §10.1. They are not a second handbook; the
+recording-side v3 checks are in `recording-v1.md`.
+
+**Status rule:** every check starts `not_executed`. No hardware gate is marked
+`pass` by Q03 preparation. Statuses and evidence roles are enforced by
+`tools/device/import_device_report.py`; the operation registry is still draft,
+so an unqualified operation records `not_supported`, not a pass.
+
+13. **`v3.two_object_target`** — cases CC-O01/O02/O05/CC-I01. Build a two-object
+    scene (the two-lamp example): one active action at a time, exact target
+    entity, protected person/object, and the same track before/after. A swap, an
+    occlusion that hides the target, or success attributed to the wrong lamp
+    fails the check. Evidence: `metadata_dump` (analysis/session ids, targetRefs,
+    protectedRefs, track bindings) + `screen_recording`. Category `functional`.
+14. **`v3.protected_ref_intent`** — cases CC-I05/CC-R01. Declare an intentional
+    style (silhouette, dutch angle, negative space, low key): it must be
+    protected. With darkness/style protected, the result is KEEP only alongside
+    other sufficient positive checks, otherwise ABSTAIN/protected_intent; no
+    automatic fill/level is applied. Evidence: `metadata_dump` (intent.styles +
+    decision) + `screen_recording`. Category `functional`.
+15. **`v3.glare_review`** — cases CC-L05/CC-L06. Confirm an observed hotspot and
+    a light-direction hypothesis, then a review proposal (`rotate_entity` /
+    bounded probe). The verifier compares the hotspot in the protected region;
+    the VLM's confidence about its own advice is not the measurement. Evidence:
+    `metadata_dump` (hotspot region before/after, proposal id) + `screen_recording`.
+    Category `functional`.
+16. **`v3.lens_switch_fence`** — cases CC-T04. Switch the physical lens during an
+    active AR take / live workspace; the take must be rejected or cleanly fenced
+    with no mixed-lens metadata surviving, and the AR overlay must not silently
+    keep a stale camera transform. Evidence: `metadata_dump` (lens + per-take
+    metadata) + `screen_recording`. Category `functional`.
+
+Step 12 (`ar.ipad_window_modes`) keeps its v1 procedure; when executed in the
+Q04 run it must also record the iPad model identifier, iPadOS version/build and
+active-window size in the manifest. It remains `not_executed` until Q04.

@@ -3,6 +3,27 @@ status: needs_update
 chapter: experiments
 scope: SceneGeneratorModule only; Camera Analysis eval artifacts added separately and chapter structure needs decision
 last_updated: 2026-06-15
+needs_update_reason: >-
+  2026-09-13 Q05 sync added experiment-evidence entries not yet reflected here: EV-CA-DATA-ANNO-001/
+  CL-CA-035 (21-to-8 frozen label mapping with beauty≠KEEP, absence≠negative and absent-delta=mask
+  rules; real 547-record queue integrity and licence provenance; full tools/tests 114 passed),
+  EV-SG-D05-001/CL-SG-D05-001 (numeric Scene gates pass but the full D05 packet fails on corpus
+  RU/EN, provenance, unmeasured gates, unconfirmed floors and scoring an external fine-tuned V9.3
+  artifact instead of the on-device provider), EV-REL-GATES-001/CL-REL-GATES-001 (release-candidate
+  gate instrument: 0/81 = 3.6309 % Clopper–Pearson, minimum 149 clean advised-good frames for the
+  2 % budget, fail-closed exit 2) and EV-CA-ML-002/CL-CA-034 (masked trainer verified but no
+  admitted-data training). Do not present a passed D05 packet or a trained v2 candidate.
+  2026-09-13 Q05 round 3: EV-CA-ML-005/CL-CA-052 (the v2 export path is validated as tooling
+  only — untrained, release_admissible=false, blocked_on=M03/M04; the .mlpackage tree_sha256 is
+  not reproducible, weights_sha256 is the stable identity) and EV-REL-RIGHTS-001/CL-REL-RIGHTS-001
+  (first-source CC BY 3.0 facts and a fail-closed activation toolkit with 0 admitted corpora) are
+  experiment-evidence boundaries; do not present an exported v2 package as a trained candidate.
+  2026-09-13 Q05 round 4: EV-REL-PRODUCERS-001/CL-REL-PRODUCERS-001 (six §5 producers that derive
+  each block, checked by an executable 36-quantity key-coverage map) and EV-REL-POLICY-001/
+  CL-REL-POLICY-001 (the versioned acceptance policy behaviorally bound to the gate instrument)
+  are experiment-infrastructure evidence only; EV-REL-REHEARSAL-001/CL-REL-REHEARSAL-001 records
+  that chain rehearsals on real artifacts prove connectivity, not data quality. Do not present the
+  §5 gate set as passed or the rehearsals as accepted data.
 ---
 
 # 5. Эксперименты

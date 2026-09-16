@@ -1,0 +1,55 @@
+{
+  "_instructions": [
+    "OWNER-ONLY DECISION FILE. Copy this template, fill every required field, and keep it out of version control if it contains personal/legal data.",
+    "Nothing is inferred from the presence of media files. Empty, null, or 'pending' means NOT DECIDED and downstream tools must refuse to advance the corpus.",
+    "Validate with: python3 tools/datasets/validate_rights_attestation.py --attestation <your-file> --print-missing",
+    "Then generate per-frame attribution with: python3 tools/datasets/emit_attribution_notices.py --attestation <your-file> --attribution-map <map.json>",
+    "AVA / AADB / EVA may never be marked production_allowed, redistribution_allowed, or admitted; the validator rejects that outright (D01/D05 audit)."
+  ],
+  "attestation_schema_id": "camera-rights-attestation-v1",
+  "attestation_version": "v1.0.0",
+  "attester": {
+    "attester_id": "",
+    "attester_name": "",
+    "attester_role": "",
+    "attester_contact": ""
+  },
+  "attested_at": "",
+  "corpus": {
+    "corpus_id": "",
+    "source_id": "",
+    "source_path": "",
+    "manifest_sha256": ""
+  },
+  "license": {
+    "license_id": "",
+    "license_name": "",
+    "license_url": "",
+    "attribution_required": null
+  },
+  "permissions": {
+    "production_allowed": null,
+    "redistribution_allowed": null,
+    "derived_media_allowed": null
+  },
+  "people": {
+    "people_present": null,
+    "consent_obtained": null,
+    "consent_reference": ""
+  },
+  "basis": {
+    "basis_type": "",
+    "basis_reference": "",
+    "basis_url": "",
+    "basis_sha256": ""
+  },
+  "attribution": {
+    "attribution_map_ref": "",
+    "per_film": []
+  },
+  "decision": {
+    "admitted": null,
+    "decision": "",
+    "decision_scope": ""
+  }
+}

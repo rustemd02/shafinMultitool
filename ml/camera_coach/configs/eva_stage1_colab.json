@@ -1,0 +1,24 @@
+{
+  "schema_id": "camera-eva-stage1-config-v1",
+  "schema_version": "1.0.0",
+  "seed": 20260908,
+  "input_size": [320, 320],
+  "data": {
+    "manifest": "silver-manifest.jsonl",
+    "receipt": "receipts/eva-silver-receipt.json"
+  },
+  "training": {
+    "epochs": 5,
+    "batch_size": 16,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0001,
+    "category_loss_weight": 1.0,
+    "max_records": 0
+  },
+  "model": {
+    "candidate": "candidate_a_dual_branch",
+    "backbone": "full_frame_backbone",
+    "manifest_path": "ml/camera_coach/contracts/set_composition_net_v1.json",
+    "manifest_sha256": "ef05756ac5c78d89d0ec9a14864d193357ced0e1925ef9759b6ab8e78c36e074"
+  }
+}

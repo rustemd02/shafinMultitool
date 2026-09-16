@@ -126,7 +126,12 @@ final class ActionVerifierTests: XCTestCase {
         afterGeometry: ActionVerificationGeometryContext? = nil,
         includeExposureEvidence: Bool = true,
         beforeExposureState: ActionVerificationExposureState? = nil,
-        afterExposureState: ActionVerificationExposureState? = nil
+        afterExposureState: ActionVerificationExposureState? = nil,
+        scope: ActionVerificationScope = .none,
+        absenceEvidence: [ActionVerificationAbsenceEvidence] = [],
+        matchedMediaMappingRef: String? = nil,
+        beforeIntentRevision: Int? = nil,
+        afterIntentRevision: Int? = nil
     ) -> ActionVerificationInput {
         let resolvedBeforeLifecycle = beforeLifecycle ?? lifecycle(generation: generation)
         let resolvedAfterLifecycle = afterLifecycle ?? lifecycle(generation: generation)
@@ -167,8 +172,71 @@ final class ActionVerifierTests: XCTestCase {
             beforeExposureState: beforeExposureState ?? defaultExposureState.0,
             afterExposureState: afterExposureState ?? defaultExposureState.1,
             subjectIdentity: expectedSubjectIdentity,
+            scope: scope,
+            absenceEvidence: absenceEvidence,
+            matchedMediaMappingRef: matchedMediaMappingRef,
+            beforeIntentRevision: beforeIntentRevision,
+            afterIntentRevision: afterIntentRevision,
             safetyRegressions: safetyRegressions
         )
+    }
+
+    /// Attaches C04.2 entity observations to a fixture frame without changing
+    /// any of the existing provenance values.
+    private func entityFrame(
+        id: String,
+        capturedAt: Date,
+        actionID: String,
+        x: Double = 0.20,
+        entities: [UserMovementEntityObservation],
+        metrics: UserMovementMetrics = UserMovementMetrics(),
+        still: Bool = true,
+        generation: UInt64 = 9
+    ) -> UserMovementFrame {
+        let base = frame(
+            id: id,
+            capturedAt: capturedAt,
+            actionID: actionID,
+            x: x,
+            generation: generation,
+            metrics: metrics,
+            still: still
+        )
+        guard let evidence = base.evidence else { return base }
+        return UserMovementFrame(
+            frameID: base.frameID,
+            subjectRegion: base.subjectRegion,
+            meanLuma: base.meanLuma,
+            motionIsStill: base.motionIsStill,
+            metrics: base.metrics,
+            evidence: evidence,
+            entityObservations: entities
+        )
+    }
+
+    private func entity(
+        _ ref: String,
+        track: String,
+        x: Double,
+        y: Double = 0.30,
+        width: Double = 0.20,
+        height: Double = 0.30
+    ) -> UserMovementEntityObservation {
+        UserMovementEntityObservation(
+            entityRef: ref,
+            trackID: track,
+            visibility: .visible,
+            region: NormalizedRect(x: x, y: y, width: width, height: height)
+        )!
+    }
+
+    private func absentEntity(_ ref: String, track: String) -> UserMovementEntityObservation {
+        UserMovementEntityObservation(
+            entityRef: ref,
+            trackID: track,
+            visibility: .absent,
+            region: nil
+        )!
     }
 
     private func decision(_ result: ActionVerificationResult) -> ActionVerificationDecision {
@@ -947,6 +1015,394 @@ final class ActionVerifierTests: XCTestCase {
             motionIsStill: frame.motionIsStill,
             metrics: frame.metrics,
             evidence: replacementEvidence
+        )
+    }
+
+    // MARK: - C04.2: target scope, expected absence, N7 order
+
+    /// (a) Only the commanded object's change counts. Movement of a different
+    /// object (lampB) must not complete the lampA step, even when the primary
+    /// subject itself moved.
+    func testCommandedTargetScopeRejectsAnotherEntityMovement() {
+        let action = SemanticActionType.moveObjectLeft.rawValue
+        let scope = ActionVerificationScope(
+            targetRefs: ["lampA"],
+            protectedRefs: ["person1"],
+            allowedChanges: [.targetPosition]
+        )
+        let person = entity("person1", track: "tp", x: 0.05, y: 0.20, width: 0.25, height: 0.60)
+
+        let before = entityFrame(
+            id: "scope-before",
+            capturedAt: startDate,
+            actionID: action,
+            x: 0.50,
+            entities: [entity("lampA", track: "ta", x: 0.45), entity("lampB", track: "tb", x: 0.70), person]
+        )
+        let commandedMoved = entityFrame(
+            id: "scope-commanded-moved",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action,
+            x: 0.40,
+            entities: [entity("lampA", track: "ta", x: 0.36), entity("lampB", track: "tb", x: 0.70), person]
+        )
+        XCTAssertEqual(
+            decision(ActionVerifier.verify(input(
+                actionID: action,
+                before: before,
+                after: commandedMoved,
+                scope: scope
+            ))),
+            .comparable(outcome: .improved),
+            "the commanded lampA moving left is the action's effect"
+        )
+
+        // The subject and lampB move; lampA (the commanded object) does not.
+        let otherMoved = entityFrame(
+            id: "scope-other-moved",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action,
+            x: 0.30,
+            entities: [entity("lampA", track: "ta", x: 0.45), entity("lampB", track: "tb", x: 0.58), person]
+        )
+        let unrelated = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: otherMoved,
+            scope: scope
+        ))
+        XCTAssertEqual(
+            decision(unrelated),
+            .comparable(outcome: .unchanged),
+            "a sufficient motor delta on another object must not yield improved"
+        )
+        XCTAssertEqual(unrelated.reasonCode, .noEffect)
+
+        // A protected ref that regresses after a comparable pair is worse.
+        let protectedLost = entityFrame(
+            id: "scope-protected-lost",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action,
+            x: 0.40,
+            entities: [
+                entity("lampA", track: "ta", x: 0.36),
+                entity("lampB", track: "tb", x: 0.70),
+                absentEntity("person1", track: "tp")
+            ]
+        )
+        let worse = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: protectedLost,
+            scope: scope
+        ))
+        XCTAssertEqual(decision(worse), .comparable(outcome: .worse))
+        XCTAssertEqual(worse.reasonCode, .regression)
+        XCTAssertEqual(worse.protectedRegressions.map(\.entityRef), ["person1"])
+        XCTAssertEqual(worse.goalSatisfied, false)
+    }
+
+    /// (b) A vanished bbox is not a confirmed removal: expected absence needs
+    /// an observed present baseline, an observed exit, a confirmed free region
+    /// and no unexplained association loss.
+    func testExpectedAbsenceRequiresConfirmedFreeRegionAndObservedExit() {
+        let action = SemanticActionType.removeDistractingObject.rawValue
+        let scope = ActionVerificationScope(
+            targetRefs: ["lampA"],
+            protectedRefs: ["person1"],
+            expectedAbsenceRefs: ["lampA"]
+        )
+        let person = entity("person1", track: "tp", x: 0.05, y: 0.20, width: 0.25, height: 0.60)
+        let before = entityFrame(
+            id: "absence-before",
+            capturedAt: startDate,
+            actionID: action,
+            entities: [entity("lampA", track: "ta", x: 0.45), person]
+        )
+        let after = entityFrame(
+            id: "absence-after",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action,
+            entities: [absentEntity("lampA", track: "ta"), person]
+        )
+        let confirmed = ActionVerificationAbsenceEvidence(
+            entityRef: "lampA",
+            observedPresentBefore: true,
+            observedExitFromRegion: true,
+            regionConfirmedFreeAfter: true,
+            associationLossExplained: true
+        )
+
+        let removed = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: after,
+            scope: scope,
+            absenceEvidence: [confirmed]
+        ))
+        XCTAssertEqual(decision(removed), .comparable(outcome: .improved))
+        XCTAssertEqual(removed.reasonCode, .verified)
+        XCTAssertEqual(removed.goalSatisfied, true)
+        assertFiniteDiagnostics(removed)
+
+        // A missing free-region confirmation is incomparable, not success.
+        let unconfirmed = ActionVerifier.verify(input(
+            actionID: action,
+            before: before,
+            after: after,
+            scope: scope,
+            absenceEvidence: [ActionVerificationAbsenceEvidence(
+                entityRef: "lampA",
+                observedPresentBefore: true,
+                observedExitFromRegion: true,
+                regionConfirmedFreeAfter: false,
+                associationLossExplained: true
+            )]
+        ))
+        XCTAssertEqual(decision(unconfirmed), .incomparable(reason: .expectedAbsenceUnverified))
+        XCTAssertEqual(unconfirmed.reasonCode, .missingEvidence)
+        XCTAssertNil(unconfirmed.goalSatisfied)
+
+        // An omitted after observation (a "disappeared bbox") is not an exit.
+        let omitted = entityFrame(
+            id: "absence-omitted",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action,
+            entities: [person]
+        )
+        XCTAssertEqual(
+            decision(ActionVerifier.verify(input(
+                actionID: action,
+                before: before,
+                after: omitted,
+                scope: scope,
+                absenceEvidence: [confirmed]
+            ))),
+            .incomparable(reason: .expectedAbsenceUnverified)
+        )
+
+        // Still visible after the movement: unchanged, not improved.
+        let stillVisible = entityFrame(
+            id: "absence-still-visible",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action,
+            entities: [entity("lampA", track: "ta", x: 0.45), person]
+        )
+        XCTAssertEqual(
+            decision(ActionVerifier.verify(input(
+                actionID: action,
+                before: before,
+                after: stillVisible,
+                scope: scope,
+                absenceEvidence: [confirmed]
+            ))),
+            .comparable(outcome: .unchanged)
+        )
+    }
+
+    /// (c) An operation without a qualified metric stays unsupported. A
+    /// horizon change is not evidence that a background obstruction was fixed.
+    func testUnsupportedBackgroundActionNeverBecomesImproved() {
+        let action = SemanticActionType.changeCameraAngle.rawValue
+        let before = frame(
+            id: "angle-before",
+            capturedAt: startDate,
+            actionID: action,
+            metrics: UserMovementMetrics(horizonAngleDegrees: 8)
+        )
+        let after = frame(
+            id: "angle-after",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action,
+            x: 0.30,
+            metrics: UserMovementMetrics(horizonAngleDegrees: 0)
+        )
+        let result = ActionVerifier.verify(input(actionID: action, before: before, after: after))
+        XCTAssertEqual(decision(result), .incomparable(reason: .unsupportedAction))
+        XCTAssertEqual(result.reasonCode, .unsupportedVerifier)
+        XCTAssertNil(result.goalSatisfied)
+        XCTAssertNil(result.outcome)
+    }
+
+    /// (d) `goalSatisfied` is reported independently from the outcome: an
+    /// established predicate is `true`, a partial directional improvement is
+    /// `false` but present, and an incomparable pair has no value.
+    func testGoalSatisfiedIsReportedIndependentlyFromOutcome() {
+        let horizonAction = SemanticActionType.levelHorizon.rawValue
+        let fixed = ActionVerifier.verify(input(
+            actionID: horizonAction,
+            before: frame(
+                id: "goal-fixed-before",
+                capturedAt: startDate,
+                actionID: horizonAction,
+                metrics: UserMovementMetrics(horizonAngleDegrees: 8)
+            ),
+            after: frame(
+                id: "goal-fixed-after",
+                capturedAt: startDate.addingTimeInterval(0.1),
+                actionID: horizonAction,
+                metrics: UserMovementMetrics(horizonAngleDegrees: 0)
+            )
+        ))
+        XCTAssertEqual(decision(fixed), .comparable(outcome: .fixed))
+        XCTAssertEqual(fixed.goalSatisfied, true)
+
+        let directionalAction = SemanticActionType.moveSubjectRight.rawValue
+        let partial = ActionVerifier.verify(input(
+            actionID: directionalAction,
+            before: frame(id: "goal-partial-before", capturedAt: startDate, actionID: directionalAction, x: 0.20),
+            after: frame(
+                id: "goal-partial-after",
+                capturedAt: startDate.addingTimeInterval(0.1),
+                actionID: directionalAction,
+                x: 0.32
+            )
+        ))
+        XCTAssertEqual(decision(partial), .comparable(outcome: .improved))
+        XCTAssertEqual(partial.goalSatisfied, false, "a partial improvement does not assert the goal")
+
+        let unsupported = ActionVerifier.verify(input(
+            actionID: SemanticActionType.changeCameraAngle.rawValue,
+            before: frame(id: "goal-unknown-before", capturedAt: startDate, actionID: SemanticActionType.changeCameraAngle.rawValue),
+            after: frame(
+                id: "goal-unknown-after",
+                capturedAt: startDate.addingTimeInterval(0.1),
+                actionID: SemanticActionType.changeCameraAngle.rawValue,
+                x: 0.30
+            )
+        ))
+        XCTAssertNil(unsupported.goalSatisfied)
+    }
+
+    /// (e) N7 order: scope/identity violations are incomparable even when the
+    /// scalar measurement improved.
+    func testN7OrderMakesScopeAndIdentityViolationsIncomparableDespiteScalarGrowth() {
+        let horizonAction = SemanticActionType.levelHorizon.rawValue
+        let levelBefore = frame(
+            id: "n7-horizon-before",
+            capturedAt: startDate,
+            actionID: horizonAction,
+            metrics: UserMovementMetrics(horizonAngleDegrees: 8)
+        )
+        let levelAfter = frame(
+            id: "n7-horizon-after",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: horizonAction,
+            metrics: UserMovementMetrics(horizonAngleDegrees: 0)
+        )
+        let generationMismatch = ActionVerifier.verify(input(
+            actionID: horizonAction,
+            before: levelBefore,
+            after: levelAfter,
+            afterLifecycle: lifecycle(generation: 10)
+        ))
+        XCTAssertEqual(decision(generationMismatch), .incomparable(reason: .tokenMismatch))
+        XCTAssertEqual(generationMismatch.reasonCode, .identityChanged)
+        XCTAssertNil(generationMismatch.goalSatisfied)
+
+        let moveAction = SemanticActionType.moveSubjectRight.rawValue
+        let moveBefore = frame(id: "n7-scene-before", capturedAt: startDate, actionID: moveAction, x: 0.20)
+        let moveAfter = frame(
+            id: "n7-scene-after",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: moveAction,
+            x: 0.34
+        )
+        let sceneMismatch = ActionVerifier.verify(input(
+            actionID: moveAction,
+            before: moveBefore,
+            after: moveAfter,
+            beforeLifecycle: lifecycle(sceneSignature: "scene-a"),
+            afterLifecycle: lifecycle(sceneSignature: "scene-b")
+        ))
+        XCTAssertEqual(decision(sceneMismatch), .incomparable(reason: .sceneMismatch))
+        XCTAssertEqual(sceneMismatch.reasonCode, .sceneChanged)
+
+        // A swapped track binding for the commanded object blocks the favorable
+        // scalar (lampA moved left but is a different identity).
+        let objectAction = SemanticActionType.moveObjectLeft.rawValue
+        let objectScope = ActionVerificationScope(targetRefs: ["lampA"], allowedChanges: [.targetPosition])
+        let objectBefore = entityFrame(
+            id: "n7-object-before",
+            capturedAt: startDate,
+            actionID: objectAction,
+            entities: [entity("lampA", track: "ta", x: 0.45)]
+        )
+        let objectAfter = entityFrame(
+            id: "n7-object-after",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: objectAction,
+            entities: [entity("lampA", track: "ta-swapped", x: 0.35)]
+        )
+        let identitySwap = ActionVerifier.verify(input(
+            actionID: objectAction,
+            before: objectBefore,
+            after: objectAfter,
+            scope: objectScope
+        ))
+        XCTAssertEqual(decision(identitySwap), .incomparable(reason: .subjectIdentityMismatch))
+        XCTAssertEqual(identitySwap.reasonCode, .identityChanged)
+
+        // A declared allowed-change set that omits the required class fails
+        // closed instead of relying on the hidden legacy path.
+        let objectMoved = entityFrame(
+            id: "n7-object-moved",
+            capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: objectAction,
+            entities: [entity("lampA", track: "ta", x: 0.35)]
+        )
+        let undeclared = ActionVerifier.verify(input(
+            actionID: objectAction,
+            before: objectBefore,
+            after: objectMoved,
+            scope: ActionVerificationScope(targetRefs: ["lampA"], allowedChanges: [.zoom])
+        ))
+        XCTAssertEqual(decision(undeclared), .incomparable(reason: .contextChanged))
+        XCTAssertEqual(undeclared.reasonCode, .contextChanged)
+    }
+
+    /// Item 4: `keep` has no executable action family, so no executive episode
+    /// can even be constructed. The same holds for a removal without declared
+    /// expected absences (the coordinator requires a verified pair instead).
+    func testKeepAndUndeclaredRemovalCannotStartExecutableEpisode() {
+        let keepAction = SemanticActionType.keepCurrentSetup.rawValue
+        let keepFrame = frame(id: "keep-frame", capturedAt: startDate, actionID: keepAction)
+        let keepAdvice = StabilizedAdvice(
+            decision: .correct,
+            actionID: keepAction,
+            frameID: keepFrame.frameID,
+            targetX: nil,
+            targetY: nil
+        )
+        XCTAssertNil(
+            CoachingEpisodeObservation(
+                frame: keepFrame,
+                stabilizedAdvice: keepAdvice,
+                subjectTrack: nil,
+                lifecycle: lifecycle(),
+                isStable: true
+            ),
+            "keep must not create an executive episode"
+        )
+
+        let removalAction = SemanticActionType.removeDistractingObject.rawValue
+        let removalFrame = frame(id: "removal-frame", capturedAt: startDate, actionID: removalAction)
+        let removalAdvice = StabilizedAdvice(
+            decision: .correct,
+            actionID: removalAction,
+            frameID: removalFrame.frameID,
+            targetX: nil,
+            targetY: nil
+        )
+        XCTAssertNil(
+            CoachingEpisodeObservation(
+                frame: removalFrame,
+                stabilizedAdvice: removalAdvice,
+                subjectTrack: nil,
+                lifecycle: lifecycle(),
+                isStable: true
+            ),
+            "an undeclared removal has no honest movement feature and cannot open a live episode"
         )
     }
 }

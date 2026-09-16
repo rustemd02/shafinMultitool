@@ -1,5 +1,7 @@
 # 25. VLM Visual Semantic Evidence Contract (PR-S02)
 
+Дополнение 2026-09-11: следующий provider revision описан в [Camera Coach Domain v3, N8](03-domain-contracts.md#n8-provider-contract-vlm-предлагает-evidence-приложение-принимает-решение). `camera-coach.vlm-evidence.s2-draft.1` допускает ограниченные proposals новых объектов, которые сначала принимает локальный grounding owner; frame-local refs не превращаются в trackID. Точные correlation/coverage, draft catalogs и запрет provider-owned decision/verification зафиксированы там. Ниже сохранён s1; s2 не должен декодироваться его валидатором и не разрешает production upload кадров.
+
 Статус: design spec + design verify (ready for implement)
 
 Дата: 2026-05-04

@@ -4,6 +4,12 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Shafin Multitool</string>
+	<!-- The app implements no cryptography of its own: it uses Apple's standard
+	     CryptoKit SHA-256 for request digests and App Attest, and talks over
+	     HTTPS. Export compliance is therefore answered in the built product
+	     rather than at every upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIAppFonts</key>
 	<array>
 		<string>BebasNeue-Regular.ttf</string>

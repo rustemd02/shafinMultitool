@@ -1,7 +1,31 @@
 ---
-status: ready_for_integration
+status: needs_update
 chapter: 5.2
-last_updated: 2026-06-07
+last_updated: 2026-09-12
+needs_update_reason: >-
+  CL-CA-011 is marked conflicts_with_current_code. The 174-record figures in this
+  chapter (pass_rate 0,850575 / good_frame_preservation_rate 0,987654) come from the
+  historical out_semantic_real_runtime_v2_regen_bad_v1 artifact and do not reproduce
+  from current source: a 2026-09-12 fullRuntime still replay on the identical label
+  bundle scored pass_rate 0,379310 and good_frame_preservation_rate 0,518519 with
+  109/174 pause action sets changed (EV-CA-EVAL-010, CL-CA-016). A single-hunk object
+  edge-pressure calibration then moved the same lane to pass_rate 0,505747 and
+  good_frame_preservation_rate 0,839506, with an explicit A/B control run recorded in
+  EV-CA-EVAL-011 / CL-CA-017; that calibration also leaves one new expectation test failing,
+  which the follow-up dominant-technical override then removes while raising the lane further to
+  pass_rate 0,534483 / good_frame_preservation_rate 0,839506 (EV-CA-EVAL-012, CL-CA-018,
+  phase B 142/35 with no newly failing test).
+  Any sentence here that presents 0,850575 as current quality must be revised before integration.
+  2026-09-13 Q05 round 3: EV-REL-NEURAL-001/CL-REL-NEURAL-001 (the production neural composition
+  model is absent from the built Release bundle) and EV-CA-SETCONTRACT-001/CL-CA-051 (the frozen
+  SETCompositionNet contract is not consumed by any production path; runtime tensors 256/160 vs
+  contract 320/192) mean this chapter's measured lane is a deterministic-path result — do not
+  attribute any measured number here to a running neural composition model.
+  2026-09-13 Q05 round 4: EV-REL-POLICY-001/CL-REL-POLICY-001 (versioned executable §5.1/§5.2 policy,
+  behaviorally bound to the gate instrument in both directions; `min_clusters` on the good-frame
+  budget; `false_improved` recorded as having no evaluator implementation) and
+  EV-REL-DEFGAP-001/CL-REL-DEFGAP-001 (ten §5.1 rows with a threshold and no definition) bound any
+  prose that would treat the acceptance table as fully measurable.
 sources:
   - docs/thesis/snapshots/camera_analysis_snapshot.md
   - docs/thesis/03_evidence_map.md
@@ -10,6 +34,8 @@ sources:
   - docs/cameraanalysis/eval/out_semantic_real_runtime_v2_207_sim/bucket_metrics.json
   - docs/cameraanalysis/eval/out_semantic_real_runtime_v2_regen_bad_v1/set_metrics.json
   - docs/cameraanalysis/eval/out_semantic_real_runtime_v2_regen_bad_v1/bucket_metrics.json
+  - docs/cameraanalysis/eval/camera-baseline-v0/drift-174/scored/set_metrics.json
+  - docs/cameraanalysis/eval/camera-baseline-v0/drift-174/label-drift-report.json
   - docs/cameraanalysis/dataset/inbox/semantic_labels_v2_minus15_appletv_good_minus8_subtle_bad_minus10_weak_synthetic_regen_bad_v1_replacement_audit.md
 ---
 

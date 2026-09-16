@@ -1,0 +1,1982 @@
+{
+  "schema_id": "camera-operations-registry-v3-draft",
+  "schema_version": "3.0.0-draft.1",
+  "status": "draft_for_review",
+  "authority": "docs/cameraanalysis/03-domain-contracts.md N6 — source of truth; this file is a machine-readable projection, not a rename of SemanticActionType",
+  "not_a_stable_contract": "Stable v3 is not declared until C01 conformance. No entry may light up live CORRECT before its qualificationRef exists.",
+  "source": {
+    "doc": "docs/cameraanalysis/03-domain-contracts.md",
+    "section": "N6.1",
+    "semantic_actions_ref": "SemanticActionType (26, frozen)",
+    "technical_actions_ref": "TechnicalQualityActionType (7, frozen)"
+  },
+  "frozen_action_axes": {
+    "semantic_actions": [
+      "shift_frame_left",
+      "shift_frame_right",
+      "shift_frame_up",
+      "shift_frame_down",
+      "step_back",
+      "step_closer",
+      "lower_camera",
+      "raise_camera",
+      "change_camera_angle",
+      "level_horizon",
+      "rotate_subject_toward_light",
+      "move_subject_left",
+      "move_subject_right",
+      "move_subject_away_from_background",
+      "move_object_left",
+      "move_object_right",
+      "move_object_forward",
+      "move_object_back",
+      "remove_distracting_object",
+      "reposition_prop_for_balance",
+      "add_front_fill_light",
+      "add_background_light",
+      "remove_background_hotspot",
+      "simplify_background",
+      "wait_for_background_clearance",
+      "keep_current_setup"
+    ],
+    "technical_actions": [
+      "stabilize_camera",
+      "refocus_subject",
+      "reduce_exposure",
+      "increase_exposure",
+      "avoid_occlusion",
+      "clean_lens",
+      "reduce_iso_noise"
+    ]
+  },
+  "state_semantics": {
+    "CORRECT": "exactly one activeAction; other states carry none",
+    "SELECT_SUBJECT": "non-empty real selectionCandidates; other states carry an empty list; missing target => ABSTAIN/no_subject, never an empty picker",
+    "KEEP": "positive evidence for the selected target AND no active forbidding condition; never a substitute for missing data",
+    "WAIT": "only a temporarily removable waiting condition",
+    "ABSTAIN": "unsupported or insufficient signal; never a quality verdict"
+  },
+  "reason_codes": [
+    "ready",
+    "correction_available",
+    "ambiguous_subject",
+    "no_subject",
+    "acquiring",
+    "unstable",
+    "stale",
+    "identity_lost",
+    "unsupported_case",
+    "unqualified",
+    "missing_evidence",
+    "conflicting_evidence",
+    "protected_intent",
+    "infeasible",
+    "network_unavailable",
+    "quota_exhausted",
+    "invalid_payload",
+    "scope_changed"
+  ],
+  "effect_goal_fields": [
+    "metricID",
+    "targetEntityRefs",
+    "relationRef?",
+    "desired(inside_region|increase|decrease|preserve)",
+    "targetRegion?",
+    "policyRef"
+  ],
+  "review_semantics": {
+    "desired_is_comparison_not_instruction": "in review a desired field is a comparison in text/selector, never an instruction to fix",
+    "action_proposal": "keeps every Action field except baseline; adds admissibility, reasonCodes, alternativeGroupID? (N6.2:755)",
+    "qualification_ref_rule": "qualificationRef is required only when admissibility=qualified; it is absent for needs_user_input/unsupported (N6.2:755)",
+    "scope_rule": "scope=next_capture, except select_capture_moment where scope=now means choosing the reviewed shot (N6.2:755)",
+    "pre_admission": "before admission a proposal is a hypothesis with conditional text and no executable arrow (N6.2:755)",
+    "live_projection": "only a qualified proposal, after re-analysis of the current frame, projects into a future live episode (N6.2:755)",
+    "review_has_no_active_action": "when context.phase=review there is no decision.activeAction; findings/suggestions/comparisons live in ReviewReport; state=KEEP on positive confirmation, otherwise ABSTAIN with a reason — review is never masked as live CORRECT (N6.2:755)",
+    "alternative_group": "incompatible proposals share one alternativeGroupID and are never presented as sequential steps; the ordered list is a discussion plan, not an auto-action queue (N6.2:757)",
+    "review_report_shape": "ReviewReport{coverage, findingRefs, suggestions:ActionProposal[0...3], comparisons:MediaComparison[]}; it does not open a live episode (N6.2:755)"
+  },
+  "operations": [
+    {
+      "operation_id": "reframe_subject",
+      "payload_spec": "{targetRegion:Region}` для selected subject/group; экранная цель, без направления перемещения камеры",
+      "executor_and_mode_spec": "camera_operator; setup/preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "frozen": [
+          "shift_frame_left",
+          "shift_frame_right",
+          "shift_frame_up",
+          "shift_frame_down"
+        ],
+        "note": "screen-space reframing of the selected subject; no camera translation"
+      },
+      "status": "draft_for_review",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "payload targetRegion resolved in the baseline context; selected subject/group identity and enough visible area to place the target region (N6.1:726)",
+      "effect_goal": {
+        "metricID": "target_region_coverage",
+        "targetEntityRefs": "selected subject/group refs",
+        "desired": "inside_region",
+        "targetRegion": "payload.targetRegion",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "missing_evidence",
+        "unqualified",
+        "protected_intent",
+        "infeasible",
+        "unsupported_case",
+        "stale",
+        "identity_lost"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "derived_from_payload",
+        "metric_source": "N6.1 reframe_subject payload {targetRegion}",
+        "metrics_resolved_per_case": true,
+        "metric_ids_from_n9": [
+          "edge_clearance",
+          "target_distance",
+          "visible_fraction"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": null,
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "contour_gap",
+          "edge_clearance",
+          "target_distance",
+          "visible_fraction"
+        ],
+        "metric_polarity": "increase_is_better"
+      },
+      "target_refs_rule": {
+        "kind": "selected_group_allowed",
+        "basis": "N6.1:747 — a selected group is allowed for reframe/group/maintain"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission"
+    },
+    {
+      "operation_id": "change_subject_scale",
+      "payload_spec": "{method:camera_distance\\|zoom, desired:larger\\|smaller, targetAreaRatio}`; ratio `(0,1]`, метод известен; M для zoom",
+      "executor_and_mode_spec": "camera_operator; setup/preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "frozen": [
+          "step_closer",
+          "step_back"
+        ],
+        "gap": [
+          "optical_zoom_control"
+        ],
+        "note": "payload allows method=camera_distance|zoom; zoom is not represented in the frozen semantic axis"
+      },
+      "status": "candidate_gap_requires_target_effect_feasibility_qualification",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "method (camera_distance|zoom) known; M for zoom; area ratio in (0,1] (N6.1:727)",
+      "effect_goal": {
+        "metricID": "subject_area_ratio",
+        "targetEntityRefs": "the selected scaled entity",
+        "desired": "increase",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "missing_evidence",
+        "unqualified",
+        "protected_intent",
+        "infeasible",
+        "unsupported_case",
+        "stale",
+        "identity_lost"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-C02/S08",
+        "metrics_resolved_per_case": false,
+        "metric_ids_from_n9": [
+          "subject_area_ratio"
+        ],
+        "desired_source": "effect_goal_instantiation.variants (payload-driven; see note)",
+        "desired_alternative": null,
+        "note": "payload chooses the direction; the variants are exhaustive over the N6.1 desired enum",
+        "metric_polarity": "context_dependent",
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "readability",
+          "subject_area_ratio"
+        ]
+      },
+      "target_refs_rule": {
+        "kind": "single_entity",
+        "basis": "N6.1:747 — targetRefs of a single-object operation is exactly one object/person; the group allowance is given only for reframe/group/maintain, so every other entity-targeting operation is single-entity"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission",
+      "effect_goal_instantiation": {
+        "template": true,
+        "variants_exhaustive": true,
+        "default_is_illustrative": true,
+        "payload_fields": [
+          "desired"
+        ],
+        "variants": [
+          {
+            "when": {
+              "desired": "larger"
+            },
+            "metricID": "subject_area_ratio",
+            "desired": "increase"
+          },
+          {
+            "when": {
+              "desired": "smaller"
+            },
+            "metricID": "subject_area_ratio",
+            "desired": "decrease"
+          }
+        ],
+        "basis": "N6.1 payload enum for this operation; the instantiated Action must carry one of these (N6:718 desired enum)",
+        "payload_enum_field": "desired",
+        "presence_branches": null
+      }
+    },
+    {
+      "operation_id": "level_frame",
+      "payload_spec": "{rotation:clockwise\\|counterclockwise, targetHorizonDegrees}` относительно preview, с horizon evidence",
+      "executor_and_mode_spec": "camera_operator; setup/preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "frozen": [
+          "level_horizon"
+        ],
+        "note": "roll about the view axis only"
+      },
+      "status": "draft_for_review",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets, even when the camera moves (N6.1)",
+      "evidence_prerequisite": "horizon evidence for the current preview (N6.1:728)",
+      "effect_goal": {
+        "metricID": "horizon_error",
+        "targetEntityRefs": "frame-global (no entity target, N6.1:747)",
+        "desired": "decrease",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "missing_evidence",
+        "unqualified",
+        "protected_intent",
+        "unsupported_case",
+        "stale"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-C06",
+        "metrics_resolved_per_case": false,
+        "metric_ids_from_n9": [
+          "horizon_error"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": "targetHorizonDegrees comes from the payload; the goal is a decrease of horizon_error, not a rotation gesture",
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "horizon_error"
+        ],
+        "metric_polarity": "decrease_is_better"
+      },
+      "target_refs_rule": {
+        "kind": "frame_global_empty_allowed",
+        "basis": "N6.1:747 — frame-global level/hold/clear_lens_obstruction may have empty targetRefs, but then findingRefs must be non-empty with frame evidence"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission"
+    },
+    {
+      "operation_id": "reposition_entity",
+      "payload_spec": "{destination:screen_goal\\|relative_depth, region?, relationRef?}`; screen_goal требует region и фиксированной камеры; relative_depth требует D relationRef и определённой точки отсчёта",
+      "executor_and_mode_spec": "scene_arranger для object, subject_participant для person; setup/стабильный preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "frozen": [
+          "move_object_left",
+          "move_object_right",
+          "move_object_forward",
+          "move_object_back",
+          "move_subject_left",
+          "move_subject_right",
+          "move_subject_away_from_background"
+        ],
+        "note": "executor differs by entity kind (scene_arranger vs subject_participant)"
+      },
+      "status": "draft_for_review",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "screen_goal requires region + a fixed camera; relative_depth requires a D relationRef and a definite reference point; physical move additionally requires item availability and a permissible destination on a confirmed surface (N6.1:729, 751)",
+      "effect_goal": {
+        "metricID": "contour_gap",
+        "targetEntityRefs": "the moved entity only (N6.1:747 group is not permitted)",
+        "desired": "increase",
+        "targetRegion": "payload.region",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "missing_evidence",
+        "unqualified",
+        "protected_intent",
+        "infeasible",
+        "unsupported_case",
+        "stale",
+        "identity_lost"
+      ],
+      "feasibility": "physical rearrangement requires item availability AND a permitted destination on a confirmed surface; a free rectangle in the image proves neither support nor clearance (N6.1)",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-O01/O02/O03/O05/S03/S07",
+        "metrics_resolved_per_case": true,
+        "metric_ids_from_n9": [
+          "contour_gap",
+          "target_distance",
+          "subject_readability",
+          "visible_fraction"
+        ],
+        "desired_source": "effect_goal_instantiation.variants (payload-driven; see note)",
+        "desired_alternative": {
+          "condition": "payload uses relative_depth (no region)",
+          "value": "preserve",
+          "relationRef": "payload.relationRef"
+        },
+        "note": "§N10:900 fixes this EffectGoal verbatim as contour_gap/increase for the screen_goal branch (review round 4, Q4)",
+        "guard_metrics": [],
+        "metric_polarity": "increase_is_better",
+        "case_metrics_from_n9": [
+          "contour_gap",
+          "subject_readability",
+          "target_distance",
+          "visible_fraction"
+        ]
+      },
+      "target_refs_rule": {
+        "kind": "single_entity",
+        "basis": "N6.1:747 — targetRefs of a single-object operation is exactly one object/person; the group allowance is given only for reframe/group/maintain, so every other entity-targeting operation is single-entity"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission",
+      "effect_goal_instantiation": {
+        "template": true,
+        "variants_exhaustive": true,
+        "default_is_illustrative": true,
+        "payload_fields": [
+          "destination"
+        ],
+        "variants": [
+          {
+            "when": {
+              "destination": "screen_goal"
+            },
+            "metricID": "contour_gap",
+            "desired": "increase",
+            "targetRegion": "payload.region"
+          },
+          {
+            "when": {
+              "destination": "relative_depth"
+            },
+            "metricID": "contour_gap",
+            "desired": "preserve",
+            "relationRef": "payload.relationRef",
+            "preserve_basis": "a depth relation is held, not maximised"
+          }
+        ],
+        "basis": "N6.1 payload enum for this operation; the instantiated Action must carry one of these (N6:718 desired enum)",
+        "payload_enum_field": "destination",
+        "presence_branches": null
+      }
+    },
+    {
+      "operation_id": "rotate_entity",
+      "payload_spec": "{towardEntityRef?, revealRegion?, turn:small_probe\\|measured, angleDegrees?}`; ровно один toward/reveal; measured требует D+angle, small_probe запрещает число",
+      "executor_and_mode_spec": "scene_arranger/subject_participant; setup/стабильный preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "gap": [
+          "rotate_object"
+        ],
+        "note": "no frozen equivalent; endorsed conditionally by the actions consilium (§9.8 item 7)"
+      },
+      "status": "candidate_gap_requires_target_effect_feasibility_qualification",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "exactly one of towardEntityRef | revealRegion; measured requires D + angleDegrees; small_probe forbids the number (N6.1:730)",
+      "effect_goal": {
+        "metricID": "visible_fraction",
+        "targetEntityRefs": "the rotated entity",
+        "desired": "inside_region",
+        "targetRegion": "payload.revealRegion",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "missing_evidence",
+        "unqualified",
+        "protected_intent",
+        "infeasible",
+        "unsupported_case",
+        "stale",
+        "identity_lost"
+      ],
+      "feasibility": "physical rearrangement requires item availability AND a permitted destination on a confirmed surface; a free rectangle in the image proves neither support nor clearance (N6.1)",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-I02/C07/O04/O05/P01/P02/P03/S01/S02/S04/S06",
+        "metrics_resolved_per_case": true,
+        "metric_ids_from_n9": [
+          "subject_readability",
+          "hotspot_ratio",
+          "visible_fraction"
+        ],
+        "desired_source": "effect_goal_instantiation.variants (payload-driven; see note)",
+        "desired_alternative": {
+          "condition": "payload uses towardEntityRef",
+          "value": "preserve",
+          "relationRef": "payload.towardEntityRef"
+        },
+        "note": "revealRegion branch is a region goal; the towardEntityRef branch preserves a relation",
+        "guard_metrics": [
+          "subject_clipped_ratio"
+        ],
+        "metric_polarity": "context_dependent",
+        "case_metrics_from_n9": [
+          "hotspot_ratio",
+          "subject_readability",
+          "visible_fraction"
+        ],
+        "guard_basis": [
+          {
+            "metric": "subject_clipped_ratio",
+            "n9_case": "CC-L01",
+            "n9_token": "clipped guard"
+          }
+        ]
+      },
+      "target_refs_rule": {
+        "kind": "single_entity",
+        "basis": "N6.1:747 — targetRefs of a single-object operation is exactly one object/person; the group allowance is given only for reframe/group/maintain, so every other entity-targeting operation is single-entity"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission",
+      "effect_goal_instantiation": {
+        "template": true,
+        "default_is_illustrative": true,
+        "payload_fields": [
+          "revealRegion",
+          "towardEntityRef"
+        ],
+        "variants": [
+          {
+            "when": {
+              "revealRegion": true
+            },
+            "metricID": "visible_fraction",
+            "desired": "inside_region",
+            "targetRegion": "payload.revealRegion"
+          },
+          {
+            "when": {
+              "towardEntityRef": true
+            },
+            "metricID": "visible_fraction",
+            "desired": "preserve",
+            "relationRef": "payload.towardEntityRef",
+            "preserve_basis": "the entity is held in view, not enlarged"
+          }
+        ],
+        "basis": "N6.1 payload enum for this operation; the instantiated Action must carry one of these (N6:718 desired enum)",
+        "presence_branches": [
+          "revealRegion",
+          "towardEntityRef"
+        ],
+        "payload_enum_field": null,
+        "variants_exhaustive": true
+      }
+    },
+    {
+      "operation_id": "exclude_entity",
+      "payload_spec": "{fromRegion:Region}`; физически убрать только выбранный доступный предмет, не генеративное удаление",
+      "executor_and_mode_spec": "scene_arranger; setup/стабильный preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "frozen": [
+          "remove_distracting_object"
+        ],
+        "note": "physical removal of the selected available item only; never generative removal"
+      },
+      "status": "draft_for_review",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "the selected item is available for physical removal; generative removal is forbidden (N6.1:731)",
+      "effect_goal": {
+        "metricID": "visible_fraction",
+        "targetEntityRefs": "the selected removable item",
+        "desired": "decrease",
+        "targetRegion": "payload.fromRegion",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "missing_evidence",
+        "unqualified",
+        "protected_intent",
+        "infeasible",
+        "unsupported_case",
+        "stale",
+        "identity_lost"
+      ],
+      "feasibility": "physical rearrangement requires item availability AND a permitted destination on a confirmed surface; a free rectangle in the image proves neither support nor clearance (N6.1)",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-I02/C07/O04/O05/P01/P02/P03/S01/S02/S04/S06",
+        "metrics_resolved_per_case": false,
+        "metric_ids_from_n9": [
+          "visible_fraction",
+          "contour_gap"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": null,
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "contour_gap",
+          "edge_clearance",
+          "visible_fraction"
+        ],
+        "metric_polarity": "context_dependent"
+      },
+      "target_refs_rule": {
+        "kind": "single_entity",
+        "basis": "N6.1:747 — targetRefs of a single-object operation is exactly one object/person; the group allowance is given only for reframe/group/maintain, so every other entity-targeting operation is single-entity"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission"
+    },
+    {
+      "operation_id": "reposition_camera",
+      "payload_spec": "{change:raise\\|lower\\|lateral_probe, lateralDirection:left\\|right?, goalRegion:Region, step:small_probe}`; lateralDirection обязателен только для lateral_probe и означает физическое перемещение в системе камеры. Он требует квалифицированной пространственной геометрии; одной экранной цели недостаточно для выбора физической стороны",
+      "executor_and_mode_spec": "camera_operator; setup/стабильный preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "frozen": [
+          "raise_camera",
+          "lower_camera",
+          "change_camera_angle"
+        ],
+        "note": "raise/lower are frozen semantic ids; lateral_probe is the frozen semantic id change_camera_angle (CameraAnalysisDomainContracts.swift:2783), not a new universal id"
+      },
+      "status": "candidate_gap_requires_target_effect_feasibility_qualification",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets, even when the camera moves (N6.1)",
+      "evidence_prerequisite": "qualified spatial geometry — a screen goal alone cannot choose the physical side (N6.1:732)",
+      "effect_goal": {
+        "metricID": "visible_fraction",
+        "targetEntityRefs": "protected main subject refs; goalRegion is the screen goal",
+        "desired": "inside_region",
+        "targetRegion": "payload.goalRegion",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "missing_evidence",
+        "unqualified",
+        "protected_intent",
+        "unsupported_case",
+        "stale"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-I02/C07/O04/O05/P01/P02/P03/S01/S02/S04/S06",
+        "metrics_resolved_per_case": true,
+        "metric_ids_from_n9": [
+          "visible_fraction",
+          "contour_gap",
+          "subject_readability"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": null,
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "contour_gap",
+          "subject_readability",
+          "visible_fraction"
+        ],
+        "metric_polarity": "context_dependent"
+      },
+      "target_refs_rule": {
+        "kind": "unnamed_in_source",
+        "basis": "N6.1:747 names only three buckets and does not classify operations whose payload references a region/parameter/frame instead of an entity"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission"
+    },
+    {
+      "operation_id": "adjust_light",
+      "payload_spec": "{change:dim\\|brighten\\|switch_off\\|add_fill\\|add_background, sourceEntityRef?, receiverEntityRef}`; dim/brighten/switch_off требуют sourceRef, add требует подтверждённого ресурса",
+      "executor_and_mode_spec": "scene_arranger; setup/стабильный preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "frozen": [
+          "add_front_fill_light",
+          "add_background_light"
+        ],
+        "gap": [
+          "dim_source",
+          "brighten_source",
+          "switch_off_source"
+        ],
+        "note": "dim/brighten/switch_off require an owned controllable source and have no frozen id"
+      },
+      "status": "candidate_gap_requires_target_effect_feasibility_qualification",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "dim/brighten/switch_off require a sourceEntityRef; add_fill/add_background require a confirmed resource (on-device torch actuator exists: CameraService.swift:811-813) (N6.1:733)",
+      "effect_goal": {
+        "metricID": "light_on_receiver",
+        "targetEntityRefs": "receiverEntityRef (sourceEntityRef is a payload ref, not a targetRef)",
+        "desired": "decrease",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "missing_evidence",
+        "unqualified",
+        "protected_intent",
+        "infeasible",
+        "unsupported_case",
+        "stale",
+        "identity_lost"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-O07/O08/L01/L02/L03/L04/L06/L08/P04/T03/V06",
+        "metrics_resolved_per_case": true,
+        "metric_ids_from_n9": [
+          "subject_readability",
+          "hotspot_ratio",
+          "flicker_amplitude"
+        ],
+        "desired_source": "effect_goal_instantiation.variants (payload-driven; see note)",
+        "desired_alternative": null,
+        "note": "the effect metric is the light arriving on the receiver; subject_readability is the guard, not the effect (round-4 Q1)",
+        "guard_metrics": [
+          "subject_readability",
+          "subject_clipped_ratio"
+        ],
+        "metric_polarity": "context_dependent",
+        "case_metrics_from_n9": [
+          "flicker_amplitude",
+          "hotspot_ratio",
+          "readability",
+          "subject_readability"
+        ],
+        "guard_basis": [
+          {
+            "metric": "subject_readability",
+            "n9_case": "CC-L08",
+            "n9_token": "subject_readability"
+          },
+          {
+            "metric": "subject_clipped_ratio",
+            "n9_case": "CC-L01",
+            "n9_token": "clipped guard"
+          }
+        ]
+      },
+      "target_refs_rule": {
+        "kind": "single_entity",
+        "basis": "N6.1:747 — targetRefs of a single-object operation is exactly one object/person; the group allowance is given only for reframe/group/maintain, so every other entity-targeting operation is single-entity"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission",
+      "effect_goal_instantiation": {
+        "template": true,
+        "variants_exhaustive": true,
+        "default_is_illustrative": true,
+        "payload_fields": [
+          "change"
+        ],
+        "variants": [
+          {
+            "when": {
+              "change": "dim"
+            },
+            "metricID": "light_on_receiver",
+            "desired": "decrease"
+          },
+          {
+            "when": {
+              "change": "switch_off"
+            },
+            "metricID": "light_on_receiver",
+            "desired": "decrease"
+          },
+          {
+            "when": {
+              "change": "brighten"
+            },
+            "metricID": "light_on_receiver",
+            "desired": "increase"
+          },
+          {
+            "when": {
+              "change": "add_fill"
+            },
+            "metricID": "light_on_receiver",
+            "desired": "increase"
+          },
+          {
+            "when": {
+              "change": "add_background"
+            },
+            "metricID": "light_on_receiver",
+            "desired": "increase"
+          }
+        ],
+        "basis": "N6.1 payload enum for this operation; the instantiated Action must carry one of these (N6:718 desired enum)",
+        "payload_enum_field": "change",
+        "presence_branches": null
+      }
+    },
+    {
+      "operation_id": "adjust_exposure",
+      "payload_spec": "{change:increase\\|decrease, parameter:exposure_bias, suggestedEV?}`; число только из доступного диапазона M и qualified policy",
+      "executor_and_mode_spec": "camera_operator; setup/preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "technical": [
+          "reduce_exposure",
+          "increase_exposure"
+        ],
+        "note": "parameter=exposure_bias; number must come from an available qualified range"
+      },
+      "status": "draft_for_review",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "the number comes only from the available M range and qualified policy; parameter is exposure_bias (N6.1:734)",
+      "effect_goal": {
+        "metricID": "exposure_bias_value",
+        "targetEntityRefs": "protected main subject refs",
+        "desired": "increase",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "unqualified",
+        "missing_evidence",
+        "unsupported_case",
+        "invalid_payload"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-L03",
+        "metrics_resolved_per_case": true,
+        "metric_ids_from_n9": [
+          "subject_clipped_ratio"
+        ],
+        "desired_source": "effect_goal_instantiation.variants (payload-driven; see note)",
+        "desired_alternative": null,
+        "note": "the effect metric is the exposure bias the operator sets; subject_clipped_ratio and readability are the guards (round-4 Q1)",
+        "guard_metrics": [
+          "subject_readability"
+        ],
+        "metric_polarity": "context_dependent",
+        "case_metrics_from_n9": [
+          "readability",
+          "subject_clipped_ratio"
+        ],
+        "guard_basis": [
+          {
+            "metric": "subject_readability",
+            "n9_case": "CC-L03",
+            "n9_token": "readability"
+          }
+        ]
+      },
+      "target_refs_rule": {
+        "kind": "unnamed_in_source",
+        "basis": "N6.1:747 names only three buckets and does not classify operations whose payload references a region/parameter/frame instead of an entity"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission",
+      "effect_goal_instantiation": {
+        "template": true,
+        "variants_exhaustive": true,
+        "default_is_illustrative": true,
+        "payload_fields": [
+          "change"
+        ],
+        "variants": [
+          {
+            "when": {
+              "change": "increase"
+            },
+            "metricID": "exposure_bias_value",
+            "desired": "increase"
+          },
+          {
+            "when": {
+              "change": "decrease"
+            },
+            "metricID": "exposure_bias_value",
+            "desired": "decrease"
+          }
+        ],
+        "basis": "N6.1 payload enum for this operation; the instantiated Action must carry one of these (N6:718 desired enum)",
+        "payload_enum_field": "change",
+        "presence_branches": null
+      }
+    },
+    {
+      "operation_id": "refocus_subject",
+      "payload_spec": "{focusRegion:Region}` на selected subject; M/focus evidence",
+      "executor_and_mode_spec": "camera_operator; setup/preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "technical": [
+          "refocus_subject"
+        ],
+        "note": "SAME id as the technical axis: reference it, do not create a second semantic action"
+      },
+      "status": "draft_for_review",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "M and focus evidence on the selected subject (N6.1:735)",
+      "effect_goal": {
+        "metricID": "focus_readability",
+        "targetEntityRefs": "the selected subject",
+        "desired": "increase",
+        "targetRegion": "payload.focusRegion",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "unqualified",
+        "missing_evidence",
+        "unsupported_case",
+        "invalid_payload"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-T01/T02/T04/V04",
+        "metrics_resolved_per_case": false,
+        "metric_ids_from_n9": [
+          "focus_readability"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": null,
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "focus_readability"
+        ],
+        "metric_polarity": "increase_is_better"
+      },
+      "target_refs_rule": {
+        "kind": "single_entity",
+        "basis": "N6.1:747 — targetRefs of a single-object operation is exactly one object/person; the group allowance is given only for reframe/group/maintain, so every other entity-targeting operation is single-entity"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission"
+    },
+    {
+      "operation_id": "hold_steady",
+      "payload_spec": "{windowPolicyRef}`; уменьшить непреднамеренное движение в измеренном окне",
+      "executor_and_mode_spec": "camera_operator; setup/preview/recording, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "technical": [
+          "stabilize_camera"
+        ],
+        "note": "same id as the technical axis; window policy required"
+      },
+      "status": "draft_for_review",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets, even when the camera moves (N6.1)",
+      "evidence_prerequisite": "a measured window (windowPolicyRef) (N6.1:736)",
+      "effect_goal": {
+        "metricID": "motion_shake",
+        "targetEntityRefs": "frame-global (N6.1:747)",
+        "desired": "decrease",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "missing_evidence",
+        "unqualified",
+        "protected_intent",
+        "unsupported_case",
+        "stale"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-T02/V03",
+        "metrics_resolved_per_case": true,
+        "metric_ids_from_n9": [
+          "motion_shake",
+          "focus_readability"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": null,
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "focus_readability",
+          "motion_shake"
+        ],
+        "metric_polarity": "decrease_is_better"
+      },
+      "target_refs_rule": {
+        "kind": "frame_global_empty_allowed",
+        "basis": "N6.1:747 — frame-global level/hold/clear_lens_obstruction may have empty targetRefs, but then findingRefs must be non-empty with frame evidence"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission"
+    },
+    {
+      "operation_id": "set_capture_parameter",
+      "payload_spec": "{parameter:exposure_lock\\|focus_lock\\|white_balance_lock\\|white_balance_kelvin\\|shutter_seconds, value:boolean\\|number}`; boolean только locks; иначе положительное число в M диапазоне, предикат определяет единицу",
+      "executor_and_mode_spec": "camera_operator; setup/preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "gap": [
+          "exposure_lock",
+          "focus_lock",
+          "white_balance_lock",
+          "white_balance_kelvin",
+          "shutter_seconds"
+        ],
+        "note": "no frozen equivalent; requires a real control in the current capture mode, not just a service method"
+      },
+      "status": "candidate_gap_requires_target_effect_feasibility_qualification",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "boolean only for locks; otherwise a positive number inside the M range; the predicate defines the unit (N6.1:737)",
+      "effect_goal": {
+        "metricID": "parameter_variation",
+        "targetEntityRefs": "protected main subject refs",
+        "desired": "preserve",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "unqualified",
+        "missing_evidence",
+        "unsupported_case",
+        "invalid_payload"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "derived_from_phrase",
+        "metric_source": "N9 CC-V04 \"exposure/white_balance_variation\"",
+        "metrics_resolved_per_case": true,
+        "metric_ids_from_n9": [
+          "parameter_variation",
+          "focus_readability"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": "lock parameters (exposure_lock/focus_lock/white_balance_lock) and value parameters (white_balance_kelvin/shutter_seconds) both resolve to \"<<HOLD>>\": preserve the chosen parameter over the window. N6:718 has no \"set to value\" value, so preserve is the faithful encoding of the payload lock semantics.",
+        "preserve_basis": "lock and value parameters both hold the chosen parameter over the window (N6.1:737)",
+        "guard_metrics": [],
+        "metric_polarity": "decrease_is_better",
+        "case_metrics_from_n9": [
+          "flicker_amplitude",
+          "focus_readability"
+        ]
+      },
+      "target_refs_rule": {
+        "kind": "unnamed_in_source",
+        "basis": "N6.1:747 names only three buckets and does not classify operations whose payload references a region/parameter/frame instead of an entity"
+      },
+      "admissibility_basis": "actuator evidence: shafinMultitool/shafinMultitool/Services/CameraService.swift:851 changeWB(wb:) -> setWhiteBalanceModeLocked with the M9-012 gain clamp covers white_balance_kelvin/white_balance_lock; the operator still chooses the value and there is no qualified parameter_variation verifier in v1, so it is not 'unsupported'. evidence-m9/M9-011-012 records the legacy changeWB path as unwired to the production pipeline — C09 must confirm the wiring before a qualified proposal. Not 'unsupported' today (review N3)."
+    },
+    {
+      "operation_id": "change_lens",
+      "payload_spec": "{deviceLensID}` из фактически discovered hardware; смена линзы завершает эпизод как incomparable",
+      "executor_and_mode_spec": "camera_operator; setup/preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "gap": [
+          "switch_lens"
+        ],
+        "note": "verifier currently returns lensMismatch for a lens change; cannot be a one-line catalog addition"
+      },
+      "status": "candidate_gap_requires_target_effect_feasibility_qualification",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "deviceLensID from actually discovered hardware; the switch ends the episode as incomparable (N6.1:738)",
+      "effect_goal": {
+        "metricID": "readability",
+        "targetEntityRefs": "protected main subject refs",
+        "desired": "preserve",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "unqualified",
+        "missing_evidence",
+        "unsupported_case",
+        "invalid_payload"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-T04",
+        "metrics_resolved_per_case": false,
+        "metric_ids_from_n9": [
+          "readability"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": "the switch ends the episode as incomparable (N6.1:738, N7:799)",
+        "preserve_basis": "the goal is readability at the new baseline, not an improvement inside the old episode",
+        "metric_polarity": "increase_is_better",
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "readability"
+        ]
+      },
+      "target_refs_rule": {
+        "kind": "unnamed_in_source",
+        "basis": "N6.1:747 names only three buckets and does not classify operations whose payload references a region/parameter/frame instead of an entity"
+      },
+      "admissibility_basis": "actuator evidence: lens switch exists — ZoomControlView.swift:85 (availableLenses), SETCameraCoachProductionView.swift:242/433 (availableLenses, lensSwitchPresentationState), CameraOverlayUXPresentation lensSwitching. Only a qualified verifier is missing, so the operation is not 'unsupported' (review N3)."
+    },
+    {
+      "operation_id": "reserve_output_region",
+      "payload_spec": "{region:Region}` в output space по выбранному шаблону, связанная экранная цель для субъекта",
+      "executor_and_mode_spec": "camera_operator; setup/preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "gap": [
+          "reserve_output_region"
+        ],
+        "note": "output-space reservation tied to a template; no frozen equivalent"
+      },
+      "status": "candidate_gap_requires_target_effect_feasibility_qualification",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "a region in output space per the selected template, plus a related screen goal for the subject (N6.1:739)",
+      "effect_goal": {
+        "metricID": "reserved_region_overlap",
+        "targetEntityRefs": "the subject screen goal of the selected template",
+        "desired": "inside_region",
+        "targetRegion": "payload.region",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "unsupported_case",
+        "missing_evidence",
+        "conflicting_evidence",
+        "invalid_payload"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-F02",
+        "metrics_resolved_per_case": false,
+        "metric_ids_from_n9": [
+          "reserved_region_overlap"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": null,
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "reserved_region_overlap"
+        ],
+        "metric_polarity": "decrease_is_better"
+      },
+      "target_refs_rule": {
+        "kind": "unnamed_in_source",
+        "basis": "N6.1:747 names only three buckets and does not classify operations whose payload references a region/parameter/frame instead of an entity"
+      },
+      "admissibility_basis": "N6.1:739 presumes a selected output template and §N9 CC-F02 is a required achievable case, so it is not 'unsupported'; what is missing is the qualified reserved_region_overlap predicate and the template registry entry — the same situation as the other needs_user_input operations (round-4 Q3). C09 must re-check it against the template registry; the template field is still unspecified_in_source."
+    },
+    {
+      "operation_id": "wait_for_clearance",
+      "payload_spec": "{region:Region, blockerRefs:ID[]}`; цель/блокер различны, T для освобождения",
+      "executor_and_mode_spec": "camera_operator; setup/preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "frozen": [
+          "wait_for_background_clearance"
+        ],
+        "note": "requires a temporality predicate; the current technical predicate uses clutter/object count, not removal over time (C04/C06)"
+      },
+      "status": "draft_for_review",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "goal and blocker are distinct entities/regions; T for the release (N6.1:740)",
+      "effect_goal": {
+        "metricID": "visible_fraction",
+        "targetEntityRefs": "the goal target, not the blocker (N9 CC-S06: visible_fraction of the target after the blocker leaves); blockerRefs are payload refs",
+        "desired": "increase",
+        "targetRegion": "payload.region",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "missing_evidence",
+        "unqualified",
+        "protected_intent",
+        "infeasible",
+        "unsupported_case",
+        "stale",
+        "identity_lost"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-I02/C07/O04/O05/P01/P02/P03/S01/S02/S04/S06",
+        "metrics_resolved_per_case": false,
+        "metric_ids_from_n9": [
+          "visible_fraction"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": null,
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "visible_fraction"
+        ],
+        "metric_polarity": "context_dependent"
+      },
+      "target_refs_rule": {
+        "kind": "unnamed_in_source",
+        "basis": "N6.1:747 names only three buckets and does not classify operations whose payload references a region/parameter/frame instead of an entity"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission"
+    },
+    {
+      "operation_id": "select_capture_moment",
+      "payload_spec": "{frameRef}` из просмотренной серии; предложение выбрать/переснять момент, без автоспуска",
+      "executor_and_mode_spec": "camera_operator; review; отдельный выбранный снимок, не смена текущей live-сцены",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "gap": [
+          "select_capture_moment"
+        ],
+        "note": "review-only proposal over a viewed series; never an automatic shutter"
+      },
+      "status": "candidate_gap_requires_target_effect_feasibility_qualification",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "frameRef from a reviewed series; proposal only, no auto shutter (N6.1:741)",
+      "effect_goal": {
+        "metricID": "reviewed_frame_visibility",
+        "targetEntityRefs": "the reviewed frame subject",
+        "desired": "preserve",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "unsupported_case",
+        "missing_evidence",
+        "conflicting_evidence",
+        "invalid_payload"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "now",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "derived_from_phrase",
+        "metric_source": "N9 CC-P05 \"visible_fraction глаз\"",
+        "metrics_resolved_per_case": false,
+        "metric_ids_from_n9": [
+          "visible_fraction"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": "review-only, scope=now (N6.2:755); the live scene is unchanged",
+        "preserve_basis": "the live scene is untouched, so the goal is to preserve it",
+        "metric_polarity": "increase_is_better",
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "visible_fraction"
+        ]
+      },
+      "target_refs_rule": {
+        "kind": "unnamed_in_source",
+        "basis": "N6.1:747 names only three buckets and does not classify operations whose payload references a region/parameter/frame instead of an entity"
+      },
+      "admissibility_basis": "N6.1:741 defines it as a proposal to choose or retake a reviewed moment with no auto shutter, and N6.2:755 gives it scope=now — a review proposal requiring the user's choice (review N3)."
+    },
+    {
+      "operation_id": "maintain_subject_zone",
+      "payload_spec": "{region:Region, windowPolicyRef}`; неизменная целевая зона на интервале",
+      "executor_and_mode_spec": "camera_operator; video preview/recording, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "gap": [
+          "maintain_subject_zone"
+        ],
+        "note": "video/temporal; outside the still-frame contract (video lane)"
+      },
+      "status": "candidate_gap_requires_target_effect_feasibility_qualification",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "an unchanged target zone over the interval (N6.1:742)",
+      "effect_goal": {
+        "metricID": "tracking_zone_error",
+        "targetEntityRefs": "selected group allowed (N6.1:747 maintain)",
+        "desired": "decrease",
+        "targetRegion": "payload.region",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "unsupported_case",
+        "missing_evidence",
+        "stale",
+        "acquiring"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "unsupported",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-V01",
+        "metrics_resolved_per_case": false,
+        "metric_ids_from_n9": [
+          "tracking_zone_error"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": "§N10:906 — completion evaluates tracking_zone_error on the window; a decrease is the improvement",
+        "metric_polarity": "decrease_is_better",
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "tracking_zone_error"
+        ]
+      },
+      "target_refs_rule": {
+        "kind": "selected_group_allowed",
+        "basis": "N6.1:747 — a selected group is allowed for reframe/group/maintain"
+      },
+      "admissibility_basis": "requires the video preview/recording motion-window pipeline (S05 still pending) plus a qualified tracking-zone verifier; no such path exists in this release"
+    },
+    {
+      "operation_id": "smooth_camera_motion",
+      "payload_spec": "{windowPolicyRef}`; уменьшить рывки, сохранив выбранное движение",
+      "executor_and_mode_spec": "camera_operator; video preview/recording, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "gap": [
+          "smooth_camera_motion"
+        ],
+        "note": "video/temporal; requires sequence evidence"
+      },
+      "status": "candidate_gap_requires_target_effect_feasibility_qualification",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets, even when the camera moves (N6.1)",
+      "evidence_prerequisite": "remove jerks while preserving the chosen motion (N6.1:743)",
+      "effect_goal": {
+        "metricID": "motion_jerk",
+        "targetEntityRefs": "protected main subject refs",
+        "desired": "decrease",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "missing_evidence",
+        "unqualified",
+        "protected_intent",
+        "unsupported_case",
+        "stale"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "unsupported",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-V02",
+        "metrics_resolved_per_case": false,
+        "metric_ids_from_n9": [
+          "motion_jerk"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": null,
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "motion_jerk"
+        ],
+        "metric_polarity": "decrease_is_better"
+      },
+      "target_refs_rule": {
+        "kind": "unnamed_in_source",
+        "basis": "N6.1:747 names only three buckets and does not classify operations whose payload references a region/parameter/frame instead of an entity"
+      },
+      "admissibility_basis": "requires the recording motion-window pipeline (S05 still pending) and a qualified motion_jerk verifier; not available in this release"
+    },
+    {
+      "operation_id": "plan_motion_endpoints",
+      "payload_spec": "{startFrameRef, endFrameRef, holdPolicyRef}` из реальной репетиции/выбора; не создаёт невидимый маршрут",
+      "executor_and_mode_spec": "camera_operator; video setup, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "gap": [
+          "plan_motion_endpoints"
+        ],
+        "note": "planning from a real rehearsal; must not invent an invisible route"
+      },
+      "status": "candidate_gap_requires_target_effect_feasibility_qualification",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets (N6.1)",
+      "evidence_prerequisite": "from a real rehearsal/selection; must not create an invisible route (N6.1:744)",
+      "effect_goal": {
+        "metricID": "endpoint_hold_duration",
+        "targetEntityRefs": "protected main subject refs",
+        "desired": "preserve",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "unsupported_case",
+        "missing_evidence",
+        "stale",
+        "acquiring"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "unsupported",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "literal_in_N9",
+        "metric_source": "§N9 CC-V05",
+        "metrics_resolved_per_case": true,
+        "metric_ids_from_n9": [
+          "endpoint_hold_duration"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": "N6.1:744 — the rehearsed endpoint hold is preserved, not maximised",
+        "preserve_basis": "the operation keeps the rehearsed hold instead of maximising its duration",
+        "metric_polarity": "increase_is_better",
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "endpoint_hold_duration",
+          "subject_readability",
+          "visible_fraction"
+        ]
+      },
+      "target_refs_rule": {
+        "kind": "unnamed_in_source",
+        "basis": "N6.1:747 names only three buckets and does not classify operations whose payload references a region/parameter/frame instead of an entity"
+      },
+      "admissibility_basis": "requires a real rehearsal/endpoint selection pipeline (S05 pending) and a qualified endpoint_hold_duration verifier"
+    },
+    {
+      "operation_id": "clear_lens_obstruction",
+      "payload_spec": "{obstructionRegion:Region}` для подтверждённого пальца/чехла у объектива; только освободить оптический путь, без диагноза загрязнения и команды чистить линзу",
+      "executor_and_mode_spec": "camera_operator; setup/preview, review→next_capture",
+      "verifier": "C04 — result/recipient-driven verification; existing movement features are not success evidence",
+      "qualification": "requires qualificationRef (operation x case x mode x device/evidence profile); research/unqualified entries cannot produce production CORRECT",
+      "maps_to_frozen_actions": {
+        "technical": [
+          "avoid_occlusion"
+        ],
+        "note": "confirmed finger/hood at the lens: free the optical path; a dark blob is not a diagnosis",
+        "rejected_mapping": {
+          "clean_lens": "different command (lens dirt/haze), and this operation's payload in N6.1 forbids mixing the two; §4 of the plan forbids conflating them"
+        }
+      },
+      "status": "draft_for_review",
+      "mapping_basis": "read from N6.1 payload/executor spec in this session; not measured",
+      "protected_refs": "main subject and important secondary targets, even when the camera moves (N6.1)",
+      "evidence_prerequisite": "a confirmed finger/case at the lens; release the optical path only, no dirt diagnosis (N6.1:745)",
+      "effect_goal": {
+        "metricID": "obstruction_visible_fraction",
+        "targetEntityRefs": "frame-global (N6.1:747)",
+        "desired": "decrease",
+        "targetRegion": "payload.obstructionRegion",
+        "policyRef": "policy:<operation>x<case>x<mode>x<device/evidence-profile> (N6.1:749 qualificationRef)"
+      },
+      "template": "unspecified_in_source",
+      "refusal_reasons": [
+        "missing_evidence",
+        "unqualified",
+        "protected_intent",
+        "unsupported_case",
+        "stale"
+      ],
+      "feasibility": "unspecified_in_source",
+      "admissibility": "needs_user_input",
+      "alternative_group_id": null,
+      "scope": "next_capture",
+      "requires_p02_disposition": true,
+      "qualification_rule": "qualificationRef required only when admissibility=qualified; research/unqualified entries never produce production CORRECT (N6.1/N6.2)",
+      "effect_goal_resolution": {
+        "metric_provenance": "derived_from_phrase",
+        "metric_source": "N9 CC-T06 \"visible_fraction перекрытия/цели\"",
+        "metrics_resolved_per_case": false,
+        "metric_ids_from_n9": [
+          "visible_fraction"
+        ],
+        "desired_source": "operation semantics per N6.1 payload",
+        "desired_alternative": null,
+        "note": null,
+        "guard_metrics": [],
+        "case_metrics_from_n9": [
+          "visible_fraction"
+        ],
+        "metric_polarity": "decrease_is_better"
+      },
+      "target_refs_rule": {
+        "kind": "frame_global_empty_allowed",
+        "basis": "N6.1:747 — frame-global level/hold/clear_lens_obstruction may have empty targetRefs, but then findingRefs must be non-empty with frame evidence"
+      },
+      "admissibility_basis": "no qualified verifier/policy for this operation x case x mode in v1 (N6.1:749): a research/unqualified entry cannot produce production CORRECT, so the proposal needs the user's input/confirmation before admission"
+    }
+  ],
+  "coverage_summary": {
+    "operations_total": 20,
+    "with_frozen_equivalent": 9,
+    "technical_axis_reference_only": 4,
+    "with_gap_candidates": 11,
+    "duplicate_ids_forbidden": "any operation naming a technical id must reference the existing technical action, never re-declare it"
+  },
+  "candidate_additions_from_audit": [
+    {
+      "candidate_id": "move_subject_into_uniform_light",
+      "source": "audit §7 F06 / §9.3",
+      "status": "candidate_requires_target_effect_feasibility_qualification",
+      "note": "posed person + confirmed uniform-light spot; never command a participant of a live event",
+      "actuator_evidence": "no actuator found: searched handPose/hand_pose and the light-control APIs in the app repo — this is a participant physical action, not device-controllable"
+    },
+    {
+      "candidate_id": "reposition_accessible_light",
+      "source": "audit §7 F07/F36/F37 / §9.3",
+      "status": "candidate_requires_target_effect_feasibility_qualification",
+      "note": "only an owned, controllable source; hidden from the default single-phone mode without a confirmed lamp",
+      "actuator_evidence": "partial: an on-device torch actuator exists (shafinMultitool/shafinMultitool/Services/CameraService.swift:811-813 torchMode on/off) and can serve add_fill; repositioning an external lamp has no actuator"
+    },
+    {
+      "candidate_id": "adjust_hand_pose",
+      "source": "audit §7 F07 / §9.3",
+      "status": "candidate_requires_target_effect_feasibility_qualification",
+      "note": "staged portrait only; the gesture must not be part of the action",
+      "actuator_evidence": "no actuator found (handPose/hand_pose search: 0 hits in the app repo) — participant physical action"
+    },
+    {
+      "candidate_id": "disable_synthetic_background_blur",
+      "source": "audit §7 F16 / §9.8 item 10",
+      "status": "candidate_requires_target_effect_feasibility_qualification",
+      "note": "only when the effect is actually enabled and a real toggle exists; needs its own mode-comparison admission",
+      "actuator_evidence": "no actuator found: no blur/portrait-effect toggle in CameraService.swift or app-wide (audit §9.8 item 10) — the candidate stays blocked until a real toggle exists"
+    }
+  ],
+  "revision": "revision 6 (2026-09-13): review round 5 — recompute metric_polarity from the vocabulary so it cannot go stale, guards only where §N9 says \"guard\" with guard_basis, case_metrics_from_n9 derived from the case registry, rotate_entity variants keyed by the real presence fields, predicate_tokens_not_metrics + metric_aliases declared",
+  "declared_invariants": [
+    "no technical action id may appear in a semantic (frozen) mapping list — verified: 0 violations",
+    "admissibility is a single value per proposal: qualified | needs_user_input | unsupported (N6.2)",
+    "scope = next_capture except select_capture_moment = now (N6.2)",
+    "review phase never carries decision.activeAction (N6.2)",
+    "targetRefs empty requires non-empty findingRefs with frame evidence (N6.1)",
+    "evidence_prerequisite is per-operation and cites N6.1:727–751, never one generic line for all 20",
+    "targetRefs bucket is exactly one of the three N6.1:747 buckets, or explicitly unnamed_in_source with the gap recorded",
+    "a case whose only named operation has admissibility=unsupported must not carry disposition=conditional_review",
+    "effect_goal is never unspecified_in_source; desired is always one of the four N6:718 values, instantiated from the N6.1 payload where the payload names the direction",
+    "a desired contradicting the metric polarity, and a `preserve` on a known-polarity metric without preserve_basis, are errors (round-4 Q1)",
+    "guard_metrics contains only metrics that §N9 prescribes as a guard for this operation, each with a guard_basis naming the case and token"
+  ],
+  "n9_operation_tokens": {
+    "operations": [
+      "adjust_exposure",
+      "adjust_light",
+      "change_lens",
+      "change_subject_scale",
+      "clear_lens_obstruction",
+      "exclude_entity",
+      "hold_steady",
+      "level_frame",
+      "maintain_subject_zone",
+      "plan_motion_endpoints",
+      "refocus_subject",
+      "reframe_subject",
+      "reposition_camera",
+      "reposition_entity",
+      "reserve_output_region",
+      "review_compare",
+      "rotate_entity",
+      "select_capture_moment",
+      "set_capture_parameter",
+      "smooth_camera_motion",
+      "wait_for_clearance",
+      "квалифицированная операция для обнаруженной проблемы"
+    ],
+    "behaviours_not_operations": [
+      "evidence_only",
+      "feedback",
+      "selection",
+      "state_only"
+    ],
+    "note": "N9 also names state/behaviour outcomes (selection, state_only, evidence_only, feedback); they are not parameterized operations and are not duplicated into this registry",
+    "tokens_missing_from_n6_1_registry": [
+      {
+        "token": "review_compare",
+        "used_by_cases": [
+          "CC-F04",
+          "CC-V07"
+        ],
+        "status": "gap_in_source — named by N9 but not defined among the 20 parameterized operations in N6.1",
+        "next": "P02/C09 must either add it to the operation registry with payload/executor/verifier or move those cases to a review-only disposition"
+      },
+      {
+        "token": "квалифицированная операция для обнаруженной проблемы",
+        "used_by_cases": [
+          "CC-F03"
+        ],
+        "status": "gap_in_source — CC-F03 delegates to 'a qualified operation for the detected problem'; no concrete operation is named",
+        "next": "P02/C09 must bind CC-F03 to a concrete operation from this registry"
+      }
+    ]
+  },
+  "metric_vocabulary": {
+    "edge_clearance": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-C01/C05/S05/S07",
+      "n9_cases": [
+        "CC-C01",
+        "CC-I02",
+        "CC-S05",
+        "CC-S07"
+      ],
+      "polarity": "increase_is_better",
+      "polarity_basis": "a larger value is the improvement"
+    },
+    "subject_area_ratio": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-C02/S08",
+      "n9_cases": [
+        "CC-C02",
+        "CC-S08"
+      ],
+      "polarity": "context_dependent",
+      "polarity_basis": "the good direction depends on the referenced entity role / the scene, so the guard metrics decide"
+    },
+    "target_distance": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-C03/C04/C05/O06/F01",
+      "n9_cases": [
+        "CC-C03",
+        "CC-C04",
+        "CC-C05",
+        "CC-F01",
+        "CC-O06"
+      ],
+      "polarity": "context_dependent",
+      "polarity_basis": "the good direction depends on the referenced entity role / the scene, so the guard metrics decide"
+    },
+    "visible_fraction": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-I02/C07/O04/O05/P01/P02/P03/S01/S02/S04/S06",
+      "n9_cases": [
+        "CC-C07",
+        "CC-I02",
+        "CC-O04",
+        "CC-O05",
+        "CC-P01",
+        "CC-P02",
+        "CC-P03",
+        "CC-P05",
+        "CC-S01",
+        "CC-S02",
+        "CC-S04",
+        "CC-S06",
+        "CC-T06",
+        "CC-V06"
+      ],
+      "polarity": "context_dependent",
+      "polarity_basis": "the good direction depends on the referenced entity role / the scene, so the guard metrics decide"
+    },
+    "contour_gap": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-O01/O02/O03/O05/S03/S07",
+      "n9_cases": [
+        "CC-O01",
+        "CC-O02",
+        "CC-O03",
+        "CC-O05",
+        "CC-S03",
+        "CC-S07"
+      ],
+      "polarity": "increase_is_better",
+      "polarity_basis": "a larger value is the improvement"
+    },
+    "horizon_error": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-C06",
+      "n9_cases": [
+        "CC-C06"
+      ],
+      "polarity": "decrease_is_better",
+      "polarity_basis": "a smaller value is the improvement"
+    },
+    "subject_readability": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-O07/O08/L01/L02/L03/L04/L06/L08/P04/T03/V06",
+      "n9_cases": [
+        "CC-L01",
+        "CC-L04",
+        "CC-L06",
+        "CC-L08",
+        "CC-O07",
+        "CC-O08",
+        "CC-P04",
+        "CC-T03",
+        "CC-V06"
+      ],
+      "polarity": "increase_is_better",
+      "polarity_basis": "a larger value is the improvement"
+    },
+    "hotspot_ratio": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-L02/L05",
+      "n9_cases": [
+        "CC-L02",
+        "CC-L05"
+      ],
+      "polarity": "decrease_is_better",
+      "polarity_basis": "a smaller value is the improvement"
+    },
+    "subject_clipped_ratio": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-L03",
+      "n9_cases": [
+        "CC-L03"
+      ],
+      "polarity": "decrease_is_better",
+      "polarity_basis": "a smaller value is the improvement"
+    },
+    "focus_readability": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-T01/T02/T04/V04",
+      "n9_cases": [
+        "CC-T01",
+        "CC-T02",
+        "CC-V04"
+      ],
+      "polarity": "increase_is_better",
+      "polarity_basis": "a larger value is the improvement"
+    },
+    "motion_shake": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-T02/V03",
+      "n9_cases": [
+        "CC-T02",
+        "CC-V03"
+      ],
+      "polarity": "decrease_is_better",
+      "polarity_basis": "a smaller value is the improvement"
+    },
+    "motion_jerk": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-V02",
+      "n9_cases": [
+        "CC-V02"
+      ],
+      "polarity": "decrease_is_better",
+      "polarity_basis": "a smaller value is the improvement"
+    },
+    "tracking_zone_error": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-V01",
+      "n9_cases": [
+        "CC-V01"
+      ],
+      "polarity": "decrease_is_better",
+      "polarity_basis": "a smaller value is the improvement"
+    },
+    "flicker_amplitude": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-T05",
+      "n9_cases": [
+        "CC-T05"
+      ],
+      "polarity": "decrease_is_better",
+      "polarity_basis": "a smaller value is the improvement"
+    },
+    "endpoint_hold_duration": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-V05",
+      "n9_cases": [
+        "CC-V05"
+      ],
+      "polarity": "increase_is_better",
+      "polarity_basis": "a larger value is the improvement"
+    },
+    "reserved_region_overlap": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-F02",
+      "n9_cases": [
+        "CC-F02"
+      ],
+      "polarity": "decrease_is_better",
+      "polarity_basis": "a smaller value is the improvement"
+    },
+    "readability": {
+      "provenance": "literal_in_N9",
+      "source": "§N9 CC-T04",
+      "n9_cases": [
+        "CC-L01",
+        "CC-L02",
+        "CC-L03",
+        "CC-L04",
+        "CC-L06",
+        "CC-L08",
+        "CC-O07",
+        "CC-O08",
+        "CC-P04",
+        "CC-T01",
+        "CC-T02",
+        "CC-T03",
+        "CC-T04",
+        "CC-V04",
+        "CC-V06"
+      ],
+      "polarity": "increase_is_better",
+      "polarity_basis": "a larger value is the improvement"
+    },
+    "target_region_coverage": {
+      "provenance": "derived_from_payload",
+      "source": "N6.1 reframe_subject payload {targetRegion}",
+      "n9_cases": [],
+      "polarity": "increase_is_better",
+      "polarity_basis": "a larger value is the improvement"
+    },
+    "obstruction_visible_fraction": {
+      "provenance": "derived_from_phrase",
+      "source": "N9 CC-T06 \"visible_fraction перекрытия/цели\"",
+      "n9_cases": [],
+      "polarity": "decrease_is_better",
+      "polarity_basis": "a smaller value is the improvement"
+    },
+    "parameter_variation": {
+      "provenance": "derived_from_phrase",
+      "source": "N9 CC-V04 \"exposure/white_balance_variation\"",
+      "n9_cases": [],
+      "polarity": "decrease_is_better",
+      "polarity_basis": "a smaller value is the improvement"
+    },
+    "blocker_visible_fraction": {
+      "provenance": "derived_from_phrase",
+      "source": "N9 CC-S06 \"visible_fraction цели после ухода blocker\"",
+      "n9_cases": [],
+      "polarity": "decrease_is_better",
+      "polarity_basis": "a smaller value is the improvement"
+    },
+    "reviewed_frame_visibility": {
+      "provenance": "derived_from_phrase",
+      "source": "N9 CC-P05 \"visible_fraction глаз\"",
+      "n9_cases": [],
+      "polarity": "increase_is_better",
+      "polarity_basis": "a larger value is the improvement"
+    },
+    "light_on_receiver": {
+      "provenance": "derived_from_payload",
+      "source": "N6.1 adjust_light {sourceEntityRef, receiverEntityRef}",
+      "n9_cases": [],
+      "polarity": "context_dependent",
+      "polarity_basis": "the improvement direction depends on the finding: a light deficit (N9 CC-L01/L04/L06/L08) wants more light, a hotspot/main light (CC-L02/L03/L05) wants less; subject_readability is the invariant guard"
+    },
+    "exposure_bias_value": {
+      "provenance": "derived_from_payload",
+      "source": "N6.1 payload / §N9 predicate",
+      "n9_cases": [],
+      "polarity": "context_dependent",
+      "polarity_basis": "the good direction depends on the referenced entity role / the scene, so the guard metrics decide"
+    }
+  },
+  "target_refs_buckets": {
+    "single_entity": [
+      "change_subject_scale",
+      "reposition_entity",
+      "rotate_entity",
+      "exclude_entity",
+      "adjust_light",
+      "refocus_subject"
+    ],
+    "selected_group_allowed": [
+      "reframe_subject",
+      "maintain_subject_zone"
+    ],
+    "frame_global_empty_allowed": [
+      "level_frame",
+      "hold_steady",
+      "clear_lens_obstruction"
+    ],
+    "unnamed_in_source": [
+      "reposition_camera",
+      "adjust_exposure",
+      "set_capture_parameter",
+      "change_lens",
+      "reserve_output_region",
+      "wait_for_clearance",
+      "select_capture_moment",
+      "smooth_camera_motion",
+      "plan_motion_endpoints"
+    ],
+    "gap_in_source": "N6.1:747 defines no bucket for the unnamed_in_source operations; P02/C09 must add the fourth rule to the source or accept this registry-level classification"
+  },
+  "effect_goal_semantics": {
+    "N6_718_fields": [
+      "metricID",
+      "targetEntityRefs",
+      "relationRef?",
+      "desired",
+      "targetRegion?",
+      "policyRef"
+    ],
+    "N6_718_desired_enum": [
+      "increase",
+      "decrease",
+      "inside_region",
+      "preserve"
+    ],
+    "template_rule": "20 registry entries are operation templates; an entry whose payload names the direction carries effect_goal_instantiation.variants, exhaustive over the N6.1 payload enum, each resolving to a N6:718 desired value. There is no \"from_payload\" value in the enum.",
+    "polarity_rule": "each metric carries a polarity; a desired contradicting a known polarity is an error, and `preserve` on a known-polarity metric requires preserve_basis",
+    "guard_rule": "guard_metrics must not regress; they are not the effect metric (N9 readability guards)"
+  },
+  "predicate_tokens_not_metrics": [
+    {
+      "token": "human_preference",
+      "used_by_cases": [
+        "CC-C04",
+        "CC-C08",
+        "CC-L07",
+        "CC-L08",
+        "CC-O06",
+        "CC-P06"
+      ],
+      "reason": "a human basis flag (N6.2:759 technical|human basis), not a measurable metric — it cannot be a verifier target"
+    }
+  ],
+  "metric_aliases": {
+    "subject_readability": {
+      "aliases": [
+        "readability"
+      ],
+      "basis": "§N9 CC-L03 writes 'readability guard' where its own effect token is subject_clipped_ratio; this is a lexical alias, not a new metric"
+    }
+  }
+}

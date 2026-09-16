@@ -345,19 +345,30 @@ def self_test() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", type=Path, default=FIXTURE_PATH)
+    parser.add_argument("--manifest", type=Path, default=None)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args(argv)
     if args.self_test:
         self_test()
         return 0
-    errors = check_manifest(args.manifest)
+    # Falling back to the built-in fixture is useful, but that PASS must never be
+    # quoted as "the dataset passed admission": the runbook calls this out, and a
+    # bare `PASS` next to a file path is exactly how that misreading starts.
+    fixture_only = args.manifest is None
+    manifest_path = FIXTURE_PATH if fixture_only else args.manifest
+    errors = check_manifest(manifest_path)
     if errors:
         for error in errors:
             print(f"FAIL {error}", file=sys.stderr)
         return 1
-    manifest = _read_json(args.manifest)
-    print(f"PASS {args.manifest} manifest_sha256={manifest_sha256(manifest)}")
+    manifest = _read_json(manifest_path)
+    if fixture_only:
+        print(f"PASS fixture-only (built-in fixture, NOT the caller's data): {manifest_path} "
+              f"manifest_sha256={manifest_sha256(manifest)}")
+        print("This validates the repository fixture only; it is not a corpus admission check. "
+              "Pass --manifest <your manifest> for that.")
+        return 0
+    print(f"PASS {manifest_path} manifest_sha256={manifest_sha256(manifest)}")
     return 0
 
 

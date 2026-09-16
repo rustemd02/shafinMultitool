@@ -115,7 +115,18 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         return true
     }
     
-    var wbValues: [Int] = []
+    /// Static picker table: white balance rows exist independently of the
+    /// capture device, so the picker renders (and stays testable) before any
+    /// session is configured.
+    static func defaultWBValues() -> [Int] {
+        var values = [2400]
+        while values.last != 8000 {
+            values.append(values.last! + 100)
+        }
+        return values
+    }
+
+    var wbValues: [Int] = CameraService.defaultWBValues()
     
     private let metalPreprocessor = MetalPreprocessor()
     private let visionTargetSize = CGSize(width: 512, height: 512)
@@ -291,13 +302,20 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
         writer.movieFragmentInterval = CMTime.invalid
 
         audioCaptureSession = AVCaptureSession()
-        audioCaptureSession.beginConfiguration()
+        // The configuration window must always close, including on the guard
+        // failures below: an abandoned session left between begin and commit
+        // makes every later stopRunning throw NSGenericException. The failed
+        // resources are detached and stopped asynchronously, so they must be
+        // committed before they leave this function.
+        let recorderSession = audioCaptureSession!
+        recorderSession.beginConfiguration()
+        defer { recorderSession.commitConfiguration() }
         videoCaptureDevice = AVCaptureDevice.default(for: .video)
 
         guard videoSettingsUpdate(),
               let audioDevice = AVCaptureDevice.default(for: .audio),
               let audioInput = try? AVCaptureDeviceInput(device: audioDevice),
-              audioCaptureSession.canAddInput(audioInput) else {
+              recorderSession.canAddInput(audioInput) else {
             let resources = detachRecorderResourcesLocked()
             recorderStateStorage = .failed
             return resources
@@ -305,17 +323,16 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
         audioCaptureDevice = audioDevice
         audioCaptureDeviceInput = audioInput
-        audioCaptureSession.addInput(audioInput)
+        recorderSession.addInput(audioInput)
 
         let audioOutput = AVCaptureAudioDataOutput()
-        guard audioCaptureSession.canAddOutput(audioOutput) else {
+        guard recorderSession.canAddOutput(audioOutput) else {
             let resources = detachRecorderResourcesLocked()
             recorderStateStorage = .failed
             return resources
         }
         audioCaptureOutput = audioOutput
-        audioCaptureSession.addOutput(audioOutput)
-        audioCaptureSession.commitConfiguration()
+        recorderSession.addOutput(audioOutput)
 
         guard writer.startWriting(), writer.status == .writing else {
             let resources = detachRecorderResourcesLocked()
@@ -866,21 +883,52 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     
     }
     
-    func focusOnTap(focusPoint: CGPoint) {
-        try? videoCaptureDevice.lockForConfiguration()
-        
-        videoCaptureDevice.focusPointOfInterest = focusPoint
-        videoCaptureDevice.focusMode = .autoFocus
-        
-        videoCaptureDevice.exposurePointOfInterest = focusPoint
-        videoCaptureDevice.exposureMode = .autoExpose
-        
-        videoCaptureDevice.unlockForConfiguration()
+    /// C06: the legacy tap-to-focus operation installs a point of interest and
+    /// requests one-shot automatic focus/exposure. This is explicitly NOT a
+    /// focus lock: a lock requires `focusMode = .locked` (installed through
+    /// `setFocusModeLocked`), which no owner on this path ever sets.
+    /// `autoFocus` + `autoExpose` must never be presented or verified as an
+    /// applied lock.
+    ///
+    /// The device and each parameter are checked before any property is
+    /// written, so an unsupported/unavailable control is an honest no-op
+    /// (`false`) instead of a silent claim of applied focus. Same fail-closed
+    /// shape as `changeISO`/`changeWB`.
+    static let tapFocusMode: AVCaptureDevice.FocusMode = .autoFocus
+    static let tapExposureMode: AVCaptureDevice.ExposureMode = .autoExpose
+
+    @discardableResult
+    func focusOnTap(focusPoint: CGPoint) -> Bool {
+        guard let device = videoCaptureDevice,
+              device.isFocusPointOfInterestSupported,
+              device.isFocusModeSupported(Self.tapFocusMode) else {
+            return false
+        }
+        let canAutoExpose = device.isExposurePointOfInterestSupported
+            && device.isExposureModeSupported(Self.tapExposureMode)
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            device.focusPointOfInterest = focusPoint
+            device.focusMode = Self.tapFocusMode
+            if canAutoExpose {
+                device.exposurePointOfInterest = focusPoint
+                device.exposureMode = Self.tapExposureMode
+            }
+            return true
+        } catch {
+            return false
+        }
     }
     
     func getIsoValues() -> [Int] {
         return [50,100,200,400,800]
     }
+
+    /// Test/inspection seam: a capture device is bound, so ISO/WB changes
+    /// can actually be applied and read back. On the simulator this stays
+    /// false and `changeISO`/`changeWB` reject by the M9-009/M9-012 policy.
+    var isCaptureDeviceAvailable: Bool { videoCaptureDevice != nil }
     
     func getWBValues() -> [Int] {
         return wbValues
@@ -895,11 +943,7 @@ class CameraService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     }
     
     func generateWBValues() {
-        wbValues.removeAll(keepingCapacity: true)
-        wbValues.append(2400)
-        while wbValues.last != 8000 {
-            wbValues.append((wbValues.last ?? 2400) + 100)
-        }
+        wbValues = Self.defaultWBValues()
     }
     
     func saveVideoToLibrary(videoURL: URL) {

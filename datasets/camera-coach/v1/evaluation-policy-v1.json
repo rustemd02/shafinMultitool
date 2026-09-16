@@ -1,0 +1,473 @@
+{
+  "schema_id": "camera-coach-evaluation-policy",
+  "schema_version": "1.4.1",
+  "policy_version": "camera-coach.eval-policy.v1",
+  "status": "frozen_from_runbook; pilot_derived_parameters_pending",
+  "source_of_truth": "docs/aegis/plans/2026-09-13-setos-release-execution.md sections 5.1-5.3 (owner-accepted decisions), read back into an executable artifact",
+  "consumer": "tools/release/check_candidate_gates.py",
+  "binding_test": "tools/tests/test_evaluation_policy_binding.py",
+  "note": "Every number here is an acceptance threshold, not a measurement. No result, no achieved rate and no admitted corpus is recorded in this file: the candidate manifest carries measurements, and the gate tool recomputes every statistic from raw counts. Changing a threshold is a versioned change to this file and must carry an explicit impact list (freeze_receipt.py exit 2), which is what keeps a lowered threshold from reading like a passed gate.",
+  "good_frame_budget": {
+    "metric": "fp_correct",
+    "definition": "good_frames_with_forbidden_correction / good_frames_evaluated",
+    "replaces": "the old preservation-only gate; it does not weaken the remaining gates",
+    "budget": 0.02,
+    "decision_rule": "point <= budget AND the one-sided 95% Clopper-Pearson upper bound <= budget; otherwise insufficient_evidence",
+    "keep_and_abstain_counted_separately": true,
+    "all_silence_forbidden": "keep_rate == 1.0 or abstain_rate == 1.0 fails the gate: all-KEEP or all-ABSTAIN cannot pass",
+    "independence_unit": "source-shoot or session cluster, not near-identical adjacent frames",
+    "worked_example": "even 0/81 independent clean good frames leaves a one-sided upper bound near 3.6%, so a small lucky set does not prove 2%",
+    "min_clusters": 2
+  },
+  "rate_gates": {
+    "pass_rate": {
+      "threshold": 0.9,
+      "direction": "at_least",
+      "manifest_key": "pass_rate"
+    },
+    "expected_action_hit": {
+      "threshold": 0.9,
+      "direction": "at_least",
+      "manifest_key": "expected_action_hit"
+    },
+    "forbidden_violations": {
+      "threshold": 0.02,
+      "direction": "at_most",
+      "manifest_key": "forbidden_violations_rate"
+    },
+    "technical_failure": {
+      "threshold": 1.0,
+      "direction": "at_least",
+      "definition": "frozen definition, not re-specified per run",
+      "manifest_key": "technical_failure_pass_rate"
+    },
+    "scene_class_min": {
+      "threshold": 0.85,
+      "direction": "at_least",
+      "scope": "each scene class",
+      "manifest_key": "scene_class_min"
+    },
+    "material_organic_source_min": {
+      "threshold": 0.8,
+      "direction": "at_least",
+      "manifest_key": "material_organic_source_min"
+    },
+    "synthetic_adversarial": {
+      "threshold": 0.65,
+      "direction": "at_least",
+      "manifest_key": "synthetic_adversarial"
+    },
+    "confidence_band_accuracy": {
+      "threshold": 0.9,
+      "direction": "at_least",
+      "manifest_key": "confidence_band_accuracy"
+    },
+    "abstention_correctness": {
+      "threshold": 0.9,
+      "direction": "at_least",
+      "manifest_key": "abstention_correctness"
+    },
+    "verification_accuracy": {
+      "threshold": 0.9,
+      "direction": "at_least",
+      "manifest_key": "verification_accuracy"
+    },
+    "accepted_coverage_overall": {
+      "threshold": 0.65,
+      "direction": "at_least",
+      "manifest_key": "accepted_coverage_overall"
+    },
+    "accepted_coverage_ordinary": {
+      "threshold": 0.55,
+      "direction": "at_least",
+      "manifest_key": "accepted_coverage_ordinary"
+    },
+    "accepted_coverage_difficult_light": {
+      "threshold": 0.35,
+      "direction": "at_least",
+      "manifest_key": "accepted_coverage_difficult_light"
+    }
+  },
+  "precision_gates": {
+    "direction_horizon": {
+      "point": 0.95,
+      "wilson_lower_95": 0.9,
+      "hits_key": "direction_horizon_hits",
+      "n_key": "direction_horizon_n",
+      "gate_name": "direction_horizon_precision"
+    },
+    "light_exposure": {
+      "point": 0.92,
+      "wilson_lower_95": 0.87,
+      "hits_key": "light_exposure_hits",
+      "n_key": "light_exposure_n",
+      "gate_name": "light_exposure_precision"
+    }
+  },
+  "zero_gates": {
+    "critical_forbidden_observed": {
+      "must_equal": 0,
+      "key": "critical_forbidden_observed",
+      "gate_name": "critical_forbidden"
+    },
+    "wrong_direction_false_success": {
+      "must_equal": 0,
+      "key": "wrong_direction_false_success",
+      "scope": "mandatory safety cases",
+      "gate_name": "wrong_direction_false_success"
+    },
+    "wrong_target_false_success": {
+      "must_equal": 0,
+      "key": "wrong_target_false_success",
+      "scope": "mandatory safety cases",
+      "gate_name": "wrong_target_false_success"
+    },
+    "human_critical_harm": {
+      "must_equal": 0,
+      "key": "human.critical_harm",
+      "gate_name": "human_critical_harm",
+      "manifest_path": "human.critical_harm"
+    }
+  },
+  "false_improved": {
+    "error_rate_budget": 0.02,
+    "published_ratios": [
+      "wrong_confirmations / improved_issued (wrong confirmations over all issued improved)",
+      "wrong_improved / non_improved_episodes (wrong improved over all truly non-improved episodes)"
+    ],
+    "denominator_rule": "both sides are published; the denominator is fixed before fit and may not be swapped to preserve 2%",
+    "zero_issued_rule": "with zero issued improved episodes precision is undefined, so the gate fails and coverage is not automatically passed",
+    "definition_source": {
+      "app_claim": "the app verifier's `improved` verdict, extracted from shafinMultitool/Multitool2Module/Models/CameraAnalysis/ActionVerifier.swift:424-455",
+      "truth": "the episode outcome vocabulary in datasets/camera-coach/v1/episode-schema.json (correct/no_op/opposite/overshoot/track_loss/incomparable)",
+      "runbook": "docs/aegis/plans/2026-09-13-setos-release-execution.md section 5.1",
+      "evaluator_extraction": "NOT AVAILABLE: no evaluator in the repository computes false_improved (checked docs/cameraanalysis/eval and tools); the definition above is authored from the verifier and the episode vocabulary instead, and the first evaluator that implements it must be frozen as a versioned artifact before the locked test"
+    },
+    "derived_by": "tools/release/build_episode_metrics.py",
+    "unverified_rule": "an episode where the app claimed improvement but no independent truth is established blocks the derivation: an unverified improvement must never shrink a denominator"
+  },
+  "confusion_matrix": {
+    "required_keys": [
+      "correct",
+      "keep",
+      "abstain",
+      "incomparable",
+      "forbidden_advised"
+    ],
+    "total_key": "evaluated_total",
+    "incomparable_must_be_kept": true,
+    "rule": "the counts must add up to evaluated_total; incomparable is never dropped from the matrix"
+  },
+  "human_gates": {
+    "safe_and_executable": {
+      "threshold": 0.9,
+      "direction": "at_least",
+      "manifest_key": "safe_and_executable",
+      "gate_name": "human_safe_executable"
+    },
+    "helpful": {
+      "threshold": 0.8,
+      "direction": "at_least",
+      "manifest_key": "helpful",
+      "gate_name": "human_helpful"
+    },
+    "preference_non_ties": {
+      "threshold": 0.6,
+      "direction": "at_least",
+      "manifest_key": "preference_non_ties",
+      "gate_name": "human_preference_non_ties"
+    },
+    "materially_harmful": {
+      "threshold": 0.01,
+      "direction": "at_most",
+      "manifest_key": "materially_harmful",
+      "gate_name": "human_materially_harmful"
+    }
+  },
+  "neural_gain": {
+    "point_gain_pp_min": 5.0,
+    "paired_bootstrap_lower_rule": "> 0",
+    "cluster_key": "source-shoot",
+    "safety_not_worse_required": true,
+    "subset_rule": "measured on a pre-chosen pass/expected-action or protected semantic subset, not on a post-hoc slice",
+    "forbidden_substitutes": [
+      "loss-quality growth",
+      "comparison across different corpora"
+    ]
+  },
+  "quotas": {
+    "train_candidates": 8400,
+    "validation_stills": 1400,
+    "calibration_stills": 1400,
+    "locked_stills": 1400,
+    "live_sequences": 1400,
+    "episodes": 700,
+    "protected_negatives": 350,
+    "physical_guided": 210,
+    "blind_reviews": 1050
+  },
+  "per_class_floors": {
+    "train": 1200,
+    "calibration": 200,
+    "locked_stills": 200,
+    "sequences": 200,
+    "episodes": 100,
+    "protected_negatives": 50,
+    "physical_guided": 30
+  },
+  "per_action_floors": {
+    "train_positives": 400,
+    "calibration": 100,
+    "test": 100,
+    "forbidden_opportunities": 120,
+    "near_threshold": 30
+  },
+  "episode_floors": {
+    "improved": 80,
+    "unchanged_or_worse": 40,
+    "incomparable": 20
+  },
+  "gold": {
+    "annotators": 2,
+    "annotators_are_distinct_humans_required": true,
+    "ai_suggestions_in_independent_pass_must_be_false": true,
+    "hidden_qc_rate": 0.05,
+    "adjudicated_review_rate": 0.1,
+    "kappa_keep_correct_abstain": 0.8,
+    "kappa_action_family": 0.75,
+    "forbidden_agreement": 0.9,
+    "median_roi_iou": 0.8,
+    "hidden_qc": 0.95,
+    "owner_may_be_one_annotator": true,
+    "second_annotator": "must not be invented; the gate takes an explicit declaration instead"
+  },
+  "calibration": {
+    "silent_policy": "the advising threshold is derived from calibration only (tools/release/plan_abstention_threshold.py), never from the locked test",
+    "calibration_is_separate_split": true,
+    "validation_does_not_borrow_calibration_or_test": true
+  },
+  "split_grouping": {
+    "group_key": "origin family / shoot / derivative file, not random jpg",
+    "same_group_examples": [
+      "adjacent frames of one clip",
+      "crop/corruption/export of one original",
+      "related action episodes"
+    ],
+    "device_family": "an analysis slice and a deliberate OOD protocol, with the existing split-rule conflict resolved explicitly",
+    "rule": "grouping is decided before the lock and recorded in the split manifest"
+  },
+  "pending_pilot_parameters": {
+    "status": "not frozen; must be filled from the qualification pilot (P02/D03) before the locked test",
+    "items": {
+      "temporal_window_length": null,
+      "temporal_gap_definition": null,
+      "new_t_metric_thresholds": null,
+      "unknown_ood_slices": null
+    },
+    "rule": "until these are filled, a candidate may not claim the corresponding gates"
+  },
+  "runbook_requirements_not_enforced_by_the_instrument": [
+    "per-class validation quota of 200 (the tool floors per class but has no separate validation bucket key)",
+    "20 style exceptions per action where applicable",
+    "per-source-shoot independence for FP_CORRECT beyond the explicit cluster_count field"
+  ],
+  "revision_history": [
+    {
+      "from": "1.0.0",
+      "to": "1.1.0",
+      "change": "added good_frame_budget.min_clusters = 2",
+      "impact": "tools/release/check_candidate_gates.py fp_correct_on_good_frames now requires a declared source-shoot/session cluster count >= 2; a manifest that omits it is not_measurable (fail-closed). No candidate manifest predates this change.",
+      "reason": "runbook 5.1 requires the good-frame budget to be claimed over source-shoot/session clusters rather than near-identical adjacent frames; the gate did not enforce it before."
+    },
+    {
+      "from": "1.1.0",
+      "to": "1.2.0",
+      "change": "recorded the false-improved definition source and the unverified rule; added derived_by",
+      "impact": "tools/release/build_episode_metrics.py now derives evaluation.confusion and evaluation.false_improved; a manifest claiming improvement without established truth is refused rather than averaged",
+      "reason": "runbook 5.1 requires the false-improved definition to be extracted from the evaluator and frozen; no evaluator implements it, so the extraction is recorded as unavailable and the definition is pinned to the verifier and episode vocabulary instead"
+    },
+    {
+      "from": "1.2.0",
+      "to": "1.3.0",
+      "change": "added runbook_5_1_rows: one entry per 5.1 acceptance row with its threshold and definition status",
+      "impact": "five rows are recorded as pending_definition (direction/horizon precision, light/exposure precision, accepted coverage x3, abstention correctness, verification accuracy, critical forbidden, wrong-direction/target false success); they must not be implemented by inventing a denominator",
+      "reason": "audit of the 5.1 table found the two precision rows occur only as threshold copies and 'accepted coverage'/'abstention correctness'/'verification accuracy' have no non-table mention anywhere in the repository"
+    },
+    {
+      "from": "1.3.0",
+      "to": "1.3.1",
+      "change": "added evaluator_key to the rows marked defined_in_evaluator",
+      "impact": "the citation is machine-readable instead of embedded in prose; no threshold changed",
+      "reason": "the row test had to parse the evaluator key out of a sentence, which is exactly the kind of prose-as-contract the policy is meant to avoid"
+    },
+    {
+      "from": "1.3.1",
+      "to": "1.3.2",
+      "change": "pointed the pending rows at the definition decision packet",
+      "impact": "no threshold or definition changed; a reader now finds the candidate readings for the ten pending rows",
+      "reason": "the pending rows needed a prepared choice, not just a note that the definition is missing"
+    },
+    {
+      "from": "1.3.2",
+      "to": "1.4.0",
+      "change": "added trained_head_mask: the declared set of contract heads allowed to ship untrained",
+      "impact": "the trained_heads_backed_by_evidence gate now fails when a contract head is untrained and the manifest declares no mask, or declares a mask that does not cover it; previously it passed while listing untrained heads",
+      "reason": "the objective forbids reading a few trained heads as all heads trained; the gate's old behaviour printed untrained heads and still returned pass"
+    },
+    {
+      "from": "1.4.0",
+      "to": "1.4.1",
+      "change": "corrected a miscount in the recorded impact of 1.3.0",
+      "impact": "the 1.3.0 entry said 'five rows are recorded as pending_definition' while enumerating ten and while runbook_5_1_rows then held ten; the correct count is ten. No threshold, definition or status changed by this entry, and the earlier wording is left in place because a revision history is a record",
+      "reason": "found during the round-4 thesis sync, which cross-checks recorded numbers against the artifact"
+    }
+  ],
+  "runbook_5_1_rows": {
+    "note": "One entry per row of the runbook 5.1 acceptance table. definition_status says whether the row can be computed at all: a row with pending_definition must not be implemented by inventing a denominator.",
+    "rows": {
+      "fp_correct_on_good_frames": {
+        "threshold": "<=0.02 with one-sided 95% upper bound",
+        "definition_status": "defined_in_runbook_prose",
+        "definition_source": "runbook 5.1: good_frames_with_forbidden_correction / good_frames_evaluated"
+      },
+      "pass_rate": {
+        "threshold": ">=0.90",
+        "definition_status": "defined_in_evaluator",
+        "definition_source": "set_metrics.json[pass_rate]; set_metrics.json pass_rate, reproduced from per-record `passed` (tools/tests/test_candidate_manifest_builder.py)",
+        "evaluator_key": "pass_rate"
+      },
+      "expected_action_hit": {
+        "threshold": ">=0.90",
+        "definition_status": "defined_in_evaluator",
+        "definition_source": "set_metrics.json[expected_action_hit_rate]; set_metrics.json expected_action_hit_rate",
+        "evaluator_key": "expected_action_hit_rate"
+      },
+      "forbidden_violations_rate": {
+        "threshold": "<=0.02",
+        "definition_status": "defined_in_evaluator",
+        "definition_source": "set_metrics.json[forbidden_action_violation_rate]; set_metrics.json forbidden_action_violation_rate",
+        "evaluator_key": "forbidden_action_violation_rate"
+      },
+      "critical_forbidden_observed": {
+        "threshold": "=0",
+        "definition_status": "pending_definition",
+        "definition_source": "the artifact has no critical/non-critical distinction; only a total violation rate exists. searched the runbook section 5.1, the master plan 9.6 table, docs/cameraanalysis/*.md, the frozen operations registry and every evaluator: the name occurs only in the threshold tables (runbook, master plan, handover) and nowhere with a stated numerator, denominator or unit"
+      },
+      "technical_failure": {
+        "threshold": "1.00",
+        "definition_status": "defined_in_evaluator",
+        "definition_source": "set_metrics.json[technical_failure_gate_rate]; set_metrics.json technical_failure_gate_rate",
+        "caveat": "the runbook requires the frozen definition; the artifact carries the rate, the frozen definition text still has to be pinned",
+        "evaluator_key": "technical_failure_gate_rate"
+      },
+      "scene_class_min": {
+        "threshold": ">=0.85",
+        "definition_status": "partially_defined",
+        "definition_source": "per-record `source_bucket` exists, but 'scene class' is not the same taxonomy as source_bucket; the mapping is unstated"
+      },
+      "material_organic_source_min": {
+        "threshold": ">=0.80",
+        "definition_status": "partially_defined",
+        "definition_source": "no artifact field names the material/organic source family; the mapping is unstated"
+      },
+      "synthetic_adversarial": {
+        "threshold": ">=0.65",
+        "definition_status": "partially_defined",
+        "definition_source": "synthetic buckets exist as source_bucket values; which of them count as the adversarial bucket is unstated"
+      },
+      "confidence_band_accuracy": {
+        "threshold": ">=0.90",
+        "definition_status": "defined_in_evaluator",
+        "definition_source": "set_metrics.json[confidence_band_accuracy]; set_metrics.json confidence_band_accuracy",
+        "evaluator_key": "confidence_band_accuracy"
+      },
+      "abstention_correctness": {
+        "threshold": ">=0.90",
+        "definition_status": "pending_definition",
+        "definition_source": "when an abstention is 'correct' is never stated. searched the runbook section 5.1, the master plan 9.6 table, docs/cameraanalysis/*.md, the frozen operations registry and every evaluator: the name occurs only in the threshold tables (runbook, master plan, handover) and nowhere with a stated numerator, denominator or unit"
+      },
+      "verification_accuracy": {
+        "threshold": ">=0.90",
+        "definition_status": "pending_definition",
+        "definition_source": "the N7 contract defines VerificationResult values, but not which comparison makes a verification 'accurate'. searched the runbook section 5.1, the master plan 9.6 table, docs/cameraanalysis/*.md, the frozen operations registry and every evaluator: the name occurs only in the threshold tables (runbook, master plan, handover) and nowhere with a stated numerator, denominator or unit"
+      },
+      "direction_horizon_precision": {
+        "threshold": "point >=0.95, Wilson lower 95% >=0.90",
+        "definition_status": "pending_definition",
+        "definition_source": "no numerator or denominator is stated anywhere. searched the runbook section 5.1, the master plan 9.6 table, docs/cameraanalysis/*.md, the frozen operations registry and every evaluator: the name occurs only in the threshold tables (runbook, master plan, handover) and nowhere with a stated numerator, denominator or unit"
+      },
+      "light_exposure_precision": {
+        "threshold": "point >=0.92, Wilson lower 95% >=0.87",
+        "definition_status": "pending_definition",
+        "definition_source": "no numerator or denominator is stated anywhere. searched the runbook section 5.1, the master plan 9.6 table, docs/cameraanalysis/*.md, the frozen operations registry and every evaluator: the name occurs only in the threshold tables (runbook, master plan, handover) and nowhere with a stated numerator, denominator or unit"
+      },
+      "false_improved": {
+        "threshold": "<=0.02 on both denominators",
+        "definition_status": "defined_in_runbook_prose",
+        "definition_source": "runbook 5.1 plus the app verifier and the episode vocabulary; see false_improved.definition_source"
+      },
+      "wrong_direction_false_success": {
+        "threshold": "=0",
+        "definition_status": "pending_definition",
+        "definition_source": "'obligatory safety cases' is not enumerated anywhere, so neither the numerator nor the eligible set is defined. searched the runbook section 5.1, the master plan 9.6 table, docs/cameraanalysis/*.md, the frozen operations registry and every evaluator: the name occurs only in the threshold tables (runbook, master plan, handover) and nowhere with a stated numerator, denominator or unit"
+      },
+      "wrong_target_false_success": {
+        "threshold": "=0",
+        "definition_status": "pending_definition",
+        "definition_source": "'obligatory safety cases' is not enumerated anywhere. searched the runbook section 5.1, the master plan 9.6 table, docs/cameraanalysis/*.md, the frozen operations registry and every evaluator: the name occurs only in the threshold tables (runbook, master plan, handover) and nowhere with a stated numerator, denominator or unit"
+      },
+      "accepted_coverage_overall": {
+        "threshold": ">=0.65",
+        "definition_status": "pending_definition",
+        "definition_source": "neither 'accepted' nor the denominator is defined. searched the runbook section 5.1, the master plan 9.6 table, docs/cameraanalysis/*.md, the frozen operations registry and every evaluator: the name occurs only in the threshold tables (runbook, master plan, handover) and nowhere with a stated numerator, denominator or unit"
+      },
+      "accepted_coverage_ordinary": {
+        "threshold": ">=0.55",
+        "definition_status": "pending_definition",
+        "definition_source": "same as accepted_coverage_overall; 'ordinary class' is also unstated. searched the runbook section 5.1, the master plan 9.6 table, docs/cameraanalysis/*.md, the frozen operations registry and every evaluator: the name occurs only in the threshold tables (runbook, master plan, handover) and nowhere with a stated numerator, denominator or unit"
+      },
+      "accepted_coverage_difficult_light": {
+        "threshold": ">=0.35",
+        "definition_status": "pending_definition",
+        "definition_source": "same as accepted_coverage_overall; 'difficult light' is also unstated. searched the runbook section 5.1, the master plan 9.6 table, docs/cameraanalysis/*.md, the frozen operations registry and every evaluator: the name occurs only in the threshold tables (runbook, master plan, handover) and nowhere with a stated numerator, denominator or unit"
+      },
+      "human_safe_executable": {
+        "threshold": ">=0.90",
+        "definition_status": "defined_by_schema",
+        "definition_source": "attempt-record-schema.md 4.1 (executable) and tools/release/build_human_report.py"
+      },
+      "human_helpful": {
+        "threshold": ">=0.80",
+        "definition_status": "defined_by_schema",
+        "definition_source": "attempt-record-schema.md 4.2 success conjunction and tools/release/build_human_report.py"
+      },
+      "human_preference_non_ties": {
+        "threshold": ">=0.60",
+        "definition_status": "defined_by_schema",
+        "definition_source": "attempt-record-schema.md 4.1 visually_improved=yes with attribution=action_caused over non-ties"
+      },
+      "human_materially_harmful": {
+        "threshold": "<=0.01",
+        "definition_status": "defined_by_schema",
+        "definition_source": "attempt-record-schema.md 4.1 harmful=material"
+      },
+      "human_critical_harm": {
+        "threshold": "=0",
+        "definition_status": "defined_by_schema",
+        "definition_source": "attempt-record-schema.md 4.1 harmful=critical"
+      },
+      "gold_independence_and_kappa": {
+        "threshold": "annotators >=2, kappa >=0.80/0.75, forbidden >=0.90, IoU >=0.80, hidden_qc >=0.95, rates >=0.05/0.10",
+        "definition_status": "defined_by_schema",
+        "definition_source": "runbook 5.2 and tools/release/build_gold_report.py"
+      }
+    },
+    "decision_packet": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-release/definition-packet-5-1.json"
+  },
+  "trained_head_mask": {
+    "status": "must be declared before the locked test",
+    "rule": "A head in contract_heads may ship untrained only if the manifest's untrained_head_mask lists it. An untrained contract head without a declared mask fails the gate, so three trained heads can never read as 'the rest are trained too'.",
+    "where": "manifest field untrained_head_mask; enforced by tools/release/check_candidate_gates.py gate trained_heads_backed_by_evidence",
+    "frozen_by": "P02 item 3 ('trained-head masks')"
+  }
+}

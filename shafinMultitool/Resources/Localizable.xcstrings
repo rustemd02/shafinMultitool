@@ -822,13 +822,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move the camera a little left"
+            "value": "Make the suggested frame adjustment"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Смести камеру немного влево"
+            "value": "Сделай предложенное изменение кадра"
           }
         }
       }
@@ -838,13 +838,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Change the camera angle"
+            "value": "Move the phone to the chosen spot while keeping the main subject in the preview"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Измени угол съёмки"
+            "value": "Сместись с телефоном к выбранной точке, удерживая главное в превью"
           }
         }
       }
@@ -854,13 +854,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Add soft light from the front"
+            "value": "Aim the available lamp at the face from the camera side"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Добавь мягкий свет спереди"
+            "value": "Направь доступную лампу на лицо со стороны камеры"
           }
         }
       }
@@ -870,13 +870,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move closer to the subject"
+            "value": "Step a little closer to the main subject"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Подойди ближе к главному объекту"
+            "value": "Подойди немного ближе к главному предмету"
           }
         }
       }
@@ -886,13 +886,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Level the camera"
+            "value": "Level the horizon"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Выровняй камеру"
+            "value": "Выровняй горизонт"
           }
         }
       }
@@ -902,13 +902,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lower the camera a little"
+            "value": "Aim the camera slightly lower without lowering the phone"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Опусти камеру немного ниже"
+            "value": "Направь камеру чуть ниже, не опуская телефон"
           }
         }
       }
@@ -918,13 +918,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move the camera a little left"
+            "value": "Aim the camera slightly left, staying where you are"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Смести камеру немного влево"
+            "value": "Направь камеру чуть левее, оставаясь на месте"
           }
         }
       }
@@ -934,13 +934,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move the camera a little right"
+            "value": "Aim the camera slightly right, staying where you are"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Смести камеру немного вправо"
+            "value": "Направь камеру чуть правее, оставаясь на месте"
           }
         }
       }
@@ -950,13 +950,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Raise the camera a little"
+            "value": "Aim the camera slightly higher without lifting the phone"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Подними камеру немного выше"
+            "value": "Направь камеру чуть выше, не поднимая телефон"
           }
         }
       }
@@ -982,13 +982,77 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Simplify the background"
+            "value": "Aim the camera so the distraction leaves the frame"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Упрости фон вокруг главного объекта"
+            "value": "Направь камеру так, чтобы лишнее вышло из кадра"
+          }
+        }
+      }
+    },
+    "set.camera.episode.awaiting_movement": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Make the suggested adjustment"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сделай предложенное изменение"
+          }
+        }
+      }
+    },
+    "set.camera.episode.collecting": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hold the frame steady while I check"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удерживай кадр — проверяю"
+          }
+        }
+      }
+    },
+    "set.camera.episode.checking": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comparing with the previous frame…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сравниваю с предыдущим кадром…"
+          }
+        }
+      }
+    },
+    "set.camera.continue": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continue shooting"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Продолжить съёмку"
           }
         }
       }
@@ -1073,6 +1137,70 @@
         }
       }
     },
+    "set.camera.hint.repeat": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Repeat the hint"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Повторить подсказку"
+          }
+        }
+      }
+    },
+    "set.camera.hint.skip": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip the hint"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пропустить подсказку"
+          }
+        }
+      }
+    },
+    "set.camera.hint.pause": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause hints"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пауза подсказок"
+          }
+        }
+      }
+    },
+    "set.camera.hint.resume": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume hints"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Продолжить подсказки"
+          }
+        }
+      }
+    },
     "set.camera.interrupted": {
       "localizations": {
         "en": {
@@ -1094,13 +1222,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The frame is balanced"
+            "value": "The frame already suits the chosen task"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Кадр уже сбалансирован"
+            "value": "Для выбранной задачи кадр уже подходит"
           }
         }
       }
@@ -1117,6 +1245,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "ТЕКУЩИЙ ОБЪЕКТИВ"
+          }
+        }
+      }
+    },
+    "set.camera.verification.fixed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The checked issue is resolved"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Это исправление подтверждено"
+          }
+        }
+      }
+    },
+    "set.camera.verification.improved": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The adjustment is closer to the target"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменение в нужную сторону"
+          }
+        }
+      }
+    },
+    "set.camera.verification.incomparable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t compare the shots"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось сравнить кадры"
+          }
+        }
+      }
+    },
+    "set.camera.verification.unchanged": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No measurable change detected"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не вижу заметного изменения"
+          }
+        }
+      }
+    },
+    "set.camera.verification.worse": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The checked result is worse"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "По этой проверке стало хуже"
           }
         }
       }
@@ -1217,18 +1425,98 @@
         }
       }
     },
-    "set.camera.technical.avoid_occlusion": {
+    "set.camera.status.comparable": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Clear the subject"
+            "value": "The shots can be compared"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Убери помеху от объекта"
+            "value": "Кадры можно сравнить"
+          }
+        }
+      }
+    },
+    "set.camera.status.unknown": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not enough data to compare"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недостаточно данных для сравнения"
+          }
+        }
+      }
+    },
+    "set.camera.review.assessment_request": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How does it look to you?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Как тебе кажется, получилось?"
+          }
+        }
+      }
+    },
+    "set.camera.review.human_input": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your note — not an automatic check"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Твоя заметка — не автопроверка"
+          }
+        }
+      }
+    },
+    "set.camera.review.alternatives": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WHAT COULD BE COMPARED"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ЧТО МОЖНО СРАВНИТЬ"
+          }
+        }
+      }
+    },
+    "set.camera.technical.avoid_occlusion": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear what covers the chosen part of the frame"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убери то, что закрывает выбранную часть кадра"
           }
         }
       }
@@ -1286,13 +1574,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Add light to reduce noise"
+            "value": "Add available light to reduce noise"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Добавь света, чтобы убрать шум"
+            "value": "Добавь доступный свет, чтобы снизить шум"
           }
         }
       }
@@ -1318,13 +1606,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hold the camera steady"
+            "value": "Tuck your elbows in and take the shot again"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Зафиксируй камеру"
+            "value": "Прижми локти к корпусу и повтори кадр"
           }
         }
       }
@@ -5798,13 +6086,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Add background light"
+            "value": "Use the available lamp to light the area behind the person"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Добавить фоновый свет"
+            "value": "Освети доступной лампой участок за человеком"
           }
         }
       }
@@ -5814,13 +6102,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Add front fill light"
+            "value": "Aim the available lamp at the face from the camera side"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Добавить фронтальный заполняющий свет"
+            "value": "Направь доступную лампу на лицо со стороны камеры"
           }
         }
       }
@@ -5830,13 +6118,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Change the camera angle"
+            "value": "Move the phone to the chosen spot while keeping the person in the preview"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сменить ракурс"
+            "value": "Сместись с телефоном к выбранной точке, удерживая человека в превью"
           }
         }
       }
@@ -5846,13 +6134,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Keep the current setup"
+            "value": "The frame already suits the chosen task"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Оставить текущую постановку"
+            "value": "Для выбранной задачи кадр уже подходит"
           }
         }
       }
@@ -5878,13 +6166,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lower the camera"
+            "value": "Lower the phone itself to shoot from a lower angle"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Опустить камеру"
+            "value": "Опусти сам телефон ниже, чтобы снять с более низкой точки"
           }
         }
       }
@@ -5894,13 +6182,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move the object back"
+            "value": "Move the chosen item a little farther from the lens"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Отодвинуть объект назад"
+            "value": "Передвинь выбранный предмет немного дальше от объектива"
           }
         }
       }
@@ -5910,13 +6198,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move the object forward"
+            "value": "Move the chosen item a little closer to the lens"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Подвинуть объект вперёд"
+            "value": "Передвинь выбранный предмет немного ближе к объективу"
           }
         }
       }
@@ -5926,13 +6214,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move the object left"
+            "value": "Move the chosen item to the left in the preview"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сдвинуть объект левее"
+            "value": "Передвинь выбранный предмет левее в превью"
           }
         }
       }
@@ -5942,13 +6230,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move the object right"
+            "value": "Move the chosen item to the right in the preview"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сдвинуть объект правее"
+            "value": "Передвинь выбранный предмет правее в превью"
           }
         }
       }
@@ -5958,13 +6246,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Separate the subject from the background"
+            "value": "You could ask the person in the frame to step away from the background"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Отделить субъект от фона"
+            "value": "Можно предложить человеку в кадре отойти от фона"
           }
         }
       }
@@ -5974,13 +6262,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move the subject left"
+            "value": "You could ask the person in the frame to move to the left in the preview"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сдвинуть субъект левее"
+            "value": "Можно предложить человеку в кадре встать левее в превью"
           }
         }
       }
@@ -5990,13 +6278,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move the subject right"
+            "value": "You could ask the person in the frame to move to the right in the preview"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сдвинуть субъект правее"
+            "value": "Можно предложить человеку в кадре встать правее в превью"
           }
         }
       }
@@ -6006,13 +6294,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Raise the camera"
+            "value": "Raise the phone itself to shoot from a higher angle"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Поднять камеру"
+            "value": "Подними сам телефон выше, чтобы снять с более высокой точки"
           }
         }
       }
@@ -6022,13 +6310,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remove the distracting object"
+            "value": "If the item is not needed for the shot, you can remove it"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Убрать отвлекающий объект"
+            "value": "Если предмет не нужен для задачи, его можно убрать"
           }
         }
       }
@@ -6038,13 +6326,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remove the bright background spot"
+            "value": "Aim the camera so this distraction leaves the frame"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Убрать яркое пятно на фоне"
+            "value": "Направь камеру так, чтобы эта помеха вышла за край кадра"
           }
         }
       }
@@ -6054,13 +6342,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Reposition the object for balance"
+            "value": "Move the chosen item to the chosen free spot"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Переставить объект для баланса"
+            "value": "Передвинь выбранный предмет в выбранную свободную зону"
           }
         }
       }
@@ -6070,13 +6358,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Turn the subject toward the light"
+            "value": "You could ask the person in the frame to turn toward the light"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Повернуть субъект к свету"
+            "value": "Можно предложить человеку в кадре повернуться к свету"
           }
         }
       }
@@ -6086,13 +6374,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move your subject higher"
+            "value": "Aim the camera slightly lower without lowering the phone"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Поднимите героя выше"
+            "value": "Направь камеру чуть ниже, не опуская телефон"
           }
         }
       }
@@ -6102,13 +6390,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move your subject right"
+            "value": "Aim the camera slightly left, keeping the subject in the preview"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сместите героя вправо"
+            "value": "Направь камеру чуть левее, сохранив героя в превью"
           }
         }
       }
@@ -6118,13 +6406,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move your subject left"
+            "value": "Aim the camera slightly right, keeping the subject in the preview"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сместите героя влево"
+            "value": "Направь камеру чуть правее, сохранив героя в превью"
           }
         }
       }
@@ -6134,13 +6422,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move your subject lower"
+            "value": "Aim the camera slightly higher without lifting the phone"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Опустите героя ниже"
+            "value": "Направь камеру чуть выше, не поднимая телефон"
           }
         }
       }
@@ -6150,13 +6438,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Simplify the background"
+            "value": "Move to the chosen spot where the background behind the person is cleaner"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Упростить фон"
+            "value": "Сместись к выбранной точке, где фон за человеком чище"
           }
         }
       }
@@ -6166,13 +6454,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Step back"
+            "value": "If there is room behind you, step back a little while keeping what matters in the preview"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Отойти назад"
+            "value": "Если сзади свободно, отойди немного, сохранив нужное в превью"
           }
         }
       }
@@ -6182,13 +6470,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Step closer"
+            "value": "Step a little closer while keeping the main subject in the preview"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Подойти ближе"
+            "value": "Подойди немного ближе, сохранив главное в превью"
           }
         }
       }
@@ -6198,13 +6486,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wait for a clear background"
+            "value": "You could wait until this obstruction leaves the frame"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Дождаться чистого фона"
+            "value": "Можно подождать, пока эта помеха выйдет из кадра"
           }
         }
       }
@@ -7373,6 +7661,166 @@
           "stringUnit": {
             "state": "translated",
             "value": "Нужна правка"
+          }
+        }
+      }
+    },
+    "set.camera.intent.low_key": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep the dark, low-key look?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оставить тёмный, низкоключевой кадр?"
+          }
+        }
+      }
+    },
+    "set.camera.intent.silhouette": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep the backlit silhouette?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оставить силуэт против света?"
+          }
+        }
+      }
+    },
+    "set.camera.intent.symmetry": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep the symmetry?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оставить симметрию?"
+          }
+        }
+      }
+    },
+    "set.camera.intent.tilt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep the tilted angle?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оставить наклон?"
+          }
+        }
+      }
+    },
+    "set.camera.intent.motion_blur": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep the motion blur?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оставить смаз в движении?"
+          }
+        }
+      }
+    },
+    "set.camera.intent.negative_space": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep the empty space?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оставить пустое пространство?"
+          }
+        }
+      }
+    },
+    "set.camera.intent.confirm": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yes, it's intentional"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Да, так и задумано"
+          }
+        }
+      }
+    },
+    "set.camera.intent.deny": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No, fix it"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет, исправь"
+          }
+        }
+      }
+    },
+    "set.a11y.intent_confirm": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yes, it's intentional"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Да, так и задумано"
+          }
+        }
+      }
+    },
+    "set.a11y.intent_deny": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No, fix it"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет, исправь"
           }
         }
       }

@@ -1,0 +1,33 @@
+{
+  "version": "camera-coach.research-probe.1",
+  "research_only": true, "human_gold": false, "release_admissible": false,
+  "annotation_source": "agent_visual_review; new images, same photographer/collection independence NOT established",
+  "cases": [
+    {
+      "id": "sea-absent-lamp", "source_id": "commons-64428985",
+      "task": "Хочу исправить положение настольной лампы справа. Если её в кадре нет, откажись от совета. Не подменяй лампу другим объектом.",
+      "absent_target": true, "no_move": true
+    },
+    {
+      "id": "sea-preserve", "source_id": "commons-64428985",
+      "task": "Хочу оставить этот морской кадр и горизонт ровно как есть. Ничего менять не прошу. Только наблюдение; не оценивай движение волн по одному снимку.",
+      "observation_only": true, "no_move": true
+    },
+    {
+      "id": "piano-preserve", "source_id": "commons-50578968",
+      "task": "Намеренно чёрно-белый интерьер с глубокими тенями. Сохрани стиль и композицию: только наблюдение, без исправлений. Найди подвесной светильник в дальней комнате; не путай его с вазой или отражением.",
+      "observation_only": true, "no_move": true,
+      "anchors": [{"name": "hanging_lamp", "label": "lamp", "center": [0.442, 0.378]}]
+    },
+    {
+      "id": "piano-photo-advice", "source_id": "commons-50578968",
+      "task": "Фотографирую интерьер с тёмным пианино справа и светлой дальней комнатой. Сохрани монохромную драматичность и глубину. Какой один совет оправдан? Мебель и подвесные светильники трогать нельзя, свободный проход не подтверждён.",
+      "no_move": true
+    },
+    {
+      "id": "piano-identical-pair", "source_id": "commons-50578968",
+      "task": "Первое фото до, второе после. Проверь, действительно ли изменились предметы или свет. Только наблюдение, без нового совета.",
+      "repeat_image": true, "observation_only": true, "no_move": true
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "set_version": 1,
+  "description": "Frozen artifact set for the P02 release freeze receipt (docs/aegis/plans/2026-09-13-setos-release-execution.md §6). The set is data: extend it here, not in freeze_receipt.py. Paths are relative to the repo root; a path containing '*' is a glob and every matching file joins the set. Scope: every machine-consumed contract — schema, catalog, policy, preprocessing, label and protocol. The append-only ledgers (rights-manifest.jsonl, consent-manifest.jsonl, derivation-manifest.jsonl, source-shoots.jsonl) are deliberately NOT here: they are expected to grow as records are admitted, so freezing them would produce permanent false drift and would record a data snapshot as if it were a contract. Their schema is what is frozen, not their contents.",
+  "version_keys": [
+    "schema_version",
+    "contract_version",
+    "catalog_version",
+    "dataset_version",
+    "policy_version",
+    "schema_id",
+    "$id",
+    "contract_id",
+    "preprocessing_version",
+    "feature_version",
+    "input_contract_version",
+    "output_contract_version"
+  ],
+  "artifacts": [
+    {
+      "path": "docs/cameraanalysis/operations-registry.v3-draft.json",
+      "category": "registry"
+    },
+    {
+      "path": "docs/cameraanalysis/case-coverage.v3-draft.json",
+      "category": "registry"
+    },
+    {
+      "path": "ml/camera_coach/contracts/*.json",
+      "category": "model-contract",
+      "note": "v1/v2 contract manifests and their JSON Schemas. The preprocessing contract is embedded in the manifests (preprocessing_version + preprocessing block); there is no separate preprocessing file, so the glob is what freezes it."
+    },
+    {
+      "path": "datasets/camera-coach/v1/label-schema.json",
+      "category": "labels"
+    },
+    {
+      "path": "datasets/camera-coach/v1/frozen-label-mapping.json",
+      "category": "labels"
+    },
+    {
+      "path": "datasets/camera-coach/v1/research-source-catalog.json",
+      "category": "catalog",
+      "note": "Carries the rights_policy and human_gold_policy fields, so the dataset admission policy is frozen with the catalog."
+    },
+    {
+      "path": "datasets/camera-coach/v1/capture-protocol.md",
+      "category": "protocol",
+      "version_regex": "schema_version=(v?[0-9][A-Za-z0-9._-]*)",
+      "version_regex_key": "schema_version"
+    },
+    {
+      "path": "datasets/camera-coach/v1/evaluation-policy-v1.json",
+      "category": "evaluation-policy",
+      "note": "The §5.1 acceptance thresholds and metric definitions. Lowering a threshold here must be a versioned change (exit 2) with an impact list, not a silent edit; P02 item 3 requires this policy to be written before the locked test, and P02 item 4 requires it inside the freeze receipt."
+    },
+    {
+      "path": "datasets/camera-coach/v1/episode-schema.json",
+      "category": "schema",
+      "note": "The before/action/after episode contract (outcome, outcome_verifier, subject_continuity). Consumed by tools/release/build_episode_metrics.py, so a silent edit here would move a §5 producer."
+    },
+    {
+      "path": "datasets/camera-coach/v1/split-manifest-schema.json",
+      "category": "schema",
+      "note": "Defines the split/cluster manifest. The FP_CORRECT cluster-level independence rule and split_disjointness both read cluster identity, so what a cluster IS has to be frozen."
+    },
+    {
+      "path": "datasets/camera-coach/v1/cluster-schema.json",
+      "category": "schema",
+      "note": "Cluster record shape for the source-shoot/session grouping the cluster-level gates rely on."
+    },
+    {
+      "path": "datasets/camera-coach/v1/temporal-schema.json",
+      "category": "schema",
+      "note": "Temporal sequence contract for the temporal and verify lanes."
+    },
+    {
+      "path": "datasets/camera-coach/v1/silver-action-pair-schema.json",
+      "category": "schema",
+      "note": "Silver action-pair lane contract, consumed by train_silver_actions.py and convert_coreml.py."
+    },
+    {
+      "path": "datasets/camera-coach/v1/silver-geometry-schema.json",
+      "category": "schema",
+      "note": "Silver geometry lane contract, consumed by train_silver_actions.py and generate_camera_corruptions.py."
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "version": "camera-coach.research-probe.1",
+  "research_only": true,
+  "human_gold": false,
+  "release_admissible": false,
+  "annotation_source": "agent_visual_review; provisional localization anchors, not aesthetic gold",
+  "cases": [
+    {
+      "id": "room-lights-observe", "source_id": "commons-170357210",
+      "task": "Найди оба светильника в комнате и различи их по положению и виду. Только наблюдение, ничего менять не прошу. Предметы передвигать нельзя.",
+      "observation_only": true, "no_move": true,
+      "anchors": [{"name": "wall_light", "label": "lamp", "center": [0.105, 0.30]}, {"name": "floor_lamp", "label": "lamp", "center": [0.412, 0.64]}]
+    },
+    {
+      "id": "room-chairs-observe", "source_id": "commons-170357210",
+      "task": "Найди два чёрных кресла, отдельно переднее слева и дальнее справа. Только наблюдение, композицию менять не надо. Предметы передвигать нельзя.",
+      "observation_only": true, "no_move": true,
+      "anchors": [{"name": "near_chair", "label": "chair", "center": [0.266, 0.88]}, {"name": "far_chair", "label": "chair", "center": [0.54, 0.75]}]
+    },
+    {
+      "id": "room-photo-advice", "source_id": "commons-170357210",
+      "task": "Хочу красиво показать интерьер и оба чёрных кресла. Сохрани тёплый свет и атмосферу. Дай максимум один совет, только если действительно нужен. Передвигать мебель и светильники нельзя.",
+      "no_move": true
+    },
+    {
+      "id": "wall-lamp-fixed", "source_id": "commons-180060839",
+      "task": "Снимаю закреплённый настенный светильник. Он прикреплён к колонне, трогать и перемещать его запрещено. Как улучшить фото? Не выдумывай параметры камеры.",
+      "no_move": true,
+      "anchors": [{"name": "fixed_lamp", "label": "lamp", "center": [0.513, 0.53]}]
+    },
+    {
+      "id": "wall-lamp-absent-target", "source_id": "commons-180060839",
+      "task": "Нужен совет именно для второй настольной лампы справа, не для настенного светильника. Если её на фото нет или нельзя однозначно найти, откажись от совета. Перемещать предметы нельзя.",
+      "absent_target": true, "no_move": true
+    },
+    {
+      "id": "historical-preserve", "source_id": "commons-50578996",
+      "task": "Это намеренно чёрно-белый исторический снимок. Сохрани монохром и композицию как есть. Только опиши расположение вазы и главного переднего стула; изменений не прошу.",
+      "observation_only": true, "no_move": true,
+      "anchors": [{"name": "vase", "label": "vase", "center": [0.505, 0.59]}, {"name": "front_chair", "label": "chair", "center": [0.43, 0.78]}]
+    },
+    {
+      "id": "room-identical-pair", "source_id": "commons-170357210",
+      "task": "Два кадра: до и после. Определи, изменилось ли расположение кресел и светильников. Это только проверка изменения; не предлагай исправлений и не считай сообщение готово доказательством движения.",
+      "repeat_image": true, "observation_only": true, "no_move": true
+    },
+    {
+      "id": "wall-identical-pair", "source_id": "commons-180060839",
+      "task": "Сравни первый и второй кадры настенного светильника: изменились ли композиция или яркость? Только наблюдение, без советов менять кадр.",
+      "repeat_image": true, "observation_only": true, "no_move": true
+    }
+  ]
+}

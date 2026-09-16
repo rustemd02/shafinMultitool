@@ -43,7 +43,9 @@ struct LiveCoachQualityGate: Sendable {
                        semanticActionTypes: [SemanticActionType] = [],
                        mode: AnalysisMode,
                        snapshot: FrameFeatureSnapshot?,
-                       semantics: SceneSemanticsReport?) -> Bool {
+                       semantics: SceneSemanticsReport?,
+                       overlappingInstancePairCount: Int? = nil,
+                       tapGroundedObjectTarget: Bool = false) -> Bool {
         let requiresSpatialEvidence = action.map(isSpatial) == true
             || semanticActionTypes.contains(where: isSpatial)
         guard requiresSpatialEvidence else { return true }
@@ -80,6 +82,26 @@ struct LiveCoachQualityGate: Sendable {
             return false
         }
 
+        // Scene-object moves claim a physical change of a specific prop, so
+        // they additionally require that this live frame detected at least one
+        // object at all. Presence is not identity: per-object association is a
+        // separate owner, and a class label alone never proves the target.
+        if semanticActionTypes.contains(where: isObjectMove), snapshot.objects.totalCount == 0 {
+            return false
+        }
+
+        // CC-O02/O05: when two tracked instances overlap, their regions merge
+        // visually and an object-targeted move has no groundable target — the
+        // advice cannot claim to move "the lamp" out of two lamps. The honest
+        // answer is to withhold the object-scoped correction; frame-global
+        // corrections (angle, framing) stay actionable.
+        if semanticActionTypes.contains(where: isObjectMove),
+           let overlappingInstancePairCount,
+           overlappingInstancePairCount > 0,
+           !tapGroundedObjectTarget {
+            return false
+        }
+
         return semantics.ambiguities.isEmpty
     }
 
@@ -96,6 +118,24 @@ struct LiveCoachQualityGate: Sendable {
         switch action {
         case .shiftFrameLeft, .shiftFrameRight, .shiftFrameUp, .shiftFrameDown, .stepCloser, .stepBack:
             return true
+        // Scene moves assert a physical change of a specific subject or prop,
+        // so they require the same fresh, grounded live evidence as framing
+        // moves instead of passing on a class label alone.
+        case .moveSubjectLeft, .moveSubjectRight, .moveSubjectAwayFromBackground,
+             .rotateSubjectTowardLight, .moveObjectLeft, .moveObjectRight,
+             .moveObjectForward, .moveObjectBack,
+             .removeDistractingObject, .repositionPropForBalance:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func isObjectMove(_ action: SemanticActionType) -> Bool {
+        switch action {
+        case .moveObjectLeft, .moveObjectRight, .moveObjectForward, .moveObjectBack,
+             .removeDistractingObject, .repositionPropForBalance:
+            return true
         default:
             return false
         }
@@ -107,6 +147,37 @@ struct LiveCoachQualityGate: Sendable {
         let intersectionArea = intersectionWidth * intersectionHeight
         let unionArea = (lhs.width * lhs.height) + (rhs.width * rhs.height) - intersectionArea
         return unionArea > 0 ? intersectionArea / unionArea : 0
+    }
+}
+
+/// CC-O02 wiring: the operator's last scene-space tap, stored raw by the
+/// pipeline and resolved against tracked instances at evaluation time. Pure
+/// decision core — storage and queue discipline belong to the pipeline; the
+/// region resolution is the same nearest-center/touch-slop contract as
+/// `SubjectTapSelector.hitTestTrackedInstances`.
+struct SceneTapEvidence: Equatable, Sendable {
+    let sceneX: Double
+    let sceneY: Double
+    let capturedAt: Date
+
+    /// A tap names an advice target only while it is fresh: the gate
+    /// re-verifies vision evidence inside `maxVisionFreshnessMilliseconds`,
+    /// so a stale naming no longer describes the regions it disambiguates.
+    func namesTrackedInstance(
+        in instances: [(trackID: String, region: NormalizedRect)],
+        now: Date,
+        freshnessMilliseconds: Int = LiveCoachQualityGate.maxVisionFreshnessMilliseconds,
+        touchSlop: Double = SubjectTapSelector.touchSlop
+    ) -> Bool {
+        let ageMilliseconds = now.timeIntervalSince(capturedAt) * 1000
+        guard ageMilliseconds >= 0,
+              ageMilliseconds <= Double(freshnessMilliseconds) else { return false }
+        return SubjectTapSelector.hitTestTrackedInstances(
+            sceneX: sceneX,
+            sceneY: sceneY,
+            instances: instances,
+            touchSlop: touchSlop
+        ) != nil
     }
 }
 
@@ -864,64 +935,64 @@ struct SemanticTipPlanner {
         case .createLookSpaceRight:
             return ("Смести камеру чуть правее.", "Справа не хватает воздуха. Смести камеру чуть правее.")
         case .moveSubjectOffLeftEdge:
-            return ("Смести героя чуть правее.", "Герой зажат слева. Смести его чуть правее.")
+            return ("Направь камеру чуть левее, сохранив героя в превью.", "Герой зажат слева. Направь камеру чуть левее, сохранив его в превью.")
         case .moveSubjectOffRightEdge:
-            return ("Смести героя чуть левее.", "Герой зажат справа. Смести его чуть левее.")
+            return ("Направь камеру чуть правее, сохранив героя в превью.", "Герой зажат справа. Направь камеру чуть правее, сохранив его в превью.")
         case .moveObjectOffLeftEdge:
-            return ("Сдвинь \(target) правее.", "\(target.capitalized) слишком близко к левому краю. Сдвинь \(target) правее.")
+            return ("Передвинь \(target) правее в превью.", "\(target.capitalized) слишком близко к левому краю превью. Передвинь \(target) правее.")
         case .moveObjectOffRightEdge:
-            return ("Сдвинь \(target) левее.", "\(target.capitalized) слишком близко к правому краю. Сдвинь \(target) левее.")
+            return ("Передвинь \(target) левее в превью.", "\(target.capitalized) слишком близко к правому краю превью. Передвинь \(target) левее.")
         case .addHeadroom:
-            return ("Подними камеру чуть выше.", "Сверху тесно. Подними камеру чуть выше.")
+            return ("Направь камеру чуть выше, не поднимая телефон.", "Сверху тесно. Направь камеру чуть выше, не поднимая телефон.")
         case .showMoreLowerFrame:
-            return ("Опусти камеру чуть ниже.", "Снизу не хватает пространства. Опусти камеру чуть ниже.")
+            return ("Направь камеру чуть ниже, не опуская телефон.", "Снизу не хватает пространства. Направь камеру чуть ниже, не опуская телефон.")
         case .stepBackForBreathingRoom:
-            return ("Отойди на полшага назад.", "Кадру не хватает воздуха. Отойди на полшага назад.")
+            return ("Если сзади свободно, отойди немного назад.", "Кадру не хватает воздуха. Если сзади свободно, отойди немного назад.")
         case .stepCloserForSubjectProminence:
             return ("Подойди чуть ближе к герою.", "Герой читается слабо. Подойди чуть ближе к нему.")
         case .stepCloserForObjectProminence:
             return ("Подойди чуть ближе к \(target).", "\(target.capitalized) теряется в кадре. Подойди чуть ближе к \(target).")
         case .lowerCameraForSubject:
-            return ("Опусти камеру чуть ниже.", "Высота камеры спорит с героем. Опусти камеру чуть ниже.")
+            return ("Опусти сам телефон ниже, чтобы снять с более низкой точки.", "Высота камеры спорит с героем. Опусти сам телефон ниже, чтобы снять с более низкой точки.")
         case .raiseCameraForSubject:
-            return ("Подними камеру чуть выше.", "Высота камеры спорит с героем. Подними камеру чуть выше.")
+            return ("Подними сам телефон выше, чтобы снять с более высокой точки.", "Высота камеры спорит с героем. Подними сам телефон выше, чтобы снять с более высокой точки.")
         case .changeAngleForCleanerBackground:
-            return ("Смени угол камеры.", "Фон спорит с главным объектом. Смени угол камеры, чтобы фон стал чище.")
+            return ("Сместись с телефоном к выбранной точке, удерживая главное в превью.", "Фон спорит с главным объектом. Сместись с телефоном к выбранной точке, удерживая главное в превью.")
         case .addDepthByMovingSubjectFromBackground:
-            return ("Отодвинь героя от фона.", "Герой сливается с фоном. Отодвинь его от фона.")
+            return ("Можно предложить человеку в кадре отойти от фона.", "Герой сливается с фоном. Можно предложить человеку в кадре отойти от фона.")
         case .addDepthByMovingObjectForward:
-            return ("Сдвинь \(target) чуть вперед.", "\(target.capitalized) теряется по глубине. Сдвинь \(target) чуть вперед.")
+            return ("Передвинь \(target) немного ближе к объективу.", "\(target.capitalized) теряется по глубине. Передвинь \(target) немного ближе к объективу.")
         case .moveObjectBackForBalance:
-            return ("Сдвинь \(target) чуть назад.", "\(target.capitalized) спорит с героем. Сдвинь \(target) чуть назад.")
+            return ("Передвинь \(target) немного дальше от объектива.", "\(target.capitalized) спорит с героем. Передвинь \(target) немного дальше от объектива.")
         case .moveSubjectLeftForBalance:
-            return ("Смести героя чуть левее.", "Смести героя чуть левее, чтобы баланс кадра стал спокойнее.")
+            return ("Можно предложить человеку в кадре встать левее в превью.", "Можно предложить человеку в кадре встать левее в превью, чтобы баланс стал спокойнее.")
         case .moveSubjectRightForBalance:
-            return ("Смести героя чуть правее.", "Смести героя чуть правее, чтобы баланс кадра стал спокойнее.")
+            return ("Можно предложить человеку в кадре встать правее в превью.", "Можно предложить человеку в кадре встать правее в превью, чтобы баланс стал спокойнее.")
         case .moveObjectLeftForBalance:
-            return ("Сдвинь \(target) левее.", "\(target.capitalized) перегружает правую часть кадра. Сдвинь \(target) левее.")
+            return ("Передвинь \(target) левее в превью.", "\(target.capitalized) перегружает правую часть превью. Передвинь \(target) левее.")
         case .moveObjectRightForBalance:
-            return ("Сдвинь \(target) правее.", "\(target.capitalized) перегружает левую часть кадра. Сдвинь \(target) правее.")
+            return ("Передвинь \(target) правее в превью.", "\(target.capitalized) перегружает левую часть превью. Передвинь \(target) правее.")
         case .removeObjectFromFaceContour:
             let accusativeTarget = accusativeObjectLabel(target)
             return ("Убери \(accusativeTarget) от лица.", "\(target.capitalized) заходит на контур лица. Убери \(accusativeTarget) в сторону.")
         case .removeDistractingProp:
-            return ("Убери \(target) из кадра.", "\(target.capitalized) спорит с главным объектом. Убери \(target) из кадра.")
+            return ("Если \(target) не нужен для задачи, убери его из кадра.", "\(target.capitalized) спорит с главным объектом. Если он не нужен для задачи, убери его из кадра.")
         case .rebalancePropLayout:
-            return ("Переставь \(target).", "Положение \(target) ломает баланс кадра. Переставь \(target).")
+            return ("Передвинь \(target) в выбранную свободную зону.", "Положение \(target) ломает баланс кадра. Передвинь \(target) в выбранную свободную зону.")
         case .turnSubjectTowardLight:
-            return ("Поверни героя к свету.", "Свет сейчас прячет героя. Поверни его к источнику света.")
+            return ("Можно предложить человеку в кадре повернуться к свету.", "Свет сейчас прячет героя. Можно предложить человеку в кадре повернуться к свету.")
         case .addFrontFillOnSubject:
-            return ("Добавь мягкий фронтальный свет.", "Лицу не хватает света спереди. Добавь мягкий фронтальный свет.")
+            return ("Направь доступную лампу на лицо со стороны камеры.", "Лицу не хватает света спереди. Направь доступную лампу на лицо со стороны камеры.")
         case .addBackgroundLightForSeparation:
-            return ("Добавь слабый свет на фон.", "Фон сливается с главным объектом. Добавь слабый свет на фон.")
+            return ("Освети доступной лампой участок за человеком.", "Фон сливается с главным объектом. Освети доступной лампой участок за человеком.")
         case .removeBrightSpotBehindSubject:
-            return ("Убери яркое пятно за героем.", "Яркое пятно за героем перетягивает внимание. Убери его.")
+            return ("Направь камеру так, чтобы яркое пятно вышло из кадра.", "Яркое пятно за героем перетягивает внимание. Направь камеру так, чтобы оно вышло из кадра.")
         case .clarifyMainSubjectFocus:
             return ("Подойди чуть ближе к герою.", "В кадре нет явного центра внимания. Подойди чуть ближе к герою.")
         case .simplifyBusyBackground:
-            return ("Упрости фон.", "Фон перегружен и спорит с главным объектом. Упрости фон.")
+            return ("Сместись к выбранной точке, где фон за человеком чище.", "Фон перегружен и спорит с главным объектом. Сместись к выбранной точке, где фон за человеком чище.")
         case .waitForBackgroundClearance:
-            return ("Подожди, пока фон очистится.", "В фоне есть временная помеха. Подожди, пока она уйдет.")
+            return ("Можно подождать, пока эта помеха выйдет из кадра.", "В фоне есть временная помеха. Можно подождать, пока она выйдет из кадра.")
         case .levelHorizonForStability:
             return ("Выровняй горизонт.", "Горизонт завален и отвлекает. Выровняй его.")
         case .keepSubjectSeparation, .keepLightDirection, .keepFocusHierarchy, .keepHorizonStability, .keepDepthReadability, .keepObjectBalance, .keepFrameAsIs:

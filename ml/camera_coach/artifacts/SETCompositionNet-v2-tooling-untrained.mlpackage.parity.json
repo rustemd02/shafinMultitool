@@ -1,0 +1,434 @@
+{
+  "all_heads_finite": true,
+  "cases": [
+    "explicit_natural_roi_present",
+    "unknown_intent_roi_present",
+    "silhouette_no_roi"
+  ],
+  "informational_threshold": 0.05,
+  "intent_sensitivity": {
+    "action_utility_logits": {
+      "both_respond_to_intent": true,
+      "coreml_intent_delta": 0.01239013671875,
+      "pytorch_intent_delta": 0.012394364923238754
+    },
+    "continuous_target_deltas": {
+      "both_respond_to_intent": true,
+      "coreml_intent_delta": 0.0086669921875,
+      "pytorch_intent_delta": 0.008651439100503922
+    },
+    "good_frame_probability": {
+      "both_respond_to_intent": true,
+      "coreml_intent_delta": 0.00146484375,
+      "pytorch_intent_delta": 0.0017575621604919434
+    },
+    "risk_probability": {
+      "both_respond_to_intent": true,
+      "coreml_intent_delta": 0.0029296875,
+      "pytorch_intent_delta": 0.00245821475982666
+    }
+  },
+  "overall_max_abs_error": 0.0002518296241760254,
+  "per_head": {
+    "abstention_probability": {
+      "cases": {
+        "explicit_natural_roi_present": {
+          "coreml_in_declared_range": true,
+          "finite": true,
+          "max_abs_error": 8.428096771240234e-05,
+          "mean_abs_error": 8.428096771240234e-05,
+          "worst_coreml": 0.5126953125,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": 0.5127795934677124
+        },
+        "silhouette_no_roi": {
+          "coreml_in_declared_range": true,
+          "finite": true,
+          "max_abs_error": 2.855062484741211e-05,
+          "mean_abs_error": 2.855062484741211e-05,
+          "worst_coreml": 0.51318359375,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": 0.5131550431251526
+        },
+        "unknown_intent_roi_present": {
+          "coreml_in_declared_range": true,
+          "finite": true,
+          "max_abs_error": 2.6226043701171875e-05,
+          "mean_abs_error": 2.6226043701171875e-05,
+          "worst_coreml": 0.513671875,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": 0.5136456489562988
+        }
+      },
+      "max_abs_error": 8.428096771240234e-05,
+      "mean_abs_error": 8.428096771240234e-05
+    },
+    "action_utility_logits": {
+      "cases": {
+        "explicit_natural_roi_present": {
+          "argmax_coreml": 0,
+          "argmax_match": true,
+          "argmax_pytorch": 0,
+          "finite": true,
+          "max_abs_error": 9.548850357532501e-05,
+          "mean_abs_error": 2.4326898710569367e-05,
+          "worst_coreml": 0.0242156982421875,
+          "worst_index": [
+            0,
+            9
+          ],
+          "worst_pytorch": 0.024311186745762825
+        },
+        "silhouette_no_roi": {
+          "argmax_coreml": 0,
+          "argmax_match": true,
+          "argmax_pytorch": 0,
+          "finite": true,
+          "max_abs_error": 9.059906005859375e-05,
+          "mean_abs_error": 2.573935671534855e-05,
+          "worst_coreml": 0.04229736328125,
+          "worst_index": [
+            0,
+            3
+          ],
+          "worst_pytorch": 0.042387962341308594
+        },
+        "unknown_intent_roi_present": {
+          "argmax_coreml": 0,
+          "argmax_match": true,
+          "argmax_pytorch": 0,
+          "finite": true,
+          "max_abs_error": 7.136911153793335e-05,
+          "mean_abs_error": 1.991072713281028e-05,
+          "worst_coreml": -0.050048828125,
+          "worst_index": [
+            0,
+            13
+          ],
+          "worst_pytorch": -0.04997745901346207
+        }
+      },
+      "max_abs_error": 9.548850357532501e-05,
+      "mean_abs_error": 2.573935671534855e-05
+    },
+    "continuous_target_deltas": {
+      "cases": {
+        "explicit_natural_roi_present": {
+          "coreml_in_declared_range": true,
+          "finite": true,
+          "max_abs_error": 8.34055244922638e-05,
+          "mean_abs_error": 3.350898623466492e-05,
+          "worst_coreml": 0.0440673828125,
+          "worst_index": [
+            0,
+            1
+          ],
+          "worst_pytorch": 0.043983977288007736
+        },
+        "silhouette_no_roi": {
+          "coreml_in_declared_range": true,
+          "finite": true,
+          "max_abs_error": 2.9187649488449097e-05,
+          "mean_abs_error": 1.1411390914872754e-05,
+          "worst_coreml": 0.045867919921875,
+          "worst_index": [
+            0,
+            1
+          ],
+          "worst_pytorch": 0.04583873227238655
+        },
+        "unknown_intent_roi_present": {
+          "coreml_in_declared_range": true,
+          "finite": true,
+          "max_abs_error": 3.33636999130249e-05,
+          "mean_abs_error": 1.657167376833968e-05,
+          "worst_coreml": -0.0714111328125,
+          "worst_index": [
+            0,
+            4
+          ],
+          "worst_pytorch": -0.07144449651241302
+        }
+      },
+      "max_abs_error": 8.34055244922638e-05,
+      "mean_abs_error": 3.350898623466492e-05
+    },
+    "embedding": {
+      "cases": {
+        "explicit_natural_roi_present": {
+          "finite": true,
+          "max_abs_error": 9.254738688468933e-05,
+          "mean_abs_error": 2.097885953844525e-05,
+          "worst_coreml": -0.056243896484375,
+          "worst_index": [
+            0,
+            122
+          ],
+          "worst_pytorch": -0.05633644387125969
+        },
+        "silhouette_no_roi": {
+          "finite": true,
+          "max_abs_error": 9.591411799192429e-05,
+          "mean_abs_error": 2.133745510946028e-05,
+          "worst_coreml": 0.01267242431640625,
+          "worst_index": [
+            0,
+            85
+          ],
+          "worst_pytorch": 0.012576510198414326
+        },
+        "unknown_intent_roi_present": {
+          "finite": true,
+          "max_abs_error": 8.589774370193481e-05,
+          "mean_abs_error": 1.73950847965898e-05,
+          "worst_coreml": 0.0732421875,
+          "worst_index": [
+            0,
+            14
+          ],
+          "worst_pytorch": 0.07332808524370193
+        }
+      },
+      "max_abs_error": 9.591411799192429e-05,
+      "mean_abs_error": 2.133745510946028e-05
+    },
+    "good_frame_probability": {
+      "cases": {
+        "explicit_natural_roi_present": {
+          "coreml_in_declared_range": true,
+          "finite": true,
+          "max_abs_error": 7.349252700805664e-05,
+          "mean_abs_error": 7.349252700805664e-05,
+          "worst_coreml": 0.513671875,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": 0.5137453675270081
+        },
+        "silhouette_no_roi": {
+          "coreml_in_declared_range": true,
+          "finite": true,
+          "max_abs_error": 4.9948692321777344e-05,
+          "mean_abs_error": 4.9948692321777344e-05,
+          "worst_coreml": 0.513671875,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": 0.5137218236923218
+        },
+        "unknown_intent_roi_present": {
+          "coreml_in_declared_range": true,
+          "finite": true,
+          "max_abs_error": 0.00021922588348388672,
+          "mean_abs_error": 0.00021922588348388672,
+          "worst_coreml": 0.51220703125,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": 0.5119878053665161
+        }
+      },
+      "max_abs_error": 0.00021922588348388672,
+      "mean_abs_error": 0.00021922588348388672
+    },
+    "issue_logits": {
+      "cases": {
+        "explicit_natural_roi_present": {
+          "argmax_coreml": 5,
+          "argmax_match": true,
+          "argmax_pytorch": 5,
+          "finite": true,
+          "max_abs_error": 3.110617399215698e-05,
+          "mean_abs_error": 2.0575127564370632e-05,
+          "worst_coreml": -0.07720947265625,
+          "worst_index": [
+            0,
+            3
+          ],
+          "worst_pytorch": -0.07724057883024216
+        },
+        "silhouette_no_roi": {
+          "argmax_coreml": 5,
+          "argmax_match": true,
+          "argmax_pytorch": 5,
+          "finite": true,
+          "max_abs_error": 7.250532507896423e-05,
+          "mean_abs_error": 2.5075278244912624e-05,
+          "worst_coreml": -0.00330352783203125,
+          "worst_index": [
+            0,
+            1
+          ],
+          "worst_pytorch": -0.0032310225069522858
+        },
+        "unknown_intent_roi_present": {
+          "argmax_coreml": 5,
+          "argmax_match": true,
+          "argmax_pytorch": 5,
+          "finite": true,
+          "max_abs_error": 4.825368523597717e-05,
+          "mean_abs_error": 1.687335316091776e-05,
+          "worst_coreml": -0.06219482421875,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": -0.06224307790398598
+        }
+      },
+      "max_abs_error": 7.250532507896423e-05,
+      "mean_abs_error": 2.5075278244912624e-05
+    },
+    "risk_probability": {
+      "cases": {
+        "explicit_natural_roi_present": {
+          "coreml_in_declared_range": true,
+          "finite": true,
+          "max_abs_error": 0.0002518296241760254,
+          "mean_abs_error": 0.0002518296241760254,
+          "worst_coreml": 0.4931640625,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": 0.493415892124176
+        },
+        "silhouette_no_roi": {
+          "coreml_in_declared_range": true,
+          "finite": true,
+          "max_abs_error": 0.000241011381149292,
+          "mean_abs_error": 0.000241011381149292,
+          "worst_coreml": 0.4951171875,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": 0.4953581988811493
+        },
+        "unknown_intent_roi_present": {
+          "coreml_in_declared_range": true,
+          "finite": true,
+          "max_abs_error": 0.00021964311599731445,
+          "mean_abs_error": 0.00021964311599731445,
+          "worst_coreml": 0.49609375,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": 0.4958741068840027
+        }
+      },
+      "max_abs_error": 0.0002518296241760254,
+      "mean_abs_error": 0.0002518296241760254
+    },
+    "scene_class_logits": {
+      "cases": {
+        "explicit_natural_roi_present": {
+          "argmax_coreml": 2,
+          "argmax_match": true,
+          "argmax_pytorch": 2,
+          "finite": true,
+          "max_abs_error": 2.5156885385513306e-05,
+          "mean_abs_error": 1.3447366654872894e-05,
+          "worst_coreml": 0.0171661376953125,
+          "worst_index": [
+            0,
+            5
+          ],
+          "worst_pytorch": 0.017140980809926987
+        },
+        "silhouette_no_roi": {
+          "argmax_coreml": 2,
+          "argmax_match": true,
+          "argmax_pytorch": 2,
+          "finite": true,
+          "max_abs_error": 9.973160922527313e-05,
+          "mean_abs_error": 3.2023293897509575e-05,
+          "worst_coreml": -0.0249481201171875,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": -0.024848388507962227
+        },
+        "unknown_intent_roi_present": {
+          "argmax_coreml": 2,
+          "argmax_match": true,
+          "argmax_pytorch": 2,
+          "finite": true,
+          "max_abs_error": 2.2806227207183838e-05,
+          "mean_abs_error": 1.644343137741089e-05,
+          "worst_coreml": 0.07415771484375,
+          "worst_index": [
+            0,
+            2
+          ],
+          "worst_pytorch": 0.07413490861654282
+        }
+      },
+      "max_abs_error": 9.973160922527313e-05,
+      "mean_abs_error": 3.2023293897509575e-05
+    },
+    "subjectness_roi_agreement_logits": {
+      "cases": {
+        "explicit_natural_roi_present": {
+          "argmax_coreml": 2,
+          "argmax_match": true,
+          "argmax_pytorch": 2,
+          "finite": true,
+          "max_abs_error": 6.490945816040039e-05,
+          "mean_abs_error": 3.566468876670115e-05,
+          "worst_coreml": -0.036376953125,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": -0.0363120436668396
+        },
+        "silhouette_no_roi": {
+          "argmax_coreml": 2,
+          "argmax_match": true,
+          "argmax_pytorch": 2,
+          "finite": true,
+          "max_abs_error": 6.878748536109924e-05,
+          "mean_abs_error": 3.244355320930481e-05,
+          "worst_coreml": 0.02239990234375,
+          "worst_index": [
+            0,
+            2
+          ],
+          "worst_pytorch": 0.0223311148583889
+        },
+        "unknown_intent_roi_present": {
+          "argmax_coreml": 2,
+          "argmax_match": true,
+          "argmax_pytorch": 2,
+          "finite": true,
+          "max_abs_error": 9.319186210632324e-05,
+          "mean_abs_error": 4.3063733755843714e-05,
+          "worst_coreml": -0.03668212890625,
+          "worst_index": [
+            0,
+            0
+          ],
+          "worst_pytorch": -0.03677532076835632
+        }
+      },
+      "max_abs_error": 9.319186210632324e-05,
+      "mean_abs_error": 4.3063733755843714e-05
+    }
+  },
+  "within_fp16_expectation": true
+}

@@ -1,0 +1,109 @@
+{
+  "accepted_tradeoff": "Preserving already-good frames improves sharply (0.518519 -> 0.839506, 39 -> 13 good-frame overcorrections) and three still-replay expectation tests now pass, at the cost of 17 non-good object frames that now return keep_current_setup instead of a corrective move; 9 of them newly land in the label forbidden set. The baseline advice on those frames did not match the labeled action either, so this is a detection gap on bad object frames (lighting/horizon/clutter), not an edge-logic defect. Restoring correction there by re-adding object edge pressure would undo the good-frame fix.",
+  "artifacts": {
+    "baseline_rows": {
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/m4-001-fullruntime-174-drift-r1.jsonl",
+      "sha256": "34074f33f491c89bffd40bca2e39d518bbbfcbafeefabd4953f1a5fd5700df4d"
+    },
+    "calibrated_rows": {
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/m4-001-fullruntime-174-drift-r1-edge-neutral.jsonl",
+      "sha256": "787b4045712d7368fce5a8992cc9924fffeea04293d5fd60b6aef04cab536e94"
+    }
+  },
+  "captured_at": "2026-09-12T22:15:13+03:00",
+  "change": {
+    "after": "edgePressureScore stays 0.50 when primarySubject.kind == .object; the readability gate and every other kind are unchanged.",
+    "before": "edgePressureScore was computed from the primary subject region for every subject kind.",
+    "path": "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift",
+    "sha256": "c0baa4b67e72b3f0f000d8c0fe4beb396f09443daf2c51d7eb04311b1c41024a",
+    "why": "An object primary's region is a DETR detection box, and a box that touches the frame edge is normal for an object subject. In the historical lane object primaries carried no region at all, so this restores the historical input for that kind while keeping the region available to the critique."
+  },
+  "comparison_id": "m4-001-fullruntime-174-drift-r1-edge-neutral-ab",
+  "control_run": {
+    "fixed_by_calibration": [
+      "testStillImageReplayAddsClusterClearanceAndStabilization",
+      "testStillImageReplayDoesNotMapLightObjectKeepFrameToFrontFill",
+      "testStillImageReplayMapsUnderlitReadablePortraitToFrontFill"
+    ],
+    "method": "Explicit A/B: phase B was re-run with only this hunk reverted on the same tree and simulator, reproducing the recorded 138/39 baseline exactly before the hunk was restored.",
+    "newly_failing_with_calibration": [
+      "testStillImageReplaySuppressesFalseKeepForBadTechnicalFrames"
+    ],
+    "phase_a": {
+      "baseline": "18 total / 17 passed / 1 failed",
+      "calibrated": "18 total / 17 passed / 1 failed",
+      "note": "only the deterministic testNeuralEvidenceMovementAndVerificationRemainProductionOwned drift"
+    },
+    "phase_b": {
+      "baseline": "177 / 138 passed / 39 failed",
+      "calibrated": "177 / 140 passed / 37 failed"
+    },
+    "recipe": "scripts/run_camera_certification.sh",
+    "simulator": "iPhone 17e 1F680A42-CEB3-43E8-9CED-52F874962A62 (iOS 26.5)"
+  },
+  "mechanism_invariants": {
+    "changed_rows_where_neither_side_is_object_primary": 0,
+    "good_frames_that_newly_receive_corrective_advice": 0,
+    "good_frames_that_stopped_receiving_corrective_advice": 28,
+    "live_and_pause_rows_with_changed_actions": 73,
+    "non_good_frames_that_newly_keep": 17,
+    "recovered_frames_note": "All recovered good frames had baseline edge_pressure == 1.0.",
+    "separation_check": "subject_area_ratio does not separate recovered good frames from the new false keeps (medians 0.206 vs 0.168, both spanning 0.025..1.0), so no area-conditional refinement was added."
+  },
+  "still_replay_metrics": {
+    "baseline": {
+      "confidence_band_accuracy": 0.66092,
+      "demo_priority_pass_rate": 0.222222,
+      "expected_action_hit_rate": 0.465517,
+      "failure_counts": {
+        "confidence_band_mismatch": 59,
+        "forbidden_action_violation": 20,
+        "good_frame_overcorrection": 39,
+        "missing_expected_action": 93,
+        "missing_future_action": 14,
+        "missing_positive_confirmation": 42,
+        "semantic_overreach_on_technical_failure": 2
+      },
+      "forbidden_action_violation_rate": 0.114943,
+      "future_action_hit_rate": 0.802817,
+      "good_frame_preservation_rate": 0.518519,
+      "pass_rate": 0.37931,
+      "positive_confirmation_rate": 0.481481,
+      "record_count": 174,
+      "technical_failure_gate_rate": 0.9
+    },
+    "calibrated": {
+      "confidence_band_accuracy": 0.718391,
+      "demo_priority_pass_rate": 0.314815,
+      "expected_action_hit_rate": 0.649425,
+      "failure_counts": {
+        "confidence_band_mismatch": 49,
+        "forbidden_action_violation": 27,
+        "good_frame_overcorrection": 13,
+        "missing_expected_action": 61,
+        "missing_future_action": 8,
+        "missing_positive_confirmation": 16,
+        "semantic_overreach_on_technical_failure": 2
+      },
+      "forbidden_action_violation_rate": 0.155172,
+      "future_action_hit_rate": 0.887324,
+      "good_frame_preservation_rate": 0.839506,
+      "pass_rate": 0.505747,
+      "positive_confirmation_rate": 0.802469,
+      "record_count": 174,
+      "technical_failure_gate_rate": 0.9
+    },
+    "delta": {
+      "confidence_band_accuracy": 0.057471,
+      "demo_priority_pass_rate": 0.092593,
+      "expected_action_hit_rate": 0.183908,
+      "forbidden_action_violation_rate": 0.040229,
+      "future_action_hit_rate": 0.084507,
+      "good_frame_preservation_rate": 0.320987,
+      "pass_rate": 0.126437,
+      "positive_confirmation_rate": 0.320988,
+      "record_count": 0,
+      "technical_failure_gate_rate": 0.0
+    }
+  }
+}

@@ -73,13 +73,17 @@ final class SemanticDirectionBehaviorTests: XCTestCase {
 
     func testSubjectTargetPointAimsAtFrameEdgeMidpoint() {
         let subject = NormalizedRect(x: 0.4, y: 0.4, width: 0.2, height: 0.2)
-        XCTAssertEqual(SemanticDirection.left.subjectTargetPoint(from: subject).x, 0, accuracy: 1e-12)
-        XCTAssertEqual(SemanticDirection.left.subjectTargetPoint(from: subject).y, 0.5, accuracy: 1e-12)
-        XCTAssertEqual(SemanticDirection.right.subjectTargetPoint(from: subject).x, 1, accuracy: 1e-12)
-        XCTAssertEqual(SemanticDirection.up.subjectTargetPoint(from: subject).y, 0, accuracy: 1e-12)
-        XCTAssertEqual(SemanticDirection.down.subjectTargetPoint(from: subject).y, 1, accuracy: 1e-12)
+        let left = SemanticDirection.left.subjectTargetPoint(from: subject, sourceSpace: .subjectTarget)!
+        let right = SemanticDirection.right.subjectTargetPoint(from: subject, sourceSpace: .subjectTarget)!
+        let up = SemanticDirection.up.subjectTargetPoint(from: subject, sourceSpace: .subjectTarget)!
+        let down = SemanticDirection.down.subjectTargetPoint(from: subject, sourceSpace: .subjectTarget)!
+        XCTAssertEqual(left.x, 0, accuracy: 1e-12)
+        XCTAssertEqual(left.y, 0.5, accuracy: 1e-12)
+        XCTAssertEqual(right.x, 1, accuracy: 1e-12)
+        XCTAssertEqual(up.y, 0, accuracy: 1e-12)
+        XCTAssertEqual(down.y, 1, accuracy: 1e-12)
 
-        let center = SemanticDirection.none.subjectTargetPoint(from: subject)
+        let center = SemanticDirection.none.subjectTargetPoint(from: subject, sourceSpace: .subjectTarget)!
         XCTAssertEqual(center.x, 0.5, accuracy: 1e-12)
         XCTAssertEqual(center.y, 0.5, accuracy: 1e-12)
     }
@@ -141,9 +145,16 @@ final class SemanticDirectionBehaviorTests: XCTestCase {
         return (a * vector.0 + b * vector.1, c * vector.0 + d * vector.1)
     }
 
-    // MARK: - Copy migration gate (no duplicate camera direction semantics)
+    // MARK: - Copy migration gate (one operator addressee, no ambiguous frame words)
 
-    func testShiftActionCopySpeaksInSubjectDisplacementSemantics() throws {
+    /// C07: the camera-framed directions must address the operator's camera
+    /// movement in both languages. They may not slide back to the ambiguous
+    /// "move the subject" phrasing that lost the addressee, and the vertical
+    /// pair must stay distinguishable from physically lifting/lowering the
+    /// phone. The marker/arrow keeps using the optically inverted subject
+    /// displacement from `subjectDisplacementDirection`; text and marker are
+    /// therefore two renderings of the same accepted action, not two sources.
+    func testShiftActionCopyAddressesOperatorCameraMovementInBothLanguages() throws {
         let catalogURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -166,12 +177,29 @@ final class SemanticDirectionBehaviorTests: XCTestCase {
                 let lower = value.lowercased()
                 XCTAssertFalse(lower.contains("кадр"), "\(key) [\(lang)]: \(value)")
                 XCTAssertFalse(lower.contains("frame"), "\(key) [\(lang)]: \(value)")
-                // The migrated copy names the subject.
+                // The addressee is the operator moving their own camera.
                 XCTAssertTrue(
-                    lower.contains("геро") || lower.contains("subject"),
-                    "\(key) [\(lang)] must speak in subject terms: \(value)"
+                    lower.contains("камер") || lower.contains("camera"),
+                    "\(key) [\(lang)] must address the operator's camera: \(value)"
+                )
+                // The old subject-addressed imperative must not come back.
+                XCTAssertFalse(
+                    lower.contains("героя вправо") || lower.contains("героя влево")
+                        || lower.contains("героя ниже") || lower.contains("героя выше"),
+                    "\(key) [\(lang)] regained the lost subject addressee: \(value)"
                 )
             }
+        }
+
+        // "Aim higher" is not "lift the phone": the vertical pair says both the
+        // movement and the constraint that keeps the height unchanged.
+        for key in ["set.trace.action.shift_up", "set.trace.action.shift_down"] {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any])
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any])
+            let ru = ((localizations["ru"] as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String ?? ""
+            let en = ((localizations["en"] as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String ?? ""
+            XCTAssertTrue(ru.contains("телефон"), "\(key) ru must name the phone: \(ru)")
+            XCTAssertTrue(en.contains("phone"), "\(key) en must name the phone: \(en)")
         }
     }
 }

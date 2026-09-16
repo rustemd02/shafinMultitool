@@ -3,6 +3,10 @@
 Status: canonical source-of-truth for the next Camera Analysis stage.
 Date: 2026-05-21.
 
+Продолжение 2026-09-11: по поручению пользователя подготовлен [Camera Coach Domain v3 draft](03-domain-contracts.md#camera-coach-domain-v3--проект-контракта-для-фото-и-видео) — типизированная спецификация расширения для фото/видео с entity/action/verifier и VLM s2 delta. Она не является новым checkpoint или production deployment и сохраняет отдельную authority master plan 1.0.
+
+Authority update (2026-09-11): для текущего App Store 1.0 приоритет имеет [master plan v2](../aegis/work/2026-09-03-gpt-5-6-pro-guidance/SET_OS_APP_STORE_1_0_CODEX_MASTER_PLAN_v2.md). Запрос пользователя на следующий этап — предметный коучинг для фото и видео — зафиксирован в [разделе 23 требований](camera-analysis-requirements-draft.md#23-camera-coach-для-фото-и-видео-каталог-сценариев-следующего-контракта). Этот новый каталог имеет статус предложения; он не утверждает новый runtime-контракт, cloud egress или готовность модели.
+
 Этот документ фиксирует целевую систему после уточнения требований. Если старые документы расходятся с ним по продуктовой цели, UX, роли моделей или демонстрационным сценариям, этот документ имеет приоритет. Детальные контракты и PR-дизайны остаются в документах `03-29`.
 
 ## 1. Core Thesis

@@ -27,6 +27,9 @@ for key, entry in strings.items():
         if re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', value):
             failures.append(f"{key}: control character")
 print(f"LOCALIZATION: {len(strings)} keys checked")
+if not strings:
+    print("LOCALIZATION FAIL: the string table has 0 keys — nothing was validated")
+    sys.exit(1)
 if failures:
     print(f"FAIL: {len(failures)}")
     for f in failures[:10]: print('  ', f)

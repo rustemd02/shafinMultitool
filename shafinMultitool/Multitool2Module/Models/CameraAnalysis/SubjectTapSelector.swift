@@ -95,3 +95,42 @@ enum SubjectTapSelector {
         return .focusRequested(sceneX: scene.x, sceneY: scene.y)
     }
 }
+
+// CC-O02: tap-grounding for tracked object instances. When two foreground
+// instances overlap, an object-targeted correction is ambiguous until the
+// operator names the target; a tap is that naming gesture. Pure and
+// deterministic — the same hit/slop/nearest-center contract as the subject
+// selection above.
+extension SubjectTapSelector {
+    struct TrackedInstanceHit: Equatable, Sendable {
+        let trackID: String
+        let region: NormalizedRect
+    }
+
+    static func hitTestTrackedInstances(
+        sceneX: Double,
+        sceneY: Double,
+        instances: [(trackID: String, region: NormalizedRect)],
+        touchSlop: Double = SubjectTapSelector.touchSlop
+    ) -> TrackedInstanceHit? {
+        var best: (trackID: String, region: NormalizedRect, distance: Double)?
+        for instance in instances {
+            let region = instance.region
+            let insideInflated = sceneX >= region.x - touchSlop
+                && sceneX <= region.x + region.width + touchSlop
+                && sceneY >= region.y - touchSlop
+                && sceneY <= region.y + region.height + touchSlop
+            guard insideInflated else { continue }
+            let centerX = region.x + region.width / 2
+            let centerY = region.y + region.height / 2
+            let dx = sceneX - centerX
+            let dy = sceneY - centerY
+            let distance = (dx * dx + dy * dy).squareRoot()
+            if best == nil || distance < best!.distance {
+                best = (instance.trackID, region, distance)
+            }
+        }
+        guard let hit = best else { return nil }
+        return TrackedInstanceHit(trackID: hit.trackID, region: hit.region)
+    }
+}

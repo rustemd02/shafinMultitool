@@ -1,0 +1,140 @@
+{
+  "answer": "No. Both were evaluated against the committed lane before any production code was written, and both are rejected by measurement.",
+  "captured_at": "2026-09-12T23:10:19+03:00",
+  "conclusion": "Neither proposed signal addresses the blocker. The background class is limited by the isolation suppressor's own consistency rule and by labels that the measured clutter does not support; the framing class is limited by label expectations that the measured geometry contradicts. Building the two signals would add production surface with a measured false-positive rate near 50% and no ownership of a single test expectation.",
+  "proposed_signal_A_region_saliency_distractor": {
+    "already_available": "backgroundClutterScore (0.65 * objectDensity + 0.35 * saliencySpread), object_count from DETR connected components, and per-candidate regions are all already computed.",
+    "blocker": "On 10 of these 18 records the suppressor hasStrongSubjectIsolationEvidence zeroes the background issue: its score (0.60 * separation + 0.40 * (1 - clutter)) and confidence stay above their thresholds (0.55 / 0.35) on frames whose labels expect a background correction. The signal is therefore not the missing piece.",
+    "confidence_parity_pretest": {
+      "hypothesis": "Restoring the historical weighted primary-subject confidence would lower separation enough to un-suppress the issue.",
+      "record_ids": [
+        "ca_img_221"
+      ],
+      "records_that_would_be_unlocked": 1,
+      "suppressor_fires_now": 10,
+      "verdict": "rejected: it would unlock 1 of the 10 suppressed records, not the class"
+    },
+    "records_it_should_reach": 18,
+    "variant_yield_and_risk": [
+      {
+        "also_fires_on_good_records": 41,
+        "good_records_total": 81,
+        "reaches_background_misses": 8,
+        "variant": "companion object present (object_count >= 2)"
+      },
+      {
+        "also_fires_on_good_records": 30,
+        "good_records_total": 81,
+        "reaches_background_misses": 4,
+        "variant": "high measured clutter (clutter >= 0.32)"
+      }
+    ],
+    "verdict": "not viable as specified: the best variant reaches 8 of 18 misses while firing on 41 of 81 good records (50.6% false-positive surface)."
+  },
+  "proposed_signal_B_subject_size": {
+    "already_available": "issueSubjectNotProminentEnough already computes areaPenalty = clamp01((0.10 - subjectAreaRatio) / 0.10), and it is the issue that unlocks the step_closer tips.",
+    "label_consistency_check": {
+      "lane_median_subject_area": 0.0635,
+      "reading": "Corrected after reviewing what the labels actually say. step_back is paired in the labels with occlusion, edge cutoff and tight framing (9 of its 11 records carry future_needed_actions ['avoid_occlusion']), not with a too-large subject, so the earlier reading of step_back as 'subject too big' was wrong. The numbers stand: step_back records have median subject area 0.021 and step_closer records 0.053 against a lane median of 0.064, and for step_closer only three records (096, 220, 228) have geometry consistent with a small or absent subject while ca_img_236 reports a full-frame subject (1.000) next to the problem text 'object occupies too little of the frame'.",
+      "step_back_median_subject_area": 0.0214,
+      "step_closer_median_subject_area": 0.053
+    },
+    "mechanism": "Where the subject is undetected (area 0, kind unknown) the frame is classified as establishing-like and the issue is zeroed by hasWeakEstablishingObjectAnchor; where a subject is detected the measured area is at or above the 0.10 window for two records and the remaining promise deficit is too small to become an issue.",
+    "per_record": [
+      {
+        "issues": [],
+        "primary_subject_kind": "object",
+        "record_id": "ca_img_080",
+        "scene_type": "object_insert",
+        "separation_score": 0.8429,
+        "subject_area_ratio": 0.1173,
+        "subject_prominence_area_penalty": 0
+      },
+      {
+        "issues": [
+          "scene_has_no_clear_focus",
+          "background_competes_with_subject"
+        ],
+        "primary_subject_kind": "unknown",
+        "record_id": "ca_img_085",
+        "scene_type": "establishing_like_frame",
+        "separation_score": 0.4742,
+        "subject_area_ratio": 0,
+        "subject_prominence_area_penalty": 1
+      },
+      {
+        "issues": [],
+        "primary_subject_kind": "unknown",
+        "record_id": "ca_img_093",
+        "scene_type": "establishing_like_frame",
+        "separation_score": 0.5485,
+        "subject_area_ratio": 0,
+        "subject_prominence_area_penalty": 1
+      },
+      {
+        "issues": [],
+        "primary_subject_kind": "unknown",
+        "record_id": "ca_img_096",
+        "scene_type": "establishing_like_frame",
+        "separation_score": 0.55,
+        "subject_area_ratio": 0,
+        "subject_prominence_area_penalty": 1
+      },
+      {
+        "issues": [
+          "scene_has_no_clear_focus",
+          "background_competes_with_subject"
+        ],
+        "primary_subject_kind": "unknown",
+        "record_id": "ca_img_208",
+        "scene_type": "establishing_like_frame",
+        "separation_score": 0.3873,
+        "subject_area_ratio": 0.0185,
+        "subject_prominence_area_penalty": 0.8148
+      },
+      {
+        "issues": [],
+        "primary_subject_kind": "object",
+        "record_id": "ca_img_212",
+        "scene_type": "object_insert",
+        "separation_score": 0.9011,
+        "subject_area_ratio": 0.1197,
+        "subject_prominence_area_penalty": 0
+      },
+      {
+        "issues": [],
+        "primary_subject_kind": "object",
+        "record_id": "ca_img_220",
+        "scene_type": "object_insert",
+        "separation_score": 0.8704,
+        "subject_area_ratio": 0.0719,
+        "subject_prominence_area_penalty": 0.2809
+      },
+      {
+        "issues": [],
+        "primary_subject_kind": "object",
+        "record_id": "ca_img_228",
+        "scene_type": "object_insert",
+        "separation_score": 0.7891,
+        "subject_area_ratio": 0.053,
+        "subject_prominence_area_penalty": 0.4695
+      },
+      {
+        "issues": [
+          "subject_too_close_to_edge"
+        ],
+        "primary_subject_kind": "unknown",
+        "record_id": "ca_img_236",
+        "scene_type": "unknown",
+        "separation_score": 0.9621,
+        "subject_area_ratio": 1,
+        "subject_prominence_area_penalty": 0
+      }
+    ],
+    "step_closer_records": 9,
+    "verdict": "Not viable as a size signal, and reclassified: part of the class is a routing/vocabulary difference (the pipeline encodes occlusion as the future action avoid_occlusion, which six of the eleven step_back records already carry, while the labels expect a semantic step_back), and part rests on labels that the measured geometry does not support. Neither half is addressed by building a size signal."
+  },
+  "question": "Do the two proposed detection signals \u2014 a region/saliency distractor signal and a subject-size signal \u2014 unblock the remaining expectation classes, and should they be built?",
+  "recommended_next_step": "Re-scope this class as a data/labels question plus a product decision, not a detector build: (1) review the framing-label expectations against measured geometry (the labels appear to describe intended remediation rather than observed geometry); (2) decide, with a held-out split, whether the subject-isolation suppressor should keep zeroing background competition when measured clutter is high; (3) if a new detector is still wanted later, it must be specified against records where no current signal exists at all (clutter <= 0.28 and object_count <= 1, 13 records).",
+  "report_id": "drift-174-signal-viability"
+}

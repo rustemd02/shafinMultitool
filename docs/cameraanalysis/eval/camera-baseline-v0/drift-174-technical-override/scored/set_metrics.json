@@ -1,0 +1,25 @@
+{
+  "candidate_id": "m4-001-fullruntime-174-drift-r1-technical-override",
+  "runtime_claim": "real_runtime_still_replay",
+  "set_metrics": {
+    "confidence_band_accuracy": 0.724138,
+    "demo_priority_pass_rate": 0.333333,
+    "expected_action_hit_rate": 0.689655,
+    "failure_counts": {
+      "confidence_band_mismatch": 48,
+      "forbidden_action_violation": 24,
+      "good_frame_overcorrection": 13,
+      "missing_expected_action": 54,
+      "missing_future_action": 8,
+      "missing_positive_confirmation": 16,
+      "semantic_overreach_on_technical_failure": 2
+    },
+    "forbidden_action_violation_rate": 0.137931,
+    "future_action_hit_rate": 0.887324,
+    "good_frame_preservation_rate": 0.839506,
+    "pass_rate": 0.534483,
+    "positive_confirmation_rate": 0.802469,
+    "record_count": 174,
+    "technical_failure_gate_rate": 0.9
+  }
+}

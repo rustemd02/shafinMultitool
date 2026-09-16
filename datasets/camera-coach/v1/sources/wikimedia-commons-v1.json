@@ -1,0 +1,117 @@
+{
+  "schema_id": "camera-commons-source-spec-v1",
+  "spec_version": "1.0.0",
+  "source_id": "wikimedia_commons_api",
+  "source_kind": "public_domain_or_open_cinematic_reference",
+  "purpose": [
+    "rights-first research-only visual diversity",
+    "historical and scene-composition reference"
+  ],
+  "contact_default": "https://github.com/rustemd02/shafinMultitool",
+  "api": {
+    "endpoint": "https://commons.wikimedia.org/w/api.php",
+    "host": "commons.wikimedia.org",
+    "media_hosts": ["upload.wikimedia.org"],
+    "namespace": 6,
+    "maxlag": 5,
+    "batch_size": 50,
+    "request_interval_seconds": 1.0,
+    "user_agent": "SET-OS-Camera-Coach-Commons/1.0"
+  },
+  "categories": [
+    {
+      "id": "people",
+      "title": "Category:Portraits",
+      "quota_fraction": 0.25,
+      "candidate_multiplier": 8
+    },
+    {
+      "id": "landscape",
+      "title": "Category:Landscape photography",
+      "quota_fraction": 0.20,
+      "candidate_multiplier": 8
+    },
+    {
+      "id": "architecture_streets",
+      "title": "Category:Architecture",
+      "quota_fraction": 0.20,
+      "candidate_multiplier": 8
+    },
+    {
+      "id": "interiors",
+      "title": "Category:Interiors",
+      "quota_fraction": 0.15,
+      "candidate_multiplier": 8
+    },
+    {
+      "id": "objects_details",
+      "title": "Category:Quality images of objects",
+      "quota_fraction": 0.15,
+      "candidate_multiplier": 8
+    },
+    {
+      "id": "historical_cinematic",
+      "title": "Category:Black and white photographs",
+      "quota_fraction": 0.05,
+      "candidate_multiplier": 8
+    }
+  ],
+  "rights_policy": {
+    "accepted_tuples": [
+      {
+        "license": "cc0",
+        "license_short_name": "CC0 1.0",
+        "license_url": "https://creativecommons.org/publicdomain/zero/1.0",
+        "attribution_required": false,
+        "clearance_candidate": false
+      },
+      {
+        "license": "cc-by-4.0",
+        "license_short_name": "CC BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0",
+        "attribution_required": true,
+        "artist_required": true,
+        "clearance_candidate": false
+      },
+      {
+        "license": "pd",
+        "license_short_name": "Public domain",
+        "copyrighted": false,
+        "attribution_required": false,
+        "restrictions": "",
+        "clearance_candidate": true
+      }
+    ],
+    "rejected_examples": [
+      "CC BY-SA 4.0",
+      "GFDL",
+      "old CC licenses",
+      "multiple or unknown licenses",
+      "missing license metadata"
+    ]
+  },
+  "download": {
+    "thumbnail_width": 1600,
+    "max_pixels": 16000000,
+    "max_bytes": 8000000,
+    "allowed_mime": ["image/jpeg", "image/png", "image/webp"]
+  },
+  "output": {
+    "raw_manifest": "raw-manifest.jsonl",
+    "candidates": "candidates.jsonl",
+    "accepted_rights_receipt": "accepted-rights-receipt.jsonl",
+    "quarantined": "quarantined.jsonl",
+    "inventory": "inventory.jsonl",
+    "receipt": "receipts/commons-source-receipt.json",
+    "image_directory": "images"
+  },
+  "boundary": {
+    "intake_tier": "research_only",
+    "research_only": true,
+    "human_gold": false,
+    "release_admissible": false,
+    "raw_media": "external_only",
+    "category_membership_is_not_a_license": true,
+    "human_gold_or_release_clearance": "not_claimed"
+  }
+}

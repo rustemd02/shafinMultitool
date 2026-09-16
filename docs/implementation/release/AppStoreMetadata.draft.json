@@ -1,0 +1,96 @@
+{
+  "claim_scope": "Draft store copy bounded by measured behaviour, with owner-gated fields marked explicitly. Nothing was submitted and no App Store Connect access was used.",
+  "decision_rules": [
+    "The product plan forbids choosing name, price, quota and StoreKit product type before beta evidence.",
+    "Store wording must match scenarios the build actually passes; the measured still-replay state does not yet meet the master gates, so no quality promise is made here."
+  ],
+  "locales": {
+    "en": {
+      "description": {
+        "status": "draft_bounded_by_evidence",
+        "value": "The app helps you take a frame that reads.\n\n• Camera mode points out what is hurting the frame right now and suggests one actionable step.\n• Frame review explains why an advice was chosen, and stays silent when it is not confident.\n• Scene mode builds staged scenes from your description and keeps the material locally.\n\nFrames are processed on device. There is no account. Uploading to a server is disabled in this configuration, except that spoken scene input is processed by Apple's Speech service."
+      },
+      "keywords": {
+        "status": "draft",
+        "value": "framing,composition,light,focus,camera,video,storyboard,scene"
+      },
+      "name": {
+        "status": "owner_decision",
+        "value": "Shafin Multitool"
+      },
+      "promotional_text": {
+        "status": "draft",
+        "value": "Tells you what is hurting the frame and turns it into one action."
+      },
+      "screenshots": {
+        "note": "captured after the flows are final; the build does not yet meet the quality master gates, so no screenshots were produced",
+        "status": "owner_required",
+        "value": null
+      },
+      "subtitle": {
+        "status": "owner_decision",
+        "value": "frame and scene coach"
+      }
+    },
+    "ru": {
+      "description": {
+        "status": "draft_bounded_by_evidence",
+        "value": "Приложение помогает снять читаемый кадр.\n\n• Режим камеры подсказывает, что мешает кадру сейчас, и предлагает одно выполнимое действие.\n• Разбор кадра объясняет, почему совет выбран, и не выдаёт совет, если уверенности нет.\n• Режим сцен собирает постановочные сцены из вашего описания и сохраняет материалы локально.\n\nОбработка кадров идёт на устройстве. Учётной записи нет. Отправка данных на сервер в этой конфигурации выключена, кроме голосового ввода сцены — его обрабатывает сервис Apple Speech."
+      },
+      "keywords": {
+        "status": "draft",
+        "value": "кадр,композиция,свет,фокус,камера,видеосъёмка,раскадровка,сцена"
+      },
+      "name": {
+        "status": "owner_decision",
+        "value": "Shafin Multitool"
+      },
+      "promotional_text": {
+        "status": "draft",
+        "value": "Подсказывает, что мешает кадру, и переводит это в одно действие."
+      },
+      "screenshots": {
+        "note": "снимаются после финализации потоков; сейчас продукт не проходит мастер-гейты качества, поэтому скриншоты не подготовлены",
+        "status": "owner_required",
+        "value": null
+      },
+      "subtitle": {
+        "status": "owner_decision",
+        "value": "коуч по кадру и сцене"
+      }
+    }
+  },
+  "owner_decision_2026_09_12": {
+    "app_store_connect_record": "not now",
+    "distribution_certificate_and_profile": "later",
+    "metadata_screenshots_urls": "deferred",
+    "submission_go": "explicit GO required; nothing submits without it"
+  },
+  "report_id": "appstore-metadata-draft-2026-09-12",
+  "shared": {
+    "age_rating_answers": {
+      "alcohol_tobacco_drugs": "none",
+      "cartoon_or_fantasy_violence": "none",
+      "contests": "none",
+      "gambling": "none",
+      "horror": "none",
+      "location_sharing": false,
+      "mature_suggestive": "none",
+      "note": "the app shows the user's own camera and their own imported scene text only; nothing is published or shared by the app",
+      "profanity": "none",
+      "realistic_violence": "none",
+      "sexual_content": "none",
+      "unrestricted_web_access": false,
+      "user_generated_content_shared": false
+    },
+    "bundle_id": "com.vigvamcev-media.shafinMultitool",
+    "in_app_purchases": false,
+    "marketing_url": null,
+    "primary_category": "Photo & Video",
+    "privacy_policy_url": null,
+    "secondary_category": "Productivity",
+    "support_url": null
+  },
+  "status": "draft; deferred by owner decision 2026-09-12 until beta evidence or explicit release decision",
+  "utc": "2026-09-12T20:56:24+00:00"
+}

@@ -1,0 +1,275 @@
+{
+  "artifacts": [
+    {
+      "bytes": 484562,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/m4-001-fullruntime-174-drift-r1.jsonl",
+      "sha256": "34074f33f491c89bffd40bca2e39d518bbbfcbafeefabd4953f1a5fd5700df4d"
+    },
+    {
+      "bytes": 544579,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/scored/candidate_outputs.jsonl",
+      "sha256": "6ba189b620e3c7bdc729fe32e168e943ea82dc2315bd89b5555249f27d2ecca9"
+    },
+    {
+      "bytes": 160505,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/scored/case_results.jsonl",
+      "sha256": "0de64b70754871d97c668543942ac3c3544e3c8c6efb056b4a24bd88b8dd01f5"
+    },
+    {
+      "bytes": 835,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/scored/set_metrics.json",
+      "sha256": "ccdac56c345fff0b4ab91679a85207e36905ffb976949311cb7b49b9af0f6e99"
+    },
+    {
+      "bytes": 67960,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/scored/bucket_metrics.json",
+      "sha256": "4ceae1a5d21e2fbc167b9eb165a5f9ea116c42b95f600f01cba12907f112fd20"
+    },
+    {
+      "bytes": 2813,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/scored/semantic_eval_summary.md",
+      "sha256": "43f347d2bad46d6b08e99b364b80254f76b9d9bbf421fe02a96c22d5f78ac7ec"
+    },
+    {
+      "bytes": 130366,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/label-drift-report.json",
+      "sha256": "74b728494ea7726a8b947485e231e317d2c0ce6b0453d73d6d610bfc4a2e6cda"
+    },
+    {
+      "bytes": 18845,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/label-drift-report.md",
+      "sha256": "2fa9b88c5c6064d9046ab5f0e15ce559b844cfddf0a54a2bfe8454b70ede6111"
+    },
+    {
+      "bytes": 81556,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/drift-rows.jsonl",
+      "sha256": "0a18b7f6b74e62726682df3e006ad6223fda388a8263461d50131ac75cf2975b"
+    }
+  ],
+  "captured_at": "2026-09-12T21:52:33+03:00",
+  "claim_scope": "Research-only, simulator, AI-first-pass labels. No human gold, no release admissibility, no calibrated model quality. The 35 unverified label/image sha256 bindings are reported explicitly and metrics restricted to the 139 byte-verified records are reported alongside the full set.",
+  "datasets": {
+    "pack_174": {
+      "human_gold": false,
+      "image_records_missing": 0,
+      "image_records_present": 174,
+      "images_root": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images",
+      "label_image_sha256_unverified": 35,
+      "label_image_sha256_verified": 139,
+      "label_records": 174,
+      "labels_path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/camera_full_labels.jsonl",
+      "labels_sha256": "c1dba72a21551b70cc8edc4bbe9f3484c95776b24b84e8fe5d659f3a4cb0eefc",
+      "quality_label_counts": {
+        "bad": 79,
+        "good": 81,
+        "mixed": 14
+      },
+      "review_status": "ai_first_pass_needs_human_review",
+      "superset_note": "The shared 107 records carry byte-identical label content (quality_label, expected_semantic_actions, forbidden_actions, confidence_target, future_needed_actions, eval_tags, demo_priority, sha256) to docs/cameraanalysis/dataset/inbox/semantic_labels_v1.jsonl, so this lane extends the M4-001 107-record lane instead of redefining it.",
+      "superset_of_107_lane": true
+    }
+  },
+  "historical_comparison": {
+    "prior_forensics": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/still-replay-label-drift-dump-20260912.txt reported drift=128/174 forbiddenHits=26.",
+    "reconciliation": "This lane reports strict_drift=124/174 and forbidden hits=20. The definitions are not identical: the canonical evaluator merges the live and pause rows of one record into a single action set, while the earlier temporary test compared one exported row per record. The canonical number is the one to quote going forward."
+  },
+  "historical_crosscheck": {
+    "aesthetic_score_identical_records": 171,
+    "changed_action_set_on_good_records": 42,
+    "historical_artifact": "docs/cameraanalysis/eval/out_semantic_real_runtime_v2_regen_bad_v1/candidate_outputs_raw.jsonl",
+    "historical_artifact_sha256": "1608540b6785ad98eaf22a39e1c29294e9dc9c386c26d1d0220d2498e2d4ee43",
+    "historical_metrics": {
+      "confidence_band_accuracy": 0.925287,
+      "expected_action_hit_rate": 0.908046,
+      "forbidden_action_violation_rate": 0.028736,
+      "good_frame_preservation_rate": 0.987654,
+      "pass_rate": 0.850575
+    },
+    "keep_current_setup_to_corrective": 43,
+    "label_content_identical": true,
+    "label_content_note": "All compared fields (quality_label, expected/forbidden/future actions, confidence_target, eval_tags, demo_priority, sha256, filename) match the regen_bad_v1 bundle exactly.",
+    "pause_rows_with_changed_action_set": 109,
+    "pause_rows_with_changed_confidence": 87,
+    "pause_rows_with_changed_object_count": 66,
+    "verdict": "The current working tree produces materially different still-replay advice on identical labels and byte-equivalent pixels; the historical EV-CA-EVAL-009 numbers are artifact-bound, not current-source evidence (CL-CA-011 conflicts_with_current_code, CL-CA-012, EV-CA-EVAL-010)."
+  },
+  "lane_id": "camera-label-drift-174",
+  "master_gate_position": {
+    "expected_action_hit_rate": {
+      "gate": 0.9,
+      "meets": false,
+      "observed": 0.465517
+    },
+    "forbidden_action_violation_rate": {
+      "gate": 0.02,
+      "meets": false,
+      "observed": 0.114943
+    },
+    "good_frame_preservation_rate": {
+      "gate": 0.95,
+      "meets": false,
+      "observed": 0.518519
+    },
+    "note": "Descriptive comparison against the master-plan gates for this research lane only; this is a still-image simulator replay of an uncommitted critic, not a release measurement."
+  },
+  "metrics": {
+    "byte_verified_139": {
+      "drift": {
+        "by_disposition": {
+          "correct": 74,
+          "keep": 34,
+          "silence": 31
+        },
+        "by_quality_label": {
+          "bad": 79,
+          "good": 46,
+          "mixed": 14
+        },
+        "expected_miss_count": 72,
+        "false_keep_on_non_good_count": 9,
+        "false_keep_on_non_good_rate": 0.064748,
+        "forbidden_hit_count": 13,
+        "good_frame_overcorrection_count": 19,
+        "good_overcorrection_rate": 0.136691,
+        "record_count": 139,
+        "silence_on_non_good_count": 29,
+        "silence_on_non_good_rate": 0.208633,
+        "strict_drift_count": 103,
+        "strict_drift_rate": 0.741007
+      },
+      "set_metrics": {
+        "confidence_band_accuracy": 0.690647,
+        "demo_priority_pass_rate": 0.217391,
+        "expected_action_hit_rate": 0.482014,
+        "failure_counts": {
+          "confidence_band_mismatch": 43,
+          "forbidden_action_violation": 13,
+          "good_frame_overcorrection": 19,
+          "missing_expected_action": 72,
+          "missing_future_action": 14,
+          "missing_positive_confirmation": 21,
+          "semantic_overreach_on_technical_failure": 2
+        },
+        "forbidden_action_violation_rate": 0.093525,
+        "future_action_hit_rate": 0.802817,
+        "good_frame_preservation_rate": 0.586957,
+        "pass_rate": 0.388489,
+        "positive_confirmation_rate": 0.543478,
+        "record_count": 139,
+        "technical_failure_gate_rate": 0.9
+      }
+    },
+    "full_174": {
+      "drift": {
+        "by_disposition": {
+          "correct": 94,
+          "keep": 48,
+          "silence": 32
+        },
+        "by_quality_label": {
+          "bad": 79,
+          "good": 81,
+          "mixed": 14
+        },
+        "expected_miss_count": 93,
+        "false_keep_on_non_good_count": 9,
+        "false_keep_on_non_good_rate": 0.051724,
+        "forbidden_hit_count": 20,
+        "good_frame_overcorrection_count": 39,
+        "good_overcorrection_rate": 0.224138,
+        "record_count": 174,
+        "silence_on_non_good_count": 29,
+        "silence_on_non_good_rate": 0.166667,
+        "strict_drift_count": 124,
+        "strict_drift_rate": 0.712644
+      },
+      "quality_label_buckets": {
+        "bad": {
+          "confidence_band_accuracy": 0.746835,
+          "expected_action_hit_rate": 0.455696,
+          "failure_counts": {
+            "confidence_band_mismatch": 20,
+            "forbidden_action_violation": 10,
+            "missing_expected_action": 43,
+            "missing_future_action": 13,
+            "semantic_overreach_on_technical_failure": 2
+          },
+          "forbidden_action_violation_rate": 0.126582,
+          "good_frame_preservation_rate": null,
+          "pass_rate": 0.35443,
+          "positive_confirmation_rate": null,
+          "record_count": 79,
+          "technical_failure_gate_rate": 0.894737
+        },
+        "good": {
+          "confidence_band_accuracy": 0.617284,
+          "expected_action_hit_rate": 0.481481,
+          "failure_counts": {
+            "confidence_band_mismatch": 31,
+            "forbidden_action_violation": 10,
+            "good_frame_overcorrection": 39,
+            "missing_expected_action": 42,
+            "missing_positive_confirmation": 42
+          },
+          "forbidden_action_violation_rate": 0.123457,
+          "good_frame_preservation_rate": 0.518519,
+          "pass_rate": 0.419753,
+          "positive_confirmation_rate": 0.481481,
+          "record_count": 81,
+          "technical_failure_gate_rate": null
+        },
+        "mixed": {
+          "confidence_band_accuracy": 0.428571,
+          "expected_action_hit_rate": 0.428571,
+          "failure_counts": {
+            "confidence_band_mismatch": 8,
+            "missing_expected_action": 8,
+            "missing_future_action": 1
+          },
+          "forbidden_action_violation_rate": 0.0,
+          "good_frame_preservation_rate": null,
+          "pass_rate": 0.285714,
+          "positive_confirmation_rate": null,
+          "record_count": 14,
+          "technical_failure_gate_rate": 1.0
+        }
+      },
+      "set_metrics": {
+        "confidence_band_accuracy": 0.66092,
+        "demo_priority_pass_rate": 0.222222,
+        "expected_action_hit_rate": 0.465517,
+        "failure_counts": {
+          "confidence_band_mismatch": 59,
+          "forbidden_action_violation": 20,
+          "good_frame_overcorrection": 39,
+          "missing_expected_action": 93,
+          "missing_future_action": 14,
+          "missing_positive_confirmation": 42,
+          "semantic_overreach_on_technical_failure": 2
+        },
+        "forbidden_action_violation_rate": 0.114943,
+        "future_action_hit_rate": 0.802817,
+        "good_frame_preservation_rate": 0.518519,
+        "pass_rate": 0.37931,
+        "positive_confirmation_rate": 0.481481,
+        "record_count": 174,
+        "technical_failure_gate_rate": 0.9
+      }
+    }
+  },
+  "purpose": "Extend the canonical semantic label evaluation from the 107-record M4-001 lane to the bundled 174-record benchmark label set, and add an explicit drift view (dispositions and flag rates) that the earlier temporary forensics test did not persist.",
+  "regression_localization": {
+    "evidence_dump": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/critic-regression-localization-20260912.txt",
+    "flip_count": 43,
+    "mean_edge_pressure_delta": 0.4315,
+    "mean_object_count_delta": 0.6279,
+    "reading": "The keep->corrective flips concentrate in the subject-readability / edge-pressure / subject-selection path: 39 of 43 flipped records change debug_semantic_labels.subject_readable from true to false, 35 of 43 emit subject_too_close_to_edge, edge_pressure rises by ~0.43 on average while aesthetic_score stays identical (pixel path unchanged). object_count differs in 66/174 pause rows, so subject detection/selection changed as well. Exact commit or rule attribution is not established by this package.",
+    "subject_readable_true_to_false": 39,
+    "subject_too_close_to_edge_on_flips": 35
+  },
+  "replay": {
+    "receipt_path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/swift-replay-receipt-174.json"
+  },
+  "schema_version": 1,
+  "status": "current_full_runtime_receipt_research_only"
+}

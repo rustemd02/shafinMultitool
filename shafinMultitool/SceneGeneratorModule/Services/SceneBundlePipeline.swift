@@ -779,6 +779,31 @@ final class ChunkCanonicalizer {
             reasonCodes: &reasonCodes
         )
 
+        // A provider may emit one real object twice: once without any label and
+        // once with the explicit name (the demo phone case). `preparePlanForCanonicalization`
+        // assigns the type's default name to the unlabeled entry, which makes the
+        // two entries look like a repeated provider alias. Keeping the original
+        // "had no explicit label" fact lets the canonicalizer merge that pair into
+        // one identity while still preserving genuinely distinct named objects.
+        let defaultNamedProviderRefs = Set(
+            draft.plan.objects.compactMap { object -> String? in
+                guard object.markedObjectID == nil,
+                      !object.ref.hasPrefix("object_marked_"),
+                      normalizeAlias(object.name) == nil,
+                      defaultObjectName(for: object.type) != nil else { return nil }
+                return object.ref
+            }
+        )
+        let explicitlyNamedProviderRefs = Set(
+            draft.plan.objects.compactMap { object -> String? in
+                guard object.markedObjectID == nil,
+                      !object.ref.hasPrefix("object_marked_"),
+                      normalizeAlias(object.name) != nil else { return nil }
+                return object.ref
+            }
+        )
+        var canonicalExplicitlyNamed: [String: Bool] = [:]
+
         func markAmbiguousObjectAlias(_ alias: String) {
             objectAliasMap.removeValue(forKey: alias)
             guard ambiguousObjectAliases.insert(alias).inserted else { return }
@@ -803,6 +828,7 @@ final class ChunkCanonicalizer {
             grouping: plan.objects.compactMap { object -> (String, ScenePlanIR.Object)? in
                 guard object.markedObjectID == nil,
                       !object.ref.hasPrefix("object_marked_"),
+                      !defaultNamedProviderRefs.contains(object.ref),
                       let normalizedName = normalizeAlias(object.name)
                 else { return nil }
                 return (normalizedName, object)
@@ -907,31 +933,55 @@ final class ChunkCanonicalizer {
                     existingObjectMap[stableRef] = canonical
                     createdObjects.append(canonical)
                 }
+            } else if let mappedRef = objectRefMap[object.ref] {
+                // The same provider ref emitted twice in one plan is one identity.
+                stableRef = mappedRef
             } else {
                 let isRepeatedProviderAlias = normalizedName.map { repeatedProviderAliases.contains($0) } ?? false
                 let reusableRef: String?
+                var mergedDefaultNamedObject = false
                 if isRepeatedProviderAlias {
                     if let normalizedName {
                         markAmbiguousObjectAlias(normalizedName)
                     }
                     reusableRef = nil
                 } else if let normalizedName {
+                    // Reuse candidates must include objects created earlier in
+                    // this same canonicalization pass, not only the persisted
+                    // stitch state, otherwise a named entry cannot reuse the
+                    // unlabeled entry the provider emitted for the same object.
+                    let candidatePool = existingObjectsInOrder + createdObjects
                     let existingCandidates: [ScenePlanIR.Object]
                     let hasExistingAlias = objectAliasMap[normalizedName] != nil
                     if let existingRef = objectAliasMap[normalizedName] {
-                        existingCandidates = existingObjectsInOrder.filter { existing in
+                        existingCandidates = candidatePool.filter { existing in
                             existing.ref == existingRef
                                 && existing.type == object.type
                                 && normalizeAlias(existing.name) == normalizedName
                         }
                     } else {
-                        existingCandidates = existingObjectsInOrder.filter { existing in
+                        existingCandidates = candidatePool.filter { existing in
                             existing.type == object.type
                                 && normalizeAlias(existing.name) == normalizedName
                         }
                     }
                     if existingCandidates.count == 1 {
-                        reusableRef = existingCandidates[0].ref
+                        let candidate = existingCandidates[0]
+                        let currentDefaultNamed = defaultNamedProviderRefs.contains(object.ref)
+                        let candidateExplicit = canonicalExplicitlyNamed[candidate.ref] ?? true
+                        if currentDefaultNamed && !candidateExplicit {
+                            // Two unlabeled entries of one type are not enough to
+                            // claim a single identity; keep them distinct and
+                            // ambiguous instead of guessing.
+                            markAmbiguousObjectAlias(normalizedName)
+                            reusableRef = nil
+                        } else {
+                            reusableRef = candidate.ref
+                            // Exactly one side carries an explicit label: the
+                            // unlabeled entry is the provider's duplicate of the
+                            // same real object, so the merge is explicit.
+                            mergedDefaultNamedObject = currentDefaultNamed != !candidateExplicit
+                        }
                     } else {
                         if hasExistingAlias || existingCandidates.count > 1 {
                             markAmbiguousObjectAlias(normalizedName)
@@ -944,6 +994,9 @@ final class ChunkCanonicalizer {
 
                 if let reusableRef {
                     stableRef = reusableRef
+                    if mergedDefaultNamedObject {
+                        appendReason("v9.duplicate_provider_object_merged", to: &reasonCodes)
+                    }
                 } else {
                     let slug = slugify(normalizedName ?? object.type.rawValue)
                     let nextIndex = existingObjectMap.values.filter { !$0.ref.hasPrefix("object_marked_") }.count + createdObjects.count + 1
@@ -957,6 +1010,7 @@ final class ChunkCanonicalizer {
                     )
                     createdObjects.append(canonical)
                     existingObjectMap[stableRef] = canonical
+                    canonicalExplicitlyNamed[stableRef] = explicitlyNamedProviderRefs.contains(object.ref)
                 }
             }
 

@@ -14,6 +14,62 @@ import Vision
 import QuartzCore
 import os.log
 
+/// C07 single-source seam for the accepted action's instruction.
+///
+/// The overlay (`CameraOverlayUXPresentation`) and the decision trace already
+/// resolve the instruction from the shipped `SETCopyKey` catalog for the very
+/// same accepted action. The pipeline must not keep a second wording: every
+/// live/pause instruction it publishes resolves through this helper, so text,
+/// marker and VoiceOver cannot drift apart again. Decision logic is untouched
+/// — only the copy source moved to the catalog.
+enum CameraAcceptedActionCopy {
+    /// The runtime overlay resolves catalog copy against its environment
+    /// locale; the runtime production surface uses the process locale, so the
+    /// pipeline follows the same source. Fixture-only locales are supplied by
+    /// the caller through the `locale:` argument.
+    static var locale: Locale { .current }
+
+    static func instruction(for actionType: ActionTypeV1,
+                            locale: Locale = CameraAcceptedActionCopy.locale) -> String {
+        SETCameraCopy.actionKey(for: actionType).localizedString(locale: locale)
+    }
+
+    static func instruction(for semanticActionType: SemanticActionType,
+                            locale: Locale = CameraAcceptedActionCopy.locale) -> String {
+        SETCameraCopy.actionKey(for: semanticActionType).localizedString(locale: locale)
+    }
+
+    static func instruction(for technicalIssueType: TechnicalQualityIssueType,
+                            locale: Locale = CameraAcceptedActionCopy.locale) -> String {
+        SETCameraCopy.technicalActionKey(for: technicalIssueType).localizedString(locale: locale)
+    }
+
+    /// Mirrors `CameraOverlayUXPresentation`'s resolution order exactly:
+    /// semantic action, then technical issue, then legacy action type.
+    static func instruction(actionType: ActionTypeV1?,
+                            semanticActionType: SemanticActionType?,
+                            technicalIssueType: TechnicalQualityIssueType?,
+                            locale: Locale = CameraAcceptedActionCopy.locale) -> String? {
+        if let semanticActionType {
+            return instruction(for: semanticActionType, locale: locale)
+        }
+        if let technicalIssueType {
+            return instruction(for: technicalIssueType, locale: locale)
+        }
+        if let actionType {
+            return instruction(for: actionType, locale: locale)
+        }
+        return nil
+    }
+
+    /// A hint without a typed accepted action is fail-closed in presentation
+    /// (no overlay is produced), but the published value must still come from
+    /// the catalog rather than from a pipeline literal.
+    static func seamlessFallback(locale: Locale = CameraAcceptedActionCopy.locale) -> String {
+        SETCopyKey.cameraSeeking.localizedString(locale: locale)
+    }
+}
+
 struct OverlayState {
     var primaryBoundingBox: CGRect?
     var horizonAngle: CGFloat
@@ -41,6 +97,11 @@ struct LiveHintPresentation: Identifiable, Equatable, Sendable {
     let summaryId: String?
     let traceRootIds: [String]
     let targetRegion: NormalizedRect?
+    /// The local tracking identity that the visible advice refers to. This
+    /// stays separate from `targetRegion`, which is the action/overlay goal.
+    let subjectIdentity: SubjectTrackIdentity?
+    /// The source-space region observed for `subjectIdentity` on `frameId`.
+    let observedSourceRegion: NormalizedRect?
     let overlayHint: OverlayHint?
     let isFallback: Bool
     let expandedVerdict: LiveExpandedVerdictPresentation?
@@ -49,7 +110,22 @@ struct LiveHintPresentation: Identifiable, Equatable, Sendable {
     /// fields instead of parsing IDs or displaying domain text.
     let semanticActionType: SemanticActionType?
     let technicalIssueType: TechnicalQualityIssueType?
+    /// Typed technical provenance retained from the issue signal. A missing
+    /// movement family is not evidence that a technical hint is frame-global;
+    /// admission resolves this existing action through UserMovementObserver.
+    let technicalActionType: TechnicalQualityActionType?
     let linkedEvidence: CameraLinkedEvidenceProjection?
+
+    /// Stable typed action ID used by the existing episode owner. The raw
+    /// presentation action ID is a provenance key and is not always a domain
+    /// action ID.
+    var coachingEpisodeActionID: String? {
+        semanticActionType?.rawValue
+            ?? technicalActionType?.rawValue
+            ?? actionType?.semanticActionType.rawValue
+            ?? actionId
+            ?? actionType?.rawValue
+    }
 
     init(id: String,
          frameId: String,
@@ -61,11 +137,14 @@ struct LiveHintPresentation: Identifiable, Equatable, Sendable {
          summaryId: String?,
          traceRootIds: [String],
          targetRegion: NormalizedRect?,
+         subjectIdentity: SubjectTrackIdentity? = nil,
+         observedSourceRegion: NormalizedRect? = nil,
          overlayHint: OverlayHint?,
          isFallback: Bool,
          expandedVerdict: LiveExpandedVerdictPresentation?,
          semanticActionType: SemanticActionType? = nil,
          technicalIssueType: TechnicalQualityIssueType? = nil,
+         technicalActionType: TechnicalQualityActionType? = nil,
          linkedEvidence: CameraLinkedEvidenceProjection? = nil) {
         self.id = id
         self.frameId = frameId
@@ -77,11 +156,14 @@ struct LiveHintPresentation: Identifiable, Equatable, Sendable {
         self.summaryId = summaryId
         self.traceRootIds = traceRootIds
         self.targetRegion = targetRegion
+        self.subjectIdentity = subjectIdentity
+        self.observedSourceRegion = observedSourceRegion
         self.overlayHint = overlayHint
         self.isFallback = isFallback
         self.expandedVerdict = expandedVerdict
         self.semanticActionType = semanticActionType
         self.technicalIssueType = technicalIssueType
+        self.technicalActionType = technicalActionType
         self.linkedEvidence = linkedEvidence
     }
 }
@@ -170,6 +252,54 @@ struct PauseActionRow: Equatable, Sendable {
     let targetRegion: NormalizedRect?
     let overlayHintId: String?
     let traceRefId: String?
+    /// C05/N6.2: alternatives of ONE cause share this id. At most one row per
+    /// group is the displayed/executed step; the rest are compared options and
+    /// are never emitted as a sequence. Nil = an independent problem.
+    let alternativeGroupID: String?
+    /// C05/N9.4: the concrete frozen actuator a generic simplify/rebalance/
+    /// hotspot label expands into. Nil means this row is a label/explanation
+    /// or already concrete.
+    let concreteSemanticActionType: SemanticActionType?
+
+    init(actionId: String,
+         actionType: ActionTypeV1,
+         semanticActionType: SemanticActionType,
+         priority: Int,
+         confidence: Double,
+         linkedIssueIds: [String],
+         expectedOutcome: String,
+         targetRegion: NormalizedRect?,
+         overlayHintId: String?,
+         traceRefId: String?,
+         alternativeGroupID: String? = nil,
+         concreteSemanticActionType: SemanticActionType? = nil) {
+        self.actionId = actionId
+        self.actionType = actionType
+        self.semanticActionType = semanticActionType
+        self.priority = priority
+        self.confidence = confidence
+        self.linkedIssueIds = linkedIssueIds
+        self.expectedOutcome = expectedOutcome
+        self.targetRegion = targetRegion
+        self.overlayHintId = overlayHintId
+        self.traceRefId = traceRefId
+        self.alternativeGroupID = alternativeGroupID
+        self.concreteSemanticActionType = concreteSemanticActionType
+    }
+
+    /// The exact row a consumer may execute for this cause. A generic label
+    /// that could not expand into a concrete actuator is not executable.
+    var executableSemanticActionType: SemanticActionType? {
+        if let concreteSemanticActionType { return concreteSemanticActionType }
+        if CameraAdviceActionExpansion.isGenericExecutableLabel(semanticActionType) {
+            return nil
+        }
+        return semanticActionType
+    }
+
+    var isExecutableCommand: Bool {
+        executableSemanticActionType != nil
+    }
 
     /// The same deterministic order is used by the pipeline and Decision
     /// Trace so the provenance-bound action is always the first chosen row.
@@ -178,6 +308,16 @@ struct PauseActionRow: Equatable, Sendable {
             return lhs.priority < rhs.priority
         }
         return lhs.actionId < rhs.actionId
+    }
+
+    /// C05: exactly one displayed/executed step per alternative group.
+    static func executableCommands(from rows: [PauseActionRow]) -> [PauseActionRow] {
+        CameraAdviceAlternativeGrouping.executableCommands(
+            from: rows,
+            groupID: { $0.alternativeGroupID },
+            priority: { $0.priority },
+            actionID: { $0.actionId }
+        )
     }
 }
 
@@ -1065,6 +1205,12 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
         if shouldPreserveNumericWideGoodEstablishingFrame(debugNumericFeatures: debugNumericFeatures) {
             return true
         }
+        // The semantic fallback has to keep the width requirement. Without it a NARROW
+        // frame carrying these labels was also promoted into the "high" confidence band,
+        // which contradicts the predicate's own name ("Wide...") and its test: the narrow
+        // fixture (frame_aspect_ratio < 1.76) must stay below 0.75. Same threshold as the
+        // numeric branch above.
+        guard (debugNumericFeatures["frame_aspect_ratio"] ?? 0) >= 1.76 else { return false }
         return debugSemanticLabels["verdict"] == FrameVerdict.good.rawValue
             && debugSemanticLabels["scene_type"] == SceneTypeV1.establishingLikeFrame.rawValue
             && debugSemanticLabels["primary_subject_kind"] == SubjectKind.unknown.rawValue
@@ -1713,14 +1859,20 @@ private struct DemoCoachingDecision {
 
 private struct DemoCoachingRule {
     let id: String
-    let text: String
     let shortVerdict: String
     let supportingText: String
-    let actionText: String?
     let actionType: ActionTypeV1?
     let tone: OverlayAnnotationPresentation.Tone
     let confidence: Double
     let showHint: Bool
+
+    /// C07: the demo recipe carries no authored instruction of its own. The
+    /// published text is the catalog copy for the same accepted action, so the
+    /// simulated coaching path cannot disagree with the overlay either.
+    var instruction: String {
+        actionType.map { CameraAcceptedActionCopy.instruction(for: $0) }
+            ?? CameraAcceptedActionCopy.seamlessFallback()
+    }
 }
 
 struct RecommendationPlanner {
@@ -1800,7 +1952,9 @@ struct RecommendationPlanner {
             // of reusing that subject rectangle as its target. Missing subject
             // geometry remains unavailable and therefore fails closed.
             targetRegion = snapshot.subjectSignals.primaryCandidateRegion
-                .flatMap { actionType.subjectTargetRegion(from: $0) }
+                .flatMap {
+                    actionType.subjectTargetRegion(from: $0, sourceSpace: .vision)
+                }
         } else {
             targetRegion = issue.affectedRegion
         }
@@ -2706,6 +2860,22 @@ struct FeatureSnapshotAggregator {
         }
     }
 
+    /// R03 observation lane: the same foreground detections the snapshot
+    /// saw, as identity observations (region + confidence + label).
+    func subjectIdentityObservations(from input: FeatureAggregationInput) -> [SubjectIdentityObservation] {
+        let sourceStatuses = makeSourceStatuses(from: input)
+        let detrPayload = sourceStatuses.detr.available ? input.detr?.value : nil
+        let foregroundDetections = foregroundDetections(from: sortDetections(detrPayload?.detections ?? []))
+        return foregroundDetections.compactMap { detection in
+            guard let region = normalizedRect(from: detection.boundingBox) else { return nil }
+            return SubjectIdentityObservation(
+                region: region,
+                confidence: detection.confidence,
+                label: detection.label
+            )
+        }
+    }
+
     private func foregroundDetections(from detections: [FeatureSnapshotDetectedObject]) -> [FeatureSnapshotDetectedObject] {
         detections
             .filter(isForegroundDetection)
@@ -3536,8 +3706,12 @@ struct SemanticReadabilityAnalyzer {
                  sceneType: SceneTypeV1,
                  primarySubject: SceneSemanticsReport.PrimarySubject,
                  dominance: SceneSemanticsReport.VisualDominanceState) -> SceneSemanticsReport.SemanticReadabilityState {
+        // An object primary takes its region from a DETR detection box, and a detection box that
+        // touches the frame edge is normal for an object subject. Edge pressure stays neutral for
+        // object primaries so a normal detection box does not read as an unreadable subject; the
+        // edge signal for object framing is produced by the critique's own composition terms.
         let edgePressureScore: Double
-        if let region = primarySubject.region {
+        if primarySubject.kind != .object, let region = primarySubject.region {
             let minEdgeDistance = min(
                 region.x,
                 region.y,
@@ -3596,6 +3770,20 @@ private extension MotionState {
 }
 
 final class AnalysisPipeline: ObservableObject {
+    /// One immutable capture-side selection handoff. Presentation and the
+    /// episode owner consume this exact value; neither is allowed to update
+    /// the tracker or reconstruct a binding from a later primary box.
+    private struct LiveFrameSelectionContext {
+        let frameEvidence: LatestFrameEvidenceStore.Snapshot
+        let adapterState: PipelineFeatureSnapshotAdapterState?
+        let featureSourceTimestamps: [FeatureSourceID: Date]
+        let lifecycle: SubjectTrackLifecycleContext
+        let subjectTrack: SubjectTrackState?
+        let subjectBinding: UserMovementSubjectBinding?
+        let verificationGeometry: ActionVerificationGeometryContext?
+        let subjectSelectionInvalidated: Bool
+    }
+
     @Published private(set) var overlayState = OverlayState(primaryBoundingBox: nil,
                                                             horizonAngle: 0,
                                                             horizonConfidence: 0,
@@ -3606,6 +3794,8 @@ final class AnalysisPipeline: ObservableObject {
     @Published private(set) var subjectRegions: [NormalizedRect] = []
     @Published private(set) var currentSuggestion: Suggestion?
     @Published private(set) var currentLiveHint: LiveHintPresentation?
+    /// CC-I05: the style cue waiting for a yes/no answer, if any.
+    @Published private(set) var pendingIntentClarificationCue: CameraStyleCue?
     @Published private(set) var currentPauseCritique: PauseCritiquePresentation?
     @Published private(set) var currentOverlayAnnotations: [OverlayAnnotationPresentation] = []
     /// Immutable handoff from the bounded planner + AdviceStabilizer into the
@@ -3677,11 +3867,20 @@ final class AnalysisPipeline: ObservableObject {
     private var liveAdviceStabilizer = AdviceStabilizer()
     private let liveSubjectTracker = SubjectTracker()
     private var liveSubjectLifecycleContext: SubjectTrackLifecycleContext?
+    /// Capture continuity used while preparing a frame. The episode-scoped
+    /// `liveSubjectLifecycleContext` remains nil until a baseline event is
+    /// accepted, preserving its sentinel semantics.
+    private var liveCaptureLifecycleContext: SubjectTrackLifecycleContext?
     private var liveSubjectSource: FeatureSourceID?
     /// Pipeline-side stream identity tells the boundary whether the next
     /// admissible event is the first baseline or a fresh frame for it. It is
     /// cleared only by an explicit typed cancellation/lifecycle reset.
     private var liveEpisodeActionID: String?
+    /// Frame identity of the currently published baseline. The ViewModel
+    /// passes its pre-consumption baseline ID when clearing a retryable
+    /// terminal, so a deferred terminal callback cannot erase a newer
+    /// baseline that already entered this pipeline owner.
+    private var liveEpisodeBaselineFrameID: String?
     private var liveEpisodeGeneration: UInt64?
     private var liveEpisodeOrientation: CameraCoachOrientation?
     private var liveEpisodeSource: FeatureSourceID?
@@ -3696,6 +3895,19 @@ final class AnalysisPipeline: ObservableObject {
     private let taskLock = NSLock()
 
     private var lifecycleGeneration: UInt64 = 0
+    /// R03 observation lane: passively maintained multi-object identities.
+    /// No advice path consumes it yet; wiring continues in the next package.
+    private var subjectIdentityRegistry: SubjectIdentityRegistry?
+    private var subjectIdentityRegistryGeneration: UInt64?
+    /// CC-O02: the operator's last scene-space tap, stored raw and resolved
+    /// against tracked instances at evaluation time. Guarded by its own lock
+    /// because the write arrives on the main thread while advice evaluation
+    /// reads it on the analysis path.
+    private let sceneTapEvidenceLock = NSLock()
+    private var latestSceneTapEvidence: SceneTapEvidence?
+    /// CC-I05 session-scoped intent answers; empty by default, so the safety
+    /// gate behaves exactly as before until the user answers a prompt.
+    private var intentClarification = CameraIntentClarificationPolicy()
     private var acceptsFrameWork = true
     private var releaseInProgress = false
     private var releaseTask: Task<Void, Never>?
@@ -3734,12 +3946,15 @@ final class AnalysisPipeline: ObservableObject {
         let commandKey: String
         let capturedAt: Date
         let count: Int
+        let subjectIdentity: SubjectTrackIdentity?
     }
     private var liveSpatialConfirmation: LiveSpatialConfirmationState?
     private struct LiveTechnicalConfirmationState {
         let commandKey: String
         let capturedAt: Date
         let count: Int
+        let subjectIdentity: SubjectTrackIdentity?
+        let isFrameGlobal: Bool
     }
     private var liveTechnicalConfirmation: LiveTechnicalConfirmationState?
     private var lastOverlayPublishAt: Date = .distantPast
@@ -3897,7 +4112,72 @@ final class AnalysisPipeline: ObservableObject {
             expectedDetrProvenance: expectedDetrProvenance,
             state: adapterState
         )
-        return featureSnapshotAggregator.makeSnapshot(from: input)
+        let snapshot = featureSnapshotAggregator.makeSnapshot(from: input)
+        let identityObservations = featureSnapshotAggregator.subjectIdentityObservations(from: input)
+        observeSubjectIdentityLane(in: snapshot, observations: identityObservations)
+        return snapshot
+    }
+
+    /// R03 observation lane: associates the live primary candidate into the
+    /// multi-object identity registry. The registry is recreated on every
+    /// lifecycle generation change (lens/orientation/route fence); a scene
+    /// change additionally ages all identities out via the miss limit.
+    private func observeSubjectIdentityLane(in snapshot: FrameFeatureSnapshot,
+                                             observations: [SubjectIdentityObservation]) {
+        guard snapshot.mode == .live else { return }
+        if subjectIdentityRegistry == nil || subjectIdentityRegistryGeneration != lifecycleGeneration {
+            subjectIdentityRegistry = SubjectIdentityRegistry(generation: lifecycleGeneration)
+            subjectIdentityRegistryGeneration = lifecycleGeneration
+        }
+        // DETR regions are the multi-object source; the primary candidate
+        // region keeps the lane alive when no object detections are present.
+        let detections: [SubjectIdentityObservation]
+        if observations.isEmpty, let region = snapshot.subjectSignals.primaryCandidateRegion {
+            detections = [
+                SubjectIdentityObservation(
+                    region: region,
+                    confidence: snapshot.subjectSignals.primaryCandidateConfidence ?? 0,
+                    label: nil
+                )
+            ]
+        } else {
+            detections = observations
+        }
+        guard !detections.isEmpty else { return }
+        _ = subjectIdentityRegistry?.observe(detections: detections, frameId: snapshot.frameId)
+    }
+
+    /// CC-O02/O05 consumer: how many tracked instance pairs currently overlap.
+    /// `nil` means the identity lane has no evidence for this frame yet, and the
+    /// live quality gate must not suppress object advice on absent evidence.
+    private func liveOverlappingInstancePairCount() -> Int? {
+        guard let summary = subjectIdentityRegistry?.multiObjectSummary() else { return nil }
+        return summary.overlappingTrackIDPairs.count
+    }
+
+    /// CC-O02 entry point: the operator tapped the preview. The tap is stored
+    /// raw in scene space; the naming decision happens at evaluation time.
+    func handleSceneTap(normalizedX: Double, normalizedY: Double, now: Date = Date()) {
+        let evidence = SceneTapEvidence(sceneX: normalizedX, sceneY: normalizedY, capturedAt: now)
+        sceneTapEvidenceLock.lock()
+        latestSceneTapEvidence = evidence
+        sceneTapEvidenceLock.unlock()
+    }
+
+    /// CC-O02 consumer: does a fresh operator tap name a tracked instance?
+    /// Resolution runs on the caller's context, next to the other registry
+    /// reads, so it sees the same tracked regions the gate is judging.
+    private func liveTapGroundedObjectTarget(now: Date = Date()) -> Bool {
+        sceneTapEvidenceLock.lock()
+        let evidence = latestSceneTapEvidence
+        sceneTapEvidenceLock.unlock()
+        guard let evidence else { return false }
+        let ageMilliseconds = now.timeIntervalSince(evidence.capturedAt) * 1000
+        guard ageMilliseconds >= 0,
+              ageMilliseconds <= Double(LiveCoachQualityGate.maxVisionFreshnessMilliseconds) else {
+            return false
+        }
+        return subjectIdentityRegistry?.instance(atSceneX: evidence.sceneX, y: evidence.sceneY) != nil
     }
 
     private func makeDetrFeatureSample(from detections: [DETRDetection],
@@ -4902,6 +5182,12 @@ final class AnalysisPipeline: ObservableObject {
                     adapterState: adapterState
                 )
                 let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
+                guard let selectionContext = prepareLiveFrameSelectionContext(
+                    snapshot: snapshot,
+                    semantics: semantics,
+                    frameEvidence: frameEvidence,
+                    evaluatedAt: now
+                ) else { return }
                 publishLiveCoachingEpisodeObservation(
                     snapshot: snapshot,
                     semantics: semantics,
@@ -4918,7 +5204,8 @@ final class AnalysisPipeline: ObservableObject {
                     frameEvidence: frameEvidence,
                     evaluatedAt: now,
                     technicalQualitySignal: technicalSignal,
-                    allowStabilityWhileMoving: true
+                    allowStabilityWhileMoving: true,
+                    selectionContext: selectionContext
                 )
             }
 
@@ -5039,41 +5326,21 @@ final class AnalysisPipeline: ObservableObject {
             plan: plan,
             motionState: snapshot.motion.state
         )
-        publishLivePresentation(
-            frameId: snapshot.frameId,
+        publishLiveProductionFrame(
+            snapshot: snapshot,
+            semantics: semantics,
             critique: critique,
-            plan: plan,
-            snapshot: snapshot,
-            semantics: semantics,
-            semanticTips: semanticTips,
-            legacySuggestion: currentSuggestion,
-            structuredAvailable: structuredDecision.isAvailable,
-            technicalQualitySignal: technicalQualitySignal,
-            now: presentationNow
-        )
-        // Presentation owns admission for a new corrective episode. This
-        // keeps the typed verifier loop from starting work the user cannot
-        // currently see; the observation consumes the same frame after the
-        // spatial confirmation gate has accepted its marker.
-        publishLiveCoachingEpisodeObservation(
-            snapshot: snapshot,
-            semantics: semantics,
             plan: plan,
             frameEvidence: frameEvidence,
             evaluatedAt: now,
-            technicalQualitySignal: technicalQualitySignal
+            presentationNow: presentationNow,
+            semanticTips: semanticTips,
+            localFeatures: localFeatures,
+            legacySuggestion: currentSuggestion,
+            structuredAvailable: structuredDecision.isAvailable,
+            technicalQualitySignal: technicalQualitySignal,
+            allowStabilityWhileMoving: false
         )
-        let annotations = makeOverlayAnnotations(
-            frameId: snapshot.frameId,
-            critique: critique,
-            plan: plan,
-            features: localFeatures,
-            mode: .live,
-            legacySuggestions: currentSuggestion.map { [$0] } ?? [],
-            forceLegacyOnly: !structuredDecision.isAvailable,
-            liveHint: currentLiveHint
-        )
-        publishOverlayAnnotations(annotations, now: presentationNow)
     }
 
     @MainActor
@@ -5086,7 +5353,184 @@ final class AnalysisPipeline: ObservableObject {
                                          legacySuggestion: Suggestion?,
                                          structuredAvailable: Bool,
                                          technicalQualitySignal: TechnicalQualitySignal = .empty,
-                                         now: Date) {
+                                         now: Date,
+                                         selectionContext: LiveFrameSelectionContext) {
+        updateIntentClarification(snapshot: snapshot, semantics: semantics)
+        let presentationCandidate = makeLivePresentationCandidate(
+            frameId: frameId,
+            critique: critique,
+            plan: plan,
+            snapshot: snapshot,
+            semantics: semantics,
+            semanticTips: semanticTips,
+            legacySuggestion: legacySuggestion,
+            structuredAvailable: structuredAvailable,
+            technicalQualitySignal: technicalQualitySignal,
+            now: now
+        )
+        let visibleHintCandidate = bindLiveHintCandidate(
+            presentationCandidate.hint,
+            to: selectionContext,
+            now: now
+        )
+        printLiveDecisionDebug(
+            candidate: visibleHintCandidate,
+            frameId: frameId,
+            critique: critique,
+            plan: plan,
+            snapshot: snapshot,
+            semantics: semantics,
+            semanticTip: semanticTips.livePrimaryTip,
+            legacySuggestion: legacySuggestion,
+            structuredAvailable: structuredAvailable,
+            technicalQualitySignal: technicalQualitySignal
+        )
+        logLiveHintDecision(
+            candidate: visibleHintCandidate,
+            legacySuggestion: legacySuggestion,
+            semanticTip: semanticTips.livePrimaryTip,
+            structuredAvailable: structuredAvailable,
+            critique: critique,
+            plan: plan
+        )
+        applyLiveHint(
+            candidate: visibleHintCandidate,
+            snapshot: snapshot,
+            semantics: semantics,
+            now: now
+        )
+        retainAcceptedDemoAnnotations(
+            presentationCandidate.demoAnnotations,
+            candidate: visibleHintCandidate,
+            selectionContext: selectionContext
+        )
+    }
+
+    private func retainAcceptedDemoAnnotations(
+        _ annotations: [OverlayAnnotationPresentation],
+        candidate: LiveHintPresentation?,
+        selectionContext: LiveFrameSelectionContext
+    ) {
+        currentDemoOverlayAnnotations = []
+        guard !annotations.isEmpty,
+              let candidate,
+              currentLiveHint == candidate,
+              candidate.overlayHint?.targetRegion == candidate.targetRegion,
+              annotations.allSatisfy({ $0.targetRegion == candidate.targetRegion }) else {
+            return
+        }
+
+        guard !selectionContext.subjectSelectionInvalidated,
+              selectionContext.frameEvidence.sourceFrameId == candidate.frameId,
+              let binding = selectionContext.subjectBinding,
+              candidate.subjectIdentity == binding.identity,
+              candidate.observedSourceRegion == binding.region,
+              candidate.targetRegion == binding.region else {
+            return
+        }
+
+        currentDemoOverlayAnnotations = annotations
+    }
+
+    private func retainFormattingDemoAnnotations(
+        _ annotations: [OverlayAnnotationPresentation],
+        candidate: LiveHintPresentation?
+    ) {
+        currentDemoOverlayAnnotations = []
+        guard !annotations.isEmpty,
+              let candidate,
+              currentLiveHint == candidate,
+              candidate.overlayHint?.targetRegion == candidate.targetRegion,
+              annotations.allSatisfy({ $0.targetRegion == candidate.targetRegion }) else {
+            return
+        }
+        currentDemoOverlayAnnotations = annotations
+    }
+
+    /// One production live-frame consumption path. The capture owner prepares
+    /// one immutable selection context, then presentation, episode admission,
+    /// and overlay publication consume that same context without re-running
+    /// subject tracking or accepting a synthetic identity.
+    @MainActor
+    private func publishLiveProductionFrame(
+        snapshot: FrameFeatureSnapshot,
+        semantics: SceneSemanticsReport,
+        critique: CritiqueReport,
+        plan: RecommendationPlan,
+        frameEvidence: LatestFrameEvidenceStore.Snapshot,
+        evaluatedAt: Date,
+        presentationNow: Date,
+        semanticTips: SemanticTipPlannerOutput,
+        localFeatures: CoachingFeatures,
+        legacySuggestion: Suggestion?,
+        structuredAvailable: Bool,
+        technicalQualitySignal: TechnicalQualitySignal,
+        allowStabilityWhileMoving: Bool
+    ) {
+        guard let selectionContext = prepareLiveFrameSelectionContext(
+            snapshot: snapshot,
+            semantics: semantics,
+            frameEvidence: frameEvidence,
+            evaluatedAt: evaluatedAt
+        ) else { return }
+
+        publishLivePresentation(
+            frameId: snapshot.frameId,
+            critique: critique,
+            plan: plan,
+            snapshot: snapshot,
+            semantics: semantics,
+            semanticTips: semanticTips,
+            legacySuggestion: legacySuggestion,
+            structuredAvailable: structuredAvailable,
+            technicalQualitySignal: technicalQualitySignal,
+            now: presentationNow,
+            selectionContext: selectionContext
+        )
+        // Presentation owns admission for a new corrective episode. This
+        // keeps the typed verifier loop from starting work the user cannot
+        // currently see; the observation consumes the same frame after the
+        // spatial confirmation gate has accepted its marker.
+        publishLiveCoachingEpisodeObservation(
+            snapshot: snapshot,
+            semantics: semantics,
+            plan: plan,
+            frameEvidence: frameEvidence,
+            evaluatedAt: evaluatedAt,
+            technicalQualitySignal: technicalQualitySignal,
+            allowStabilityWhileMoving: allowStabilityWhileMoving,
+            selectionContext: selectionContext
+        )
+        let annotations = makeOverlayAnnotations(
+            frameId: snapshot.frameId,
+            critique: critique,
+            plan: plan,
+            features: localFeatures,
+            mode: .live,
+            legacySuggestions: legacySuggestion.map { [$0] } ?? [],
+            forceLegacyOnly: !structuredAvailable,
+            liveHint: currentLiveHint,
+            selectionContext: selectionContext
+        )
+        publishOverlayAnnotations(annotations, now: presentationNow)
+    }
+
+    /// Formatting-only seam for DEBUG presentation tests. It deliberately
+    /// does not call the production admission method and therefore cannot
+    /// claim a subject-bound production hint without immutable frame evidence.
+    @MainActor
+    private func makeLivePresentationCandidate(
+        frameId: String,
+        critique: CritiqueReport,
+        plan: RecommendationPlan,
+        snapshot: FrameFeatureSnapshot,
+        semantics: SceneSemanticsReport,
+        semanticTips: SemanticTipPlannerOutput,
+        legacySuggestion: Suggestion?,
+        structuredAvailable: Bool,
+        technicalQualitySignal: TechnicalQualitySignal,
+        now: Date
+    ) -> (hint: LiveHintPresentation?, demoAnnotations: [OverlayAnnotationPresentation]) {
         let hintCandidate = makeLiveHintPresentation(
             frameId: frameId,
             critique: critique,
@@ -5105,48 +5549,217 @@ final class AnalysisPipeline: ObservableObject {
             semantics: semantics,
             now: now
         )
-        currentDemoOverlayAnnotations = demoDecision?.annotations ?? []
-        let effectiveHintCandidate: LiveHintPresentation?
         if let demoDecision {
             if let demoHint = demoDecision.hint {
-                effectiveHintCandidate = LiveCoachQualityGate.allows(
+                let demoAccepted = LiveCoachQualityGate.allows(
                     action: demoHint.actionType,
                     mode: snapshot.mode,
                     snapshot: snapshot,
                     semantics: semantics
-                ) ? demoHint : hintCandidate
+                )
+                return demoAccepted
+                    ? (demoHint, demoDecision.annotations)
+                    : (hintCandidate, [])
             } else {
-                effectiveHintCandidate = demoDecision.suppressesPipelineHint ? nil : hintCandidate
+                return (
+                    demoDecision.suppressesPipelineHint ? nil : hintCandidate,
+                    []
+                )
             }
-        } else {
-            effectiveHintCandidate = hintCandidate
         }
-        printLiveDecisionDebug(
-            candidate: effectiveHintCandidate,
-            frameId: frameId,
-            critique: critique,
-            plan: plan,
-            snapshot: snapshot,
-            semantics: semantics,
-            semanticTip: semanticTips.livePrimaryTip,
-            legacySuggestion: legacySuggestion,
-            structuredAvailable: structuredAvailable,
-            technicalQualitySignal: technicalQualitySignal
+        return (hintCandidate, [])
+    }
+
+    private enum LiveHintBindingDisposition {
+        case frameGlobal
+        case subjectBound
+        case unsupported
+    }
+
+    private func liveHintBindingDisposition(_ candidate: LiveHintPresentation) -> LiveHintBindingDisposition {
+        if let technicalAction = candidate.technicalActionType {
+            // These dispositions are derived from the existing technical
+            // action catalog. `avoidOcclusion` has no movement verifier yet,
+            // but its copy is object-referential and therefore cannot be
+            // shown against an unbound subject. The remaining nil-family
+            // actions are explicit device-global advice, not an inference
+            // from a missing family.
+            switch technicalAction {
+            case .refocusSubject, .reduceExposure, .increaseExposure, .avoidOcclusion:
+                return .subjectBound
+            case .stabilizeCamera, .cleanLens, .reduceIsoNoise:
+                return .frameGlobal
+            }
+        }
+
+        if candidate.technicalIssueType != nil {
+            // A technical issue without the typed action provenance above is
+            // legacy/ambiguous evidence. It must not silently become global.
+            return .unsupported
+        }
+
+        let semanticAction = candidate.semanticActionType ?? candidate.actionType?.semanticActionType
+        guard let semanticAction else {
+            // A hint with no typed action has no production admission
+            // contract; do not infer one from a demo prefix or box.
+            return .unsupported
+        }
+        if semanticAction == .keepCurrentSetup {
+            return candidate.subjectIdentity == nil
+                && candidate.observedSourceRegion == nil
+                && candidate.targetRegion == nil
+                && candidate.overlayHint?.targetRegion == nil
+                ? .frameGlobal
+                : .unsupported
+        }
+        guard let family = liveHintActionFamily(candidate) else {
+            // The migration/catalog mapping does not define an evidence
+            // contract for this action. Suppress it rather than inventing a
+            // new physical-operation meaning or inheriting an old identity.
+            return .unsupported
+        }
+        return family.requiresSubjectBinding ? .subjectBound : .frameGlobal
+    }
+
+    private func liveHintActionFamily(_ candidate: LiveHintPresentation) -> UserMovementActionFamily? {
+        if let technicalAction = candidate.technicalActionType {
+            return UserMovementObserver.actionFamily(for: technicalAction)
+        }
+        let semanticAction = candidate.semanticActionType ?? candidate.actionType?.semanticActionType
+        return semanticAction.flatMap(UserMovementObserver.actionFamily)
+    }
+
+    private func liveHintRequiresSubjectBinding(_ candidate: LiveHintPresentation) -> Bool {
+        liveHintBindingDisposition(candidate) == .subjectBound
+    }
+
+    private func candidateRequiresSubjectBinding(_ actionID: String) -> Bool {
+        UserMovementObserver.actionFamily(for: actionID)?.requiresSubjectBinding == true
+    }
+
+    /// C05 pre-ranking resource rule: a light-adding command promises a
+    /// physical source. Until a controllable, confirmed source exists in the
+    /// live envelope, it must not be issued (N9.6 rule 3; registry gap).
+    private static func requiresConfirmedLightResource(actionID: String) -> Bool {
+        actionID == SemanticActionType.addFrontFillLight.rawValue
+            || actionID == SemanticActionType.addBackgroundLight.rawValue
+    }
+
+    @MainActor
+    private func bindLiveHintCandidate(
+        _ candidate: LiveHintPresentation?,
+        to context: LiveFrameSelectionContext,
+        now: Date
+    ) -> LiveHintPresentation? {
+        // A prior visible subject hint may not survive a lost or changed
+        // capture binding, even when the current frame has no replacement.
+        if let currentIdentity = currentLiveHint?.subjectIdentity,
+           context.subjectBinding?.identity != currentIdentity {
+            clearVisibleLiveSubjectState(now: now)
+        }
+
+        guard let candidate else { return nil }
+        guard liveHintBindingDisposition(candidate) != .unsupported else {
+            clearVisibleLiveSubjectState(now: now)
+            return nil
+        }
+        guard candidate.frameId == context.frameEvidence.sourceFrameId else {
+            if liveHintRequiresSubjectBinding(candidate) {
+                clearVisibleLiveSubjectState(now: now)
+            }
+            return nil
+        }
+
+        let requiresSubject = liveHintRequiresSubjectBinding(candidate)
+        guard requiresSubject else {
+            // A frame-global hint must never inherit the previous subject's
+            // visual identity by way of a text/ID refresh branch.
+            return candidate.subjectIdentity == nil && candidate.observedSourceRegion == nil
+                ? candidate
+                : nil
+        }
+
+        guard !context.subjectSelectionInvalidated,
+              let track = context.subjectTrack,
+              track.phase == .active,
+              track.lastSeenFrameID == context.frameEvidence.sourceFrameId,
+              let binding = context.subjectBinding,
+              binding.identity == track.identity,
+              binding.frameID == context.frameEvidence.sourceFrameId else {
+            clearVisibleLiveSubjectState(now: now)
+            return nil
+        }
+
+        // Demo selection is an independent presentation owner. It may only
+        // borrow the production identity when its displayed box is exactly
+        // the observed source region on this frame.
+        if candidate.id.hasPrefix("lh_demo_"),
+           candidate.targetRegion != binding.region {
+            clearVisibleLiveSubjectState(now: now)
+            return nil
+        }
+        if let identity = candidate.subjectIdentity, identity != binding.identity {
+            clearVisibleLiveSubjectState(now: now)
+            return nil
+        }
+        if let region = candidate.observedSourceRegion, region != binding.region {
+            clearVisibleLiveSubjectState(now: now)
+            return nil
+        }
+
+        return LiveHintPresentation(
+            id: candidate.id,
+            frameId: candidate.frameId,
+            text: candidate.text,
+            confidence: candidate.confidence,
+            actionType: candidate.actionType,
+            actionId: candidate.actionId,
+            linkedIssueIds: candidate.linkedIssueIds,
+            summaryId: candidate.summaryId,
+            traceRootIds: candidate.traceRootIds,
+            targetRegion: candidate.targetRegion,
+            subjectIdentity: binding.identity,
+            observedSourceRegion: binding.region,
+            overlayHint: candidate.overlayHint,
+            isFallback: candidate.isFallback,
+            expandedVerdict: candidate.expandedVerdict,
+            semanticActionType: candidate.semanticActionType,
+            technicalIssueType: candidate.technicalIssueType,
+            technicalActionType: candidate.technicalActionType,
+            linkedEvidence: candidate.linkedEvidence
         )
-        logLiveHintDecision(
-            candidate: effectiveHintCandidate,
-            legacySuggestion: legacySuggestion,
-            semanticTip: semanticTips.livePrimaryTip,
-            structuredAvailable: structuredAvailable,
-            critique: critique,
-            plan: plan
-        )
-        applyLiveHint(
-            candidate: effectiveHintCandidate,
-            snapshot: snapshot,
-            semantics: semantics,
-            now: now
-        )
+    }
+
+    @MainActor
+    private func clearVisibleLiveSubjectState(
+        now: Date,
+        preservingFrameGlobalHint: Bool = false
+    ) {
+        let hasGlobalHint = currentLiveHint.map {
+            liveHintBindingDisposition($0) == .frameGlobal
+                && $0.subjectIdentity == nil
+                && $0.targetRegion == nil
+                && $0.overlayHint?.targetRegion == nil
+        } == true
+        let preservesGlobalContinuity = preservingFrameGlobalHint
+            && (hasGlobalHint || liveTechnicalConfirmation?.isFrameGlobal == true)
+        if !preservesGlobalContinuity {
+            currentLiveHint = nil
+            liveHintShownAt = now
+            liveHintExpiresAt = .distantPast
+            resetLiveTechnicalConfirmation()
+        }
+        currentDemoOverlayAnnotations = []
+        demoSubjectTrack = nil
+        resetLiveSpatialConfirmation()
+        if !preservesGlobalContinuity {
+            publishOverlayAnnotations([], now: now)
+        } else if currentOverlayAnnotations.contains(where: { $0.targetRegion != nil }) {
+            // A global hint cannot carry a subject-targeted overlay through
+            // loss. Flush only the obsolete region while retaining any
+            // frame-global text/confirmation continuity.
+            publishOverlayAnnotations([], now: now)
+        }
     }
 
     @MainActor
@@ -5204,7 +5817,7 @@ final class AnalysisPipeline: ObservableObject {
         )
         print(
             "[CA_DEBUG][DEMO_RULE] id=\(rule.id) tone=\(rule.tone.rawValue) showHint=\(rule.showHint) " +
-            "confidence=\(debugDouble(rule.confidence)) text=\(debugText(rule.text))"
+            "confidence=\(debugDouble(rule.confidence)) text=\(debugText(rule.instruction))"
         )
         print(
             "[CA_DEBUG][DEMO_PRESENTATION] rule=\(rule.id) annotations=\(annotations.count) " +
@@ -5496,13 +6109,11 @@ final class AnalysisPipeline: ObservableObject {
                 if subjectLighting.subjectMeanLuma >= 0.78 || subjectLighting.subjectClippedBrightRatio >= 0.10 {
                     return DemoCoachingRule(
                         id: "portrait_overexposed_face",
-                        text: "Лицо пересвечено — убавь свет или смени угол.",
                         shortVerdict: "Лицо найдено, но свет слишком жёсткий.",
                         supportingText: demoLightingSupportingText(
                             prefix: "Система сравнила яркость лица и фона: на лице есть выбитые светлые участки.",
                             lighting: subjectLighting
                         ),
-                        actionText: "Убавь источник, отведи его в сторону или поверни героя от прямого света.",
                         actionType: .improveFrontLight,
                         tone: .danger,
                         confidence: min(0.94, max(0.74, subjectLighting.subjectMeanLuma + subjectLighting.subjectClippedBrightRatio)),
@@ -5515,13 +6126,11 @@ final class AnalysisPipeline: ObservableObject {
                     (subjectLighting.backgroundHotspotRatio >= 0.16 && subjectLighting.subjectMeanLuma <= 0.56) {
                     return DemoCoachingRule(
                         id: "portrait_backlight",
-                        text: "Фон ярче лица — смени угол.",
                         shortVerdict: "Герой найден, но фон перетягивает внимание.",
                         supportingText: demoLightingSupportingText(
                             prefix: "Лицо темнее окружения: яркий фон или источник света конкурирует с героем.",
                             lighting: subjectLighting
                         ),
-                        actionText: "Поверни камеру или героя так, чтобы яркий фон не бил из-за спины.",
                         actionType: .improveFrontLight,
                         tone: .danger,
                         confidence: min(0.94, max(0.74, backgroundMinusSubject + subjectLighting.backgroundHotspotRatio + 0.58)),
@@ -5532,13 +6141,11 @@ final class AnalysisPipeline: ObservableObject {
                 if subjectLighting.subjectMeanLuma <= 0.34 {
                     return DemoCoachingRule(
                         id: "portrait_dark_face",
-                        text: "Лицо темновато — добавь мягкий свет спереди.",
                         shortVerdict: "Герой найден, но лицо недосвечено.",
                         supportingText: demoLightingSupportingText(
                             prefix: "Система измерила яркость внутри bbox лица: субъект темнее комфортного уровня.",
                             lighting: subjectLighting
                         ),
-                        actionText: "Добавь фронтальный или боковой мягкий свет и подержи кадр стабильно.",
                         actionType: .improveFrontLight,
                         tone: .danger,
                         confidence: min(0.92, max(0.72, 0.92 - subjectLighting.subjectMeanLuma)),
@@ -5551,10 +6158,8 @@ final class AnalysisPipeline: ObservableObject {
                snapshot.lighting.exposureBiasHint > -1.4 {
                 return DemoCoachingRule(
                     id: "portrait_backlight",
-                    text: "Фон ярче лица — смени угол.",
                     shortVerdict: "Фон перетягивает внимание с лица.",
                     supportingText: "Система видит лицо/героя и более яркий фон за ним: контровой свет снижает читаемость субъекта.",
-                    actionText: "Поверни камеру или героя так, чтобы яркий источник не бил из-за спины.",
                     actionType: .improveFrontLight,
                     tone: .danger,
                     confidence: max(0.72, min(0.92, snapshot.lighting.backlightIndex + 0.55)),
@@ -5565,10 +6170,8 @@ final class AnalysisPipeline: ObservableObject {
             if snapshot.lighting.exposureBiasHint <= -0.45 {
                 return DemoCoachingRule(
                     id: "portrait_dark_face",
-                    text: "Лицо темновато — добавь мягкий свет спереди.",
                     shortVerdict: "Герой читается, но лицо недосвечено.",
                     supportingText: "Основной субъект найден как человек/лицо, при этом экспозиция по субъекту ниже комфортного уровня.",
-                    actionText: "Добавь фронтальный или боковой мягкий свет и пересними кадр.",
                     actionType: .improveFrontLight,
                     tone: .danger,
                     confidence: min(0.92, max(0.70, abs(snapshot.lighting.exposureBiasHint) * 0.75)),
@@ -5580,10 +6183,8 @@ final class AnalysisPipeline: ObservableObject {
                 let moveRight = centerX < 0.5
                 return DemoCoachingRule(
                     id: "portrait_edge",
-                    text: moveRight ? "Оставь больше воздуха слева от лица." : "Оставь больше воздуха справа от лица.",
                     shortVerdict: "Лицо слишком близко к краю кадра.",
                     supportingText: "Bounding box героя касается края, поэтому зрителю сложнее воспринимать портрет как аккуратно собранный.",
-                    actionText: moveRight ? "Смести камеру чуть вправо." : "Смести камеру чуть влево.",
                     actionType: moveRight ? .moveFrameRight : .moveFrameLeft,
                     tone: .danger,
                     confidence: 0.82,
@@ -5594,10 +6195,8 @@ final class AnalysisPipeline: ObservableObject {
             if snapshot.objects.totalCount >= 4 && !semantics.dominance.hasClearFocus {
                 return DemoCoachingRule(
                     id: "portrait_busy_background",
-                    text: "Фон спорит с героем — упрости сцену.",
                     shortVerdict: "В кадре есть герой, но фон конкурирует с ним.",
                     supportingText: "Система видит несколько объектов вокруг субъекта и слабую иерархию внимания.",
-                    actionText: "Смени угол или убери лишние элементы за человеком.",
                     actionType: .reduceBackgroundDistractions,
                     tone: .warning,
                     confidence: 0.74,
@@ -5611,10 +6210,8 @@ final class AnalysisPipeline: ObservableObject {
 
             return DemoCoachingRule(
                 id: "portrait_good",
-                text: subject.kind == .dialogue ? "Герои зафиксированы." : "Лицо зафиксировано.",
                 shortVerdict: "Главный субъект стабильно найден.",
                 supportingText: "Система несколько кадров подряд удерживает bbox героя и не видит критичных live-проблем.",
-                actionText: nil,
                 actionType: .leaveFrameAsIs,
                 tone: .success,
                 confidence: max(0.76, min(0.92, subject.confidence)),
@@ -5626,10 +6223,8 @@ final class AnalysisPipeline: ObservableObject {
             let moveRight = centerX < 0.5
             return DemoCoachingRule(
                 id: "object_edge",
-                text: moveRight ? "Сдвинь объект правее." : "Сдвинь объект левее.",
                 shortVerdict: "Предмет слишком близко к краю.",
                 supportingText: "Система видит главный объект и bbox почти касается края кадра. Детектор: \(subject.rawLabel ?? "object").",
-                actionText: moveRight ? "Перемести предмет или камеру чуть вправо." : "Перемести предмет или камеру чуть влево.",
                 actionType: moveRight ? .moveFrameRight : .moveFrameLeft,
                 tone: .danger,
                 confidence: 0.86,
@@ -5640,10 +6235,8 @@ final class AnalysisPipeline: ObservableObject {
         if area < 0.035 {
             return DemoCoachingRule(
                 id: "object_too_small",
-                text: "Объект теряется — подойди ближе.",
                 shortVerdict: "Предмет найден, но занимает мало кадра.",
                 supportingText: "Bounding box главного объекта слишком мал относительно всего кадра. Детектор: \(subject.rawLabel ?? "object").",
-                actionText: "Подойди ближе или увеличь объект в кадре.",
                 actionType: .increaseSubjectSize,
                 tone: .danger,
                 confidence: 0.84,
@@ -5655,10 +6248,8 @@ final class AnalysisPipeline: ObservableObject {
             let moveRight = centerX < 0.5
             return DemoCoachingRule(
                 id: "object_thirds",
-                text: moveRight ? "Сдвинь объект правее к линии третей." : "Сдвинь объект левее к линии третей.",
                 shortVerdict: "Предмет виден, но композиционно стоит невыгодно.",
                 supportingText: "Центр bbox не попадает ни в устойчивую центральную зону, ни рядом с линиями третей.",
-                actionText: "Смести предмет к ближайшей вертикали третей.",
                 actionType: moveRight ? .moveFrameRight : .moveFrameLeft,
                 tone: .danger,
                 confidence: 0.78,
@@ -5669,10 +6260,8 @@ final class AnalysisPipeline: ObservableObject {
         if snapshot.lighting.exposureBiasHint <= -0.55 {
             return DemoCoachingRule(
                 id: "object_dark",
-                text: "Объект темноват — добавь свет спереди.",
                 shortVerdict: "Предмет найден, но освещение слабое.",
                 supportingText: "Субъект найден по bbox, при этом экспозиция указывает на недостаток света.",
-                actionText: "Добавь мягкий свет на предмет или поверни его к источнику.",
                 actionType: .improveFrontLight,
                 tone: .warning,
                 confidence: 0.74,
@@ -5686,10 +6275,8 @@ final class AnalysisPipeline: ObservableObject {
 
         return DemoCoachingRule(
             id: "object_good",
-            text: "Объект зафиксирован.",
             shortVerdict: "Главный предмет стабильно найден.",
             supportingText: "Система несколько кадров подряд удерживает bbox предмета и не видит критичных live-проблем.",
-            actionText: nil,
             actionType: .leaveFrameAsIs,
             tone: .success,
             confidence: max(0.76, min(0.92, subject.confidence)),
@@ -5707,10 +6294,8 @@ final class AnalysisPipeline: ObservableObject {
             )
             return DemoCoachingRule(
                 id: "cinematic_portrait_wait_light",
-                text: "Фиксирую свет лица…",
                 shortVerdict: "Лицо найдено, ждём метрики света.",
                 supportingText: "Система удерживает bbox лица, но ещё не получила надёжные значения яркости лица и фона.",
-                actionText: nil,
                 actionType: nil,
                 tone: .warning,
                 confidence: max(0.55, min(0.72, subject.confidence)),
@@ -5739,13 +6324,11 @@ final class AnalysisPipeline: ObservableObject {
                 markCinematicPortraitStepPresented()
                 return DemoCoachingRule(
                     id: "cinematic_portrait_darken_background",
-                    text: "Сделай фон темнее.",
                     shortVerdict: "Лицо найдено, но фон слишком близок по яркости.",
                     supportingText: demoLightingSupportingText(
                         prefix: "Система сравнила лицо и фон: герой ещё недостаточно отделён по яркости.",
                         lighting: subjectLighting
                     ),
-                    actionText: "Убери яркий фон, отвернись от светлой стены или затемни источник за героем.",
                     actionType: .reduceBackgroundDistractions,
                     tone: .danger,
                     confidence: min(0.92, max(0.72, 0.82 - subjectLighting.subjectToBackgroundDelta)),
@@ -5771,13 +6354,11 @@ final class AnalysisPipeline: ObservableObject {
                 markCinematicPortraitStepPresented()
                 return DemoCoachingRule(
                     id: "cinematic_portrait_add_face_light",
-                    text: "Добавь мягкий свет на лицо.",
                     shortVerdict: "Фон уже отделён, теперь лицо нужно вывести вперёд.",
                     supportingText: demoLightingSupportingText(
                         prefix: "Фон стал темнее, но яркость лица ниже комфортного уровня для читаемого портрета.",
                         lighting: subjectLighting
                     ),
-                    actionText: "Подними мягкий фронтальный или боковой свет и держи его не впритык к лицу.",
                     actionType: .improveFrontLight,
                     tone: .danger,
                     confidence: min(0.92, max(0.72, 0.95 - subjectLighting.subjectMeanLuma)),
@@ -5804,13 +6385,11 @@ final class AnalysisPipeline: ObservableObject {
                     markCinematicPortraitStepPresented()
                     return DemoCoachingRule(
                         id: "cinematic_portrait_reduce_face_overexposure",
-                        text: "Убери пересвет на лице.",
                         shortVerdict: "Свет появился, но на лице выбиваются яркие участки.",
                         supportingText: demoLightingSupportingText(
                             prefix: "Система видит слишком высокую яркость или клиппинг внутри bbox лица.",
                             lighting: subjectLighting
                         ),
-                        actionText: "Отодвинь свет, рассей его или поверни лицо от прямого источника.",
                         actionType: .improveFrontLight,
                         tone: .danger,
                         confidence: min(0.94, max(0.76, subjectLighting.subjectMeanLuma + subjectLighting.subjectClippedBrightRatio)),
@@ -5824,13 +6403,11 @@ final class AnalysisPipeline: ObservableObject {
                 markCinematicPortraitStepPresented()
                 return DemoCoachingRule(
                     id: "cinematic_portrait_hold_face_light",
-                    text: "Свет на лице стал мягче.",
                     shortVerdict: "Пересвет ушёл, удерживаем лицо перед финальной оценкой.",
                     supportingText: demoLightingSupportingText(
                         prefix: "Система видит, что яркие участки на лице больше не выбиваются.",
                         lighting: subjectLighting
                     ),
-                    actionText: nil,
                     actionType: nil,
                     tone: .warning,
                     confidence: max(0.68, min(0.82, subject.confidence)),
@@ -5849,13 +6426,11 @@ final class AnalysisPipeline: ObservableObject {
                 }
                 return DemoCoachingRule(
                     id: "cinematic_portrait_good",
-                    text: "Портрет собран.",
                     shortVerdict: "Лицо отделено от фона, свет читается, композиция стабильна.",
                     supportingText: demoLightingSupportingText(
                         prefix: "Система удерживает лицо несколько кадров подряд и видит рабочее разделение лица и фона.",
                         lighting: subjectLighting
                     ),
-                    actionText: nil,
                     actionType: .leaveFrameAsIs,
                     tone: .success,
                     confidence: max(0.78, min(0.93, subject.confidence)),
@@ -5959,10 +6534,8 @@ final class AnalysisPipeline: ObservableObject {
     private func demoWaitingRule(for subject: DemoCoachingSubject) -> DemoCoachingRule {
         DemoCoachingRule(
             id: "subject_waiting",
-            text: "Фиксирую \(demoSubjectTextName(subject))…",
             shortVerdict: "Главный субъект найден, ждём стабильности.",
             supportingText: "Система уже видит bbox, но ждёт повторного подтверждения на следующем кадре.",
-            actionText: nil,
             actionType: nil,
             tone: .warning,
             confidence: max(0.55, min(0.72, subject.confidence)),
@@ -5995,7 +6568,7 @@ final class AnalysisPipeline: ObservableObject {
         return LiveHintPresentation(
             id: "lh_demo_\(rule.id)_\(stableDemoSubjectKey(subject))",
             frameId: frameId,
-            text: rule.text,
+            text: rule.instruction,
             confidence: rule.confidence,
             actionType: rule.actionType,
             actionId: nil,
@@ -6008,7 +6581,10 @@ final class AnalysisPipeline: ObservableObject {
             expandedVerdict: LiveExpandedVerdictPresentation(
                 shortVerdict: rule.shortVerdict,
                 supportingText: rule.supportingText,
-                actionText: rule.actionText,
+                actionText: rule.actionType.flatMap { actionType in
+                    guard actionType != .leaveFrameAsIs else { return nil }
+                    return CameraAcceptedActionCopy.instruction(for: actionType)
+                },
                 fallbackUsed: false
             )
         )
@@ -6137,6 +6713,7 @@ final class AnalysisPipeline: ObservableObject {
         _ = liveAdviceStabilizer.invalidate(frameID: "release", reason: "release")
         liveSubjectTracker.reset()
         liveSubjectLifecycleContext = nil
+        liveCaptureLifecycleContext = nil
         liveSubjectSource = nil
         liveSceneIdentityState = nil
         resetLiveEpisodeStream()
@@ -6273,11 +6850,17 @@ final class AnalysisPipeline: ObservableObject {
     }
 
     /// Clears only the pipeline-side episode transaction after the coordinator
-    /// reaches a retryable terminal state. The coordinator already published
+    /// reaches a retryable terminal state or the user leaves a verified result.
+    /// Returns false if a newer pipeline baseline already owns the stream.
+    /// The coordinator already published
     /// that terminal state, so this method deliberately emits no second event
     /// and cannot recursively re-enter the ViewModel subscriber.
     @MainActor
-    func resetCoachingEpisodeAfterTerminal() {
+    @discardableResult
+    func resetCoachingEpisodeAfterTerminal(
+        expectedBaselineFrameID: String,
+        expectedCaptureGeneration: UInt64
+    ) -> Bool {
         // `clearLiveCoachingEpisodeObservation` resets the owner before its
         // cancellation event is delivered. Keep this method idempotent for
         // the other terminal path where the coordinator is the first owner
@@ -6288,12 +6871,27 @@ final class AnalysisPipeline: ObservableObject {
                 || liveEpisodeSource != nil
                 || liveSubjectLifecycleContext != nil
                 || liveSubjectSource != nil else {
-            return
+            return false
         }
-        resetLiveCoachingEpisodeOwner(
+        guard expectedBaselineFrameID == liveEpisodeBaselineFrameID,
+              expectedCaptureGeneration == liveEpisodeGeneration else {
+            return false
+        }
+        resetLiveCoachingEpisodeTransaction(
             frameID: "episode_terminal",
             reason: "episode_terminal"
         )
+        // Unlike route/lifecycle teardown, continuing a completed episode
+        // preserves capture and subject identity and emits no queued cancel
+        // that could erase the next baseline.
+        resetLiveSpatialConfirmation()
+        resetLiveTechnicalConfirmation()
+        currentLiveHint = nil
+        currentDemoOverlayAnnotations = []
+        currentOverlayAnnotations = []
+        liveHintShownAt = .distantPast
+        liveHintExpiresAt = .distantPast
+        return true
     }
 
     @MainActor
@@ -6306,6 +6904,7 @@ final class AnalysisPipeline: ObservableObject {
             guard liveEpisodeActionID == nil,
                   liveSubjectLifecycleContext == nil else { return }
             liveEpisodeActionID = observation.stabilizedAdvice.actionID
+            liveEpisodeBaselineFrameID = observation.frame.frameID
             liveEpisodeGeneration = observation.lifecycle.generation
             liveEpisodeOrientation = observation.lifecycle.orientation
             liveEpisodeSource = observation.frame.evidence?.subjectBinding?.source
@@ -6330,6 +6929,12 @@ final class AnalysisPipeline: ObservableObject {
         technicalQualitySignal: TechnicalQualitySignal = .empty,
         allowStabilityWhileMoving: Bool = false
     ) {
+        guard let selectionContext = prepareLiveFrameSelectionContext(
+            snapshot: snapshot,
+            semantics: semantics,
+            frameEvidence: frameEvidence,
+            evaluatedAt: evaluatedAt
+        ) else { return }
         publishLiveCoachingEpisodeObservation(
             snapshot: snapshot,
             semantics: semantics,
@@ -6337,12 +6942,192 @@ final class AnalysisPipeline: ObservableObject {
             frameEvidence: frameEvidence,
             evaluatedAt: evaluatedAt,
             technicalQualitySignal: technicalQualitySignal,
-            allowStabilityWhileMoving: allowStabilityWhileMoving
+            allowStabilityWhileMoving: allowStabilityWhileMoving,
+            selectionContext: selectionContext
         )
     }
 #endif
 
     // MARK: - M2-024 live episode handoff
+
+    @MainActor
+    private func prepareLiveFrameSelectionContext(
+        snapshot: FrameFeatureSnapshot,
+        semantics: SceneSemanticsReport,
+        frameEvidence: LatestFrameEvidenceStore.Snapshot,
+        evaluatedAt: Date
+    ) -> LiveFrameSelectionContext? {
+        guard snapshot.mode == .live,
+              snapshot.frameId == frameEvidence.sourceFrameId,
+              frameEvidence.lensGeneration != 0,
+              let orientation = coachingOrientation(for: frameEvidence.orientation) else {
+            return nil
+        }
+
+        let lifecycle = SubjectTrackLifecycleContext(
+            generation: frameEvidence.lensGeneration,
+            orientation: orientation,
+            lensID: frameEvidence.lensID,
+            routeActive: true,
+            isAppBackgrounded: false,
+            sceneSignature: liveSceneSignature(for: frameEvidence.pixelBuffer)
+        )
+
+        var invalidated = false
+        if let previous = liveCaptureLifecycleContext,
+           previous.generation != lifecycle.generation
+            || previous.orientation != lifecycle.orientation
+            || previous.lensID != lifecycle.lensID
+            || previous.routeActive != lifecycle.routeActive
+            || previous.isAppBackgrounded != lifecycle.isAppBackgrounded
+            || previous.sceneSignature != lifecycle.sceneSignature {
+            let reason = previous.sceneSignature != lifecycle.sceneSignature
+                ? "scene_cut"
+                : "capture_context_changed"
+            invalidateLiveSubjectSelection(
+                frameID: frameEvidence.sourceFrameId,
+                reason: reason,
+                now: evaluatedAt
+            )
+            invalidated = true
+        }
+        liveCaptureLifecycleContext = lifecycle
+
+        let baseContext = { (track: SubjectTrackState?,
+                              binding: UserMovementSubjectBinding?,
+                              subjectSelectionInvalidated: Bool) in
+            LiveFrameSelectionContext(
+                frameEvidence: frameEvidence,
+                adapterState: frameEvidence.adapterState,
+                featureSourceTimestamps: frameEvidence.featureSourceTimestamps,
+                lifecycle: lifecycle,
+                subjectTrack: track,
+                subjectBinding: binding,
+                verificationGeometry: self.makeLiveVerificationGeometry(
+                    frameEvidence: frameEvidence
+                ),
+                subjectSelectionInvalidated: subjectSelectionInvalidated
+            )
+        }
+
+        guard !invalidated else {
+            return baseContext(nil, nil, true)
+        }
+
+        let source = snapshot.subjectSignals.primaryCandidateSource
+        let region = snapshot.subjectSignals.primaryCandidateRegion
+        guard let source, let region, isValidVisionRegion(region) else {
+            if liveSubjectTracker.current != nil || liveSubjectSource != nil {
+                invalidateLiveSubjectSelection(
+                    frameID: frameEvidence.sourceFrameId,
+                    reason: "subject_unavailable",
+                    now: evaluatedAt
+                )
+                liveCaptureLifecycleContext = lifecycle
+                return baseContext(nil, nil, true)
+            }
+            return baseContext(nil, nil, false)
+        }
+
+        if let previousSource = liveSubjectSource, previousSource != source {
+            invalidateLiveSubjectSelection(
+                frameID: frameEvidence.sourceFrameId,
+                reason: "subject_source_changed",
+                now: evaluatedAt
+            )
+            liveCaptureLifecycleContext = lifecycle
+            return baseContext(nil, nil, true)
+        }
+
+        // The snapshot's availability flag is not enough to attribute an
+        // identity: reject missing, stale, or future source timestamps before
+        // SubjectTracker can advance. AcceptedFrameEnvelope owns the same
+        // declared freshness windows used by UserMovementFrame.
+        let envelope = frameEvidence.makeEnvelope()
+        guard let measuredAt = frameEvidence.featureSourceTimestamps[source],
+              measuredAt.timeIntervalSinceReferenceDate.isFinite,
+              measuredAt <= evaluatedAt,
+              envelope.sourceAvailability(asOf: evaluatedAt)[source] == true else {
+            invalidateLiveSubjectSelection(
+                frameID: frameEvidence.sourceFrameId,
+                reason: "subject_source_stale",
+                now: evaluatedAt
+            )
+            liveCaptureLifecycleContext = lifecycle
+            return baseContext(nil, nil, true)
+        }
+
+        let tracked = updateLiveSubjectTracker(
+            snapshot: snapshot,
+            semantics: semantics,
+            adapterState: frameEvidence.adapterState,
+            frameID: frameEvidence.sourceFrameId,
+            generation: frameEvidence.lensGeneration
+        )
+        guard let tracked,
+              tracked.phase == .active,
+              tracked.lastSeenFrameID == frameEvidence.sourceFrameId,
+              tracked.identity.generation == frameEvidence.lensGeneration,
+              tracked.lastRegion == region,
+              let binding = UserMovementSubjectBinding(
+                  identity: tracked.identity,
+                  frameID: frameEvidence.sourceFrameId,
+                  region: region,
+                  source: source,
+                  coordinateSpace: .vision,
+                  measuredAt: measuredAt,
+                  confidence: snapshot.subjectSignals.primaryCandidateConfidence ?? 0
+              ) else {
+            invalidateLiveSubjectSelection(
+                frameID: frameEvidence.sourceFrameId,
+                reason: "subject_unavailable",
+                now: evaluatedAt
+            )
+            liveCaptureLifecycleContext = lifecycle
+            return baseContext(nil, nil, true)
+        }
+
+        return baseContext(tracked, binding, false)
+    }
+
+    @MainActor
+    private func invalidateLiveSubjectSelection(frameID: String,
+                                                 reason: String,
+                                                 now: Date) {
+        let isCaptureLifecycleChange = reason == "scene_cut"
+            || reason == "capture_context_changed"
+        let hasFrameGlobalEpisode = liveEpisodeActionID
+            .flatMap(UserMovementObserver.actionFamily)
+            .map { !$0.requiresSubjectBinding } == true
+        let hasFrameGlobalHint = currentLiveHint.map {
+            liveHintBindingDisposition($0) == .frameGlobal
+                && $0.subjectIdentity == nil
+                && $0.targetRegion == nil
+                && $0.overlayHint?.targetRegion == nil
+        } == true
+        let preserveFrameGlobalContinuity = !isCaptureLifecycleChange
+            && (hasFrameGlobalEpisode
+                || hasFrameGlobalHint
+                || liveTechnicalConfirmation?.isFrameGlobal == true)
+
+        if !preserveFrameGlobalContinuity {
+            resetLiveCoachingEpisodeTransaction(frameID: frameID, reason: reason)
+        }
+        liveSubjectTracker.reset()
+        liveSubjectSource = nil
+        // Subject loss must not erase a valid frame-global quality hint. A
+        // capture/lifecycle change still invalidates every visible state;
+        // only ordinary subject unavailability keeps the global command and
+        // its confirmation continuity alive.
+        clearVisibleLiveSubjectState(
+            now: now,
+            preservingFrameGlobalHint: reason != "scene_cut"
+                && reason != "capture_context_changed"
+        )
+        if !preserveFrameGlobalContinuity {
+            publishLiveCoachingEpisodeEvent(.cancel(coachingEpisodeCancellationReason(for: reason)))
+        }
+    }
 
     /// Builds the only production episode stream. The first accepted action is
     /// a baseline and freezes advice; later events carry only fresh frame
@@ -6357,7 +7142,8 @@ final class AnalysisPipeline: ObservableObject {
         frameEvidence: LatestFrameEvidenceStore.Snapshot,
         evaluatedAt: Date,
         technicalQualitySignal: TechnicalQualitySignal = .empty,
-        allowStabilityWhileMoving: Bool = false
+        allowStabilityWhileMoving: Bool = false,
+        selectionContext: LiveFrameSelectionContext
     ) {
         let stabilityIssue = admittedTechnicalStabilityIssue(from: technicalQualitySignal)
         let stabilityAdmission = allowStabilityWhileMoving && stabilityIssue != nil
@@ -6370,39 +7156,25 @@ final class AnalysisPipeline: ObservableObject {
             return
         }
 
+        guard selectionContext.frameEvidence.sourceFrameId == snapshot.frameId,
+              selectionContext.frameEvidence.sourceFrameId == frameEvidence.sourceFrameId,
+              selectionContext.lifecycle.generation == frameEvidence.lensGeneration,
+              selectionContext.lifecycle.orientation == orientation else {
+            clearLiveCoachingEpisodeObservation(reason: "invalid_selection_context")
+            return
+        }
+        // A lost subject invalidates only the subject binding. Frame-global
+        // actions (including moving-camera stability) remain admissible from
+        // this exact context; subject-dependent admission below still fails
+        // closed because the context carries no active binding. Do not
+        // reacquire an object from this same frame.
+
         // Keep the verifier's provenance pair grounded in the same immutable
         // frame envelope as the subject binding. The camera owner captures
         // the actual preview destination; no analysis/source-size identity
         // fallback is valid for a subject-bound comparison.
-        let verificationGeometry = makeLiveVerificationGeometry(
-            frameEvidence: frameEvidence
-        )
-
-        let lifecycle = SubjectTrackLifecycleContext(
-            generation: frameEvidence.lensGeneration,
-            orientation: orientation,
-            // The camera owner is the source of lens identity. Do not invent
-            // a default here: a missing registration/active lens remains an
-            // honest fail-closed verification boundary.
-            // This must remain frame-bound. The manager may switch lenses
-            // after capture and before this main-actor presentation runs.
-            lensID: frameEvidence.lensID,
-            routeActive: true,
-            isAppBackgrounded: false,
-            // The producer owns a frozen, thresholded scene identity. Ordinary
-            // exposure drift and local motion retain it; a bounded material
-            // cut rotates it. If the buffer cannot be read, nil keeps
-            // ActionVerifier fail-closed instead of inventing identity.
-            sceneSignature: liveSceneSignature(for: frameEvidence.pixelBuffer)
-        )
-        if let previous = liveSubjectLifecycleContext,
-           previous.generation != lifecycle.generation ||
-           previous.orientation != lifecycle.orientation {
-            // A new capture epoch/orientation cannot inherit either the
-            // tracked subject or the temporal advice streak.
-            clearLiveCoachingEpisodeObservation(reason: "capture_context_changed")
-            return
-        }
+        let verificationGeometry = selectionContext.verificationGeometry
+        let lifecycle = selectionContext.lifecycle
 
         guard plan.validate(expectedFrameId: snapshot.frameId).isEmpty else {
             clearLiveCoachingEpisodeObservation(reason: "plan_not_actionable")
@@ -6431,8 +7203,17 @@ final class AnalysisPipeline: ObservableObject {
                 priorityBand: legacyAction.priority,
                 targetPoint: migratedFamily == .subjectDisplacement
                     ? snapshot.subjectSignals.primaryCandidateRegion.flatMap { subjectRegion in
-                        semanticAction.subjectDisplacementDirection.map { direction in
-                            direction.subjectTargetPoint(from: subjectRegion)
+                        guard let subjectTargetRegion = subjectRegion.converted(
+                            from: .vision,
+                            to: .subjectTarget
+                        ) else {
+                            return nil
+                        }
+                        return semanticAction.subjectDisplacementDirection.flatMap { direction in
+                            direction.subjectTargetPoint(
+                                from: subjectTargetRegion,
+                                sourceSpace: .subjectTarget
+                            )
                         }
                     }
                     : nil
@@ -6472,7 +7253,11 @@ final class AnalysisPipeline: ObservableObject {
                   visibleHint.frameId == snapshot.frameId,
                   visibleHint.actionType == primaryAction.actionType,
                   visibleHint.actionId == primaryAction.id,
-                  visibleHint.semanticActionType?.rawValue == candidate.actionID else {
+                  visibleHint.semanticActionType?.rawValue == candidate.actionID,
+                  (candidateRequiresSubjectBinding(candidate.actionID)
+                    ? visibleHint.subjectIdentity == selectionContext.subjectBinding?.identity
+                        && visibleHint.observedSourceRegion == selectionContext.subjectBinding?.region
+                    : visibleHint.subjectIdentity == nil && visibleHint.observedSourceRegion == nil) else {
                 return
             }
         }
@@ -6498,27 +7283,14 @@ final class AnalysisPipeline: ObservableObject {
         let subjectTrack: SubjectTrackState?
         let binding: UserMovementSubjectBinding?
         if requiresSubject {
-            guard let tracked = updateLiveSubjectTracker(
-                snapshot: snapshot,
-                semantics: semantics,
-                adapterState: frameEvidence.adapterState,
-                frameID: snapshot.frameId,
-                generation: frameEvidence.lensGeneration
-            ),
-            tracked.phase == .active,
-            tracked.lastSeenFrameID == snapshot.frameId,
-            let subjectRegion = snapshot.subjectSignals.primaryCandidateRegion,
-            let source = snapshot.subjectSignals.primaryCandidateSource,
-            let measuredAt = frameEvidence.featureSourceTimestamps[source],
-            let subjectBinding = UserMovementSubjectBinding(
-                identity: tracked.identity,
-                frameID: snapshot.frameId,
-                region: subjectRegion,
-                source: source,
-                coordinateSpace: .vision,
-                measuredAt: measuredAt,
-                confidence: snapshot.subjectSignals.primaryCandidateConfidence ?? 0
-            ) else {
+            guard let tracked = selectionContext.subjectTrack,
+                  tracked.phase == .active,
+                  tracked.lastSeenFrameID == snapshot.frameId,
+                  let subjectBinding = selectionContext.subjectBinding,
+                  subjectBinding.frameID == snapshot.frameId,
+                  subjectBinding.identity == tracked.identity,
+                  subjectBinding.region == snapshot.subjectSignals.primaryCandidateRegion,
+                  subjectBinding.source == snapshot.subjectSignals.primaryCandidateSource else {
                 clearLiveCoachingEpisodeObservation(reason: "subject_unavailable")
                 return
             }
@@ -6567,10 +7339,37 @@ final class AnalysisPipeline: ObservableObject {
                     horizonAvailable: snapshot.sources.horizon.available
                         && snapshot.sources.horizon.confidence != nil,
                     calibratedProbability: candidate.probability,
-                    minimumConfidence: CameraAdviceSafetyGate.defaultMinimumConfidence
+                    minimumConfidence: CameraAdviceSafetyGate.defaultMinimumConfidence,
+                    intentionallySuppressedFamilies: intentClarification.suppressedFamilies
                 )
             )
             let boundedDecision = CameraBoundedActionPlanner.plan(
+                admissibility: CameraAdviceSafetyGate.evaluateAdmissibility(
+                    CameraAdviceAdmissibilityInput(
+                        intentAllowsCorrection: !intentClarification.suppressedFamilies.contains(candidate.safetyFamily),
+                        // This handoff only carries camera-operator/technical
+                        // families; it never commands a participant or a prop.
+                        manipulationPermitted: true,
+                        // A light-adding command needs a confirmed controllable
+                        // source; the live envelope carries no such evidence, so
+                        // it fails closed (N9.6 rule 3).
+                        resourceAvailable: !Self.requiresConfirmedLightResource(actionID: candidate.actionID),
+                        // A displacement/scale claim needs a grounded target;
+                        // without one there is no reachable destination.
+                        destinationReachable: candidateRequiresSubjectBinding(candidate.actionID)
+                            ? candidate.targetPoint != nil
+                            : true,
+                        modeAdmitted: true,
+                        calibratedEvidenceAvailable: candidate.probability.isFinite && candidate.probability > 0,
+                        // A promised effect needs a supported verifier; an
+                        // unmapped action cannot enter the closed loop.
+                        verifierSupported: UserMovementObserver.actionFamily(for: candidate.actionID) != nil,
+                        // The tracked target must belong to this exact frame.
+                        targetFresh: candidateRequiresSubjectBinding(candidate.actionID)
+                            ? subjectTrack?.lastSeenFrameID == snapshot.frameId
+                            : true
+                    )
+                ),
                 safetyDecision: safetyDecision,
                 candidates: [
                     CameraPlannerCandidate(
@@ -6578,7 +7377,8 @@ final class AnalysisPipeline: ObservableObject {
                         actionFamily: candidate.safetyFamily,
                         calibratedProbability: candidate.probability,
                         priorityBand: candidate.priorityBand,
-                        targetPoint: candidate.targetPoint
+                        targetPoint: candidate.targetPoint,
+                        targetIdentity: subjectTrack?.identity
                     )
                 ],
                 goodFrameScore: 0,
@@ -7041,26 +7841,34 @@ final class AnalysisPipeline: ObservableObject {
 
     @MainActor
     private func clearLiveCoachingEpisodeObservation(reason: String) {
-        // The owner reset is atomic with respect to the publication below.
-        // A queued ViewModel subscriber must never race a stale subject track
-        // or lifecycle context after the action ID has been cleared.
-        resetLiveCoachingEpisodeOwner(frameID: "live", reason: reason)
+        // Retryable action/terminal outcomes clear only the episode
+        // transaction. Capture selection and scene continuity stay alive so
+        // the next frame can establish a fresh baseline without reacquiring
+        // the same subject or inheriting a stale hint.
+        resetLiveCoachingEpisodeTransaction(frameID: "live", reason: reason)
         publishLiveCoachingEpisodeEvent(.cancel(coachingEpisodeCancellationReason(for: reason)))
     }
 
     @MainActor
-    private func resetLiveCoachingEpisodeOwner(frameID: String, reason: String) {
+    private func resetLiveCoachingEpisodeTransaction(frameID: String, reason: String) {
         _ = liveAdviceStabilizer.invalidate(frameID: frameID, reason: reason)
-        liveSubjectTracker.reset()
         liveSubjectLifecycleContext = nil
+        resetLiveEpisodeStream()
+    }
+
+    @MainActor
+    private func resetLiveCoachingEpisodeOwner(frameID: String, reason: String) {
+        resetLiveCoachingEpisodeTransaction(frameID: frameID, reason: reason)
+        liveSubjectTracker.reset()
         liveSubjectSource = nil
         liveSceneIdentityState = nil
-        resetLiveEpisodeStream()
+        liveCaptureLifecycleContext = nil
     }
 
     @MainActor
     private func resetLiveEpisodeStream() {
         liveEpisodeActionID = nil
+        liveEpisodeBaselineFrameID = nil
         liveEpisodeGeneration = nil
         liveEpisodeOrientation = nil
         liveEpisodeSource = nil
@@ -7113,11 +7921,11 @@ final class AnalysisPipeline: ObservableObject {
     ) -> CoachingEpisodeCancellationReason {
         switch reason {
         case "action_changed": return .actionChanged
-        case "subject_unavailable", "subject_source_changed": return .subjectChanged
+        case "subject_unavailable", "subject_source_changed", "subject_source_stale": return .subjectChanged
         case "capture_context_changed": return .cameraGenerationChange
         case "scene_cut": return .sceneCut
         case "camera_motion": return .staleEvidence
-        case "invalid_live_envelope", "frame_adapter_rejected", "bounded_plan_blocked",
+        case "invalid_live_envelope", "invalid_selection_context", "frame_adapter_rejected", "bounded_plan_blocked",
              "probability_invalid", "plan_not_actionable": return .staleEvidence
         case "observation_rejected": return .invalidObservation
         case "adapter_state_missing": return .staleEvidence
@@ -7613,7 +8421,8 @@ final class AnalysisPipeline: ObservableObject {
             snapshot: snapshot,
             semantics: semantics,
             allowsAmbiguousTechnicalSilenceLowConfidence: allowsAmbiguousTechnicalSilenceLowConfidence
-        ) {
+           ),
+           admitsTechnicalLiveHint(technicalHint, plan: plan) {
             return technicalHint
         }
 
@@ -7638,10 +8447,11 @@ final class AnalysisPipeline: ObservableObject {
                 fallbackUsed: fallbackUsed
            ) {
             let targetRegion = linkedAction.targetRegion ?? firstIssueRegion(linkedIssueIds: semanticTip.linkedIssueIds, critique: critique)
+            let instruction = CameraAcceptedActionCopy.instruction(for: semanticTip.actionType)
             return LiveHintPresentation(
                 id: "lh_live_sem_\(semanticTipPlanner.stableKey(for: semanticTip))",
                 frameId: frameId,
-                text: semanticTip.liveText,
+                text: instruction,
                 confidence: liveActionConfidence(for: linkedAction, plan: plan, critique: critique),
                 actionType: linkedAction.actionType,
                 actionId: linkedAction.id,
@@ -7653,9 +8463,8 @@ final class AnalysisPipeline: ObservableObject {
                 isFallback: fallbackUsed,
                 expandedVerdict: makeLiveExpandedVerdictPresentation(
                     critique: critique,
-                    plan: plan,
-                    semanticTip: semanticTip,
-                    primaryText: semanticTip.liveText,
+                    actionInstruction: instruction,
+                    primaryText: instruction,
                     fallbackUsed: fallbackUsed
                 ),
                 semanticActionType: semanticTip.actionType,
@@ -7711,10 +8520,11 @@ final class AnalysisPipeline: ObservableObject {
                 snapshot: snapshot,
                 semantics: semantics
            ) {
+            let instruction = CameraAcceptedActionCopy.instruction(for: semanticTip.actionType)
             return LiveHintPresentation(
                 id: "lh_live_sem_\(semanticTipPlanner.stableKey(for: semanticTip))",
                 frameId: frameId,
-                text: semanticTip.liveText,
+                text: instruction,
                 confidence: livePositiveConfidence(plan: plan, critique: critique),
                 actionType: .leaveFrameAsIs,
                 actionId: nil,
@@ -7726,9 +8536,8 @@ final class AnalysisPipeline: ObservableObject {
                 isFallback: fallbackUsed,
                 expandedVerdict: makeLiveExpandedVerdictPresentation(
                     critique: critique,
-                    plan: plan,
-                    semanticTip: semanticTip,
-                    primaryText: semanticTip.liveText,
+                    actionInstruction: instruction,
+                    primaryText: instruction,
                     fallbackUsed: fallbackUsed
                 )
             )
@@ -7750,12 +8559,14 @@ final class AnalysisPipeline: ObservableObject {
             let issueSignature = linkedIssueTypes.isEmpty ? "none" : linkedIssueTypes
             let targetRegion = primaryAction.targetRegion ?? firstIssueRegion(linkedIssueIds: primaryAction.linkedIssueIds, critique: critique)
             let id = "lh_live_action_\(primaryAction.actionType.rawValue)_\(issueSignature)_\(quantizedRegionKey(for: targetRegion))"
-            let text = nonEmpty(primaryAction.expectedOutcome) ?? critique.summary.shortVerdict
             let semanticActionType = primaryAction.actionType.semanticActionType
+            // Presentation resolves the typed semantic action before the legacy
+            // action type, so the pipeline must publish that same key.
+            let instruction = CameraAcceptedActionCopy.instruction(for: semanticActionType)
             return LiveHintPresentation(
                 id: id,
                 frameId: frameId,
-                text: text,
+                text: instruction,
                 confidence: liveActionConfidence(for: primaryAction, plan: plan, critique: critique),
                 actionType: primaryAction.actionType,
                 actionId: primaryAction.id,
@@ -7767,9 +8578,8 @@ final class AnalysisPipeline: ObservableObject {
                 isFallback: fallbackUsed,
                 expandedVerdict: makeLiveExpandedVerdictPresentation(
                     critique: critique,
-                    plan: plan,
-                    semanticTip: nil,
-                    primaryText: text,
+                    actionInstruction: instruction,
+                    primaryText: instruction,
                     fallbackUsed: fallbackUsed
                 ),
                 semanticActionType: semanticActionType,
@@ -7792,11 +8602,11 @@ final class AnalysisPipeline: ObservableObject {
             let strengthTypes = critique.strengths.prefix(3).map(\.type.rawValue).sorted().joined(separator: "+")
             let normalizedSummary = normalizeSummaryKey(critique.summary.shortVerdict)
             let id = "lh_live_summary_\(normalizedSummary)_\(strengthTypes.isEmpty ? "none" : strengthTypes)"
-            let noChangeText = nonEmpty(plan.noChangeRationale) ?? critique.summary.shortVerdict
+            let keepInstruction = CameraAcceptedActionCopy.instruction(for: .leaveFrameAsIs)
             return LiveHintPresentation(
                 id: id,
                 frameId: frameId,
-                text: noChangeText,
+                text: keepInstruction,
                 confidence: livePositiveConfidence(plan: plan, critique: critique),
                 actionType: .leaveFrameAsIs,
                 actionId: nil,
@@ -7808,11 +8618,36 @@ final class AnalysisPipeline: ObservableObject {
                 isFallback: fallbackUsed,
                 expandedVerdict: makeLiveExpandedVerdictPresentation(
                     critique: critique,
-                    plan: plan,
-                    semanticTip: nil,
-                    primaryText: noChangeText,
+                    actionInstruction: keepInstruction,
+                    primaryText: keepInstruction,
                     fallbackUsed: fallbackUsed
                 )
+            )
+        }
+
+        // CC-O05 visible half: when every stronger advice source stayed silent
+        // but tracked foreground instances still overlap, name the merge as a
+        // frame-global remark instead of answering with an object-targeted
+        // correction that cannot be grounded to one instance. Deliberate
+        // overlap on a good frame is excluded by the verdict gate above.
+        if critique.verdict != .good,
+           let overlapPairCount = liveOverlappingInstancePairCount(),
+           overlapPairCount > 0 {
+            return LiveHintPresentation(
+                id: "lh_live_instance_overlap_\(frameId)",
+                frameId: frameId,
+                text: CameraAcceptedActionCopy.instruction(for: .changeCameraAngle),
+                confidence: 0.6,
+                actionType: .changeAngle,
+                actionId: nil,
+                linkedIssueIds: [],
+                summaryId: nil,
+                traceRootIds: [],
+                targetRegion: nil,
+                overlayHint: nil,
+                isFallback: fallbackUsed,
+                expandedVerdict: nil,
+                semanticActionType: .changeCameraAngle
             )
         }
 
@@ -7837,7 +8672,9 @@ final class AnalysisPipeline: ObservableObject {
             semanticActionTypes: [semanticTip.actionType],
             mode: critique.mode,
             snapshot: snapshot,
-            semantics: semantics
+            semantics: semantics,
+            overlappingInstancePairCount: liveOverlappingInstancePairCount(),
+            tapGroundedObjectTarget: liveTapGroundedObjectTarget()
         ) else { return false }
 
         switch semanticTip.priorityBand {
@@ -7890,7 +8727,9 @@ final class AnalysisPipeline: ObservableObject {
             action: action.actionType,
             mode: critique.mode,
             snapshot: snapshot,
-            semantics: semantics
+            semantics: semantics,
+            overlappingInstancePairCount: liveOverlappingInstancePairCount(),
+            tapGroundedObjectTarget: liveTapGroundedObjectTarget()
         ) else {
             return false
         }
@@ -7942,7 +8781,9 @@ final class AnalysisPipeline: ObservableObject {
             semanticActionTypes: correction.semanticActionTypes,
             mode: .live,
             snapshot: snapshot,
-            semantics: semantics
+            semantics: semantics,
+            overlappingInstancePairCount: liveOverlappingInstancePairCount(),
+            tapGroundedObjectTarget: liveTapGroundedObjectTarget()
         )
     }
 
@@ -8335,10 +9176,15 @@ final class AnalysisPipeline: ObservableObject {
         guard let legacySuggestion else { return nil }
         guard isLiveWorthyLegacySuggestion(legacySuggestion, critique: critique) else { return nil }
         let legacyActionType = legacyActionType(for: legacySuggestion, plan: plan)
+        let instruction = CameraAcceptedActionCopy.instruction(
+            actionType: legacyActionType,
+            semanticActionType: nil,
+            technicalIssueType: nil
+        ) ?? SETCopyKey.cameraFallback.localizedString(locale: CameraAcceptedActionCopy.locale)
         return LiveHintPresentation(
             id: "lh_live_legacy_\(legacySuggestion.type.rawValue)",
             frameId: frameId,
-            text: legacySuggestion.text,
+            text: instruction,
             confidence: confidenceForSuggestion(legacySuggestion),
             actionType: legacyActionType,
             actionId: legacyActionType.map { "legacy_\($0.rawValue)" },
@@ -8350,9 +9196,8 @@ final class AnalysisPipeline: ObservableObject {
             isFallback: true,
             expandedVerdict: makeLiveExpandedVerdictPresentation(
                 critique: critique,
-                plan: plan,
-                semanticTip: nil,
-                primaryText: legacySuggestion.text,
+                actionInstruction: instruction,
+                primaryText: instruction,
                 fallbackUsed: true
             )
         )
@@ -8401,8 +9246,7 @@ final class AnalysisPipeline: ObservableObject {
     }
 
     private func makeLiveExpandedVerdictPresentation(critique: CritiqueReport,
-                                                     plan: RecommendationPlan,
-                                                     semanticTip: SemanticTipCandidate?,
+                                                     actionInstruction: String?,
                                                      primaryText: String?,
                                                      fallbackUsed: Bool) -> LiveExpandedVerdictPresentation? {
         guard let shortVerdict = nonEmpty(critique.summary.shortVerdict) else { return nil }
@@ -8416,18 +9260,9 @@ final class AnalysisPipeline: ObservableObject {
                 ?? critique.issues.first.flatMap { nonEmpty($0.rationale) }
         }
 
-        let actionCandidate: String?
-        if let semanticTip {
-            actionCandidate = nonEmpty(semanticTip.pauseText)
-        } else if critique.verdict == .good {
-            actionCandidate = nonEmpty(plan.noChangeRationale)
-        } else {
-            actionCandidate = plan.primaryAction.flatMap { action in
-                guard action.actionType != .leaveFrameAsIs else { return nil }
-                return nonEmpty(action.expectedOutcome)
-            }
-        }
-
+        // C07: the expanded instruction is the catalog copy for the same
+        // accepted action, never a pipeline-authored sentence.
+        let actionCandidate = nonEmpty(actionInstruction)
         let actionText: String?
         if let actionCandidate, actionCandidate != primaryText {
             actionText = actionCandidate
@@ -8517,7 +9352,7 @@ final class AnalysisPipeline: ObservableObject {
             semantics: semantics,
             allowsAmbiguousTechnicalSilenceLowConfidence: allowsAmbiguousTechnicalSilenceLowConfidence
         )
-        let liveText = technicalLiveText(for: issue)
+        let liveText = CameraAcceptedActionCopy.instruction(for: issue.type)
         return LiveHintPresentation(
             id: "lh_live_technical_\(issue.type.rawValue)",
             frameId: frameId,
@@ -8534,10 +9369,11 @@ final class AnalysisPipeline: ObservableObject {
             expandedVerdict: LiveExpandedVerdictPresentation(
                 shortVerdict: technicalPauseSummary(for: issue),
                 supportingText: technicalPauseWhyProblematic(for: issue),
-                actionText: technicalPauseActionText(for: issue),
+                actionText: liveText,
                 fallbackUsed: false
             ),
-            technicalIssueType: issue.type
+            technicalIssueType: issue.type,
+            technicalActionType: issue.actionType
         )
     }
 
@@ -8840,42 +9676,43 @@ final class AnalysisPipeline: ObservableObject {
                                        semantics: SceneSemanticsReport? = nil) -> [PauseActionRow] {
         switch issue.type {
         case .overexposure:
+            // C05: one cause is ONE card. The hotspot label and the
+            // clearance/wait option are alternatives of the same cause and
+            // share one group, so at most one of them is ever the displayed
+            // step. The generic simplify_background label is not emitted as
+            // an independent command (N9.4).
+            let overexposureGroup = CameraAdviceAlternativeGrouping.groupID(
+                cause: "overexposure",
+                traceID: traceId
+            )
             var actions = [
-                PauseActionRow(
-                    actionId: "act_technical_remove_hotspot",
-                    actionType: .changeAngle,
-                    semanticActionType: .removeBackgroundHotspot,
-                    priority: 1,
-                    confidence: technicalQualityConfidence(for: issue),
-                    linkedIssueIds: [],
-                    expectedOutcome: "Яркое пятно перестанет перетягивать внимание с главного объекта.",
-                    targetRegion: nil,
-                    overlayHintId: nil,
-                    traceRefId: traceId
-                ),
                 PauseActionRow(
                     actionId: "act_technical_change_angle",
                     actionType: .changeAngle,
                     semanticActionType: .changeCameraAngle,
+                    priority: 1,
+                    confidence: technicalQualityConfidence(for: issue),
+                    linkedIssueIds: [],
+                    expectedOutcome: CameraAcceptedActionCopy.instruction(for: .changeCameraAngle),
+                    targetRegion: nil,
+                    overlayHintId: nil,
+                    traceRefId: traceId,
+                    alternativeGroupID: overexposureGroup,
+                    concreteSemanticActionType: .changeCameraAngle
+                ),
+                PauseActionRow(
+                    actionId: "act_technical_remove_hotspot",
+                    actionType: .changeAngle,
+                    semanticActionType: .removeBackgroundHotspot,
                     priority: 2,
                     confidence: technicalQualityConfidence(for: issue),
                     linkedIssueIds: [],
-                    expectedOutcome: "Небольшая смена угла уменьшит пересвет и вернёт детали в ярких областях.",
+                    expectedOutcome: CameraAcceptedActionCopy.instruction(for: .removeBackgroundHotspot),
                     targetRegion: nil,
                     overlayHintId: nil,
-                    traceRefId: traceId
-                ),
-                PauseActionRow(
-                    actionId: "act_technical_simplify_background",
-                    actionType: .reduceBackgroundDistractions,
-                    semanticActionType: .simplifyBackground,
-                    priority: 3,
-                    confidence: technicalQualityConfidence(for: issue),
-                    linkedIssueIds: [],
-                    expectedOutcome: "Уберите яркие или шумные детали фона, чтобы они не конкурировали с главным объектом.",
-                    targetRegion: nil,
-                    overlayHintId: nil,
-                    traceRefId: traceId
+                    traceRefId: traceId,
+                    alternativeGroupID: overexposureGroup,
+                    concreteSemanticActionType: .changeCameraAngle
                 )
             ]
             if let snapshot,
@@ -8889,10 +9726,12 @@ final class AnalysisPipeline: ObservableObject {
                         priority: actions.count + 1,
                         confidence: technicalQualityConfidence(for: issue),
                         linkedIssueIds: [],
-                        expectedOutcome: "Дождитесь более свободного фона, чтобы яркие и шумные детали не спорили с главным объектом.",
+                        expectedOutcome: CameraAcceptedActionCopy.instruction(for: .waitForBackgroundClearance),
                         targetRegion: nil,
                         overlayHintId: nil,
-                        traceRefId: traceId
+                        traceRefId: traceId,
+                        alternativeGroupID: overexposureGroup,
+                        concreteSemanticActionType: .waitForBackgroundClearance
                     )
                 )
             }
@@ -8907,10 +9746,18 @@ final class AnalysisPipeline: ObservableObject {
                         priority: actions.count + 1,
                         confidence: technicalQualityConfidence(for: issue),
                         linkedIssueIds: [],
-                        expectedOutcome: "Выравнивание камеры вернёт сцене устойчивую ориентацию и снизит ощущение случайного кадра.",
+                        expectedOutcome: CameraAcceptedActionCopy.instruction(for: SemanticActionType.levelHorizon),
                         targetRegion: nil,
                         overlayHintId: nil,
-                        traceRefId: traceId
+                        traceRefId: traceId,
+                        // An independent problem, not an alternative of the
+                        // exposure cause; it still gets its own single-step
+                        // group.
+                        alternativeGroupID: CameraAdviceAlternativeGrouping.groupID(
+                            cause: "horizon",
+                            traceID: traceId
+                        ),
+                        concreteSemanticActionType: .levelHorizon
                     )
                 )
             }
@@ -8924,7 +9771,7 @@ final class AnalysisPipeline: ObservableObject {
                     priority: 1,
                     confidence: technicalPauseConfidence(for: issue),
                     linkedIssueIds: [],
-                    expectedOutcome: "Мягкий фронтальный или боковой свет сделает главный объект читаемее без сильного пересвета фона.",
+                    expectedOutcome: CameraAcceptedActionCopy.instruction(for: .addFrontFillLight),
                     targetRegion: nil,
                     overlayHintId: nil,
                     traceRefId: traceId
@@ -8988,25 +9835,6 @@ final class AnalysisPipeline: ObservableObject {
         min(1.0, max(0.0, max(issue.confidence, issue.severity, 0.75)))
     }
 
-    private func technicalLiveText(for issue: TechnicalQualityIssueSignal) -> String {
-        switch issue.type {
-        case .defocus:
-            return "Не хватает резкости — тапни по главному объекту."
-        case .motionBlur:
-            return "Резкость просела — зафиксируй камеру перед снимком."
-        case .overexposure:
-            return "Слишком ярко — снизь экспозицию или смени угол."
-        case .underexposure:
-            return "Слишком темно — добавь свет на объект."
-        case .noise:
-            return "Кадр шумит — добавь света перед снимком."
-        case .occlusion:
-            return "Объект перекрыт — убери помеху из кадра."
-        case .lensSmudge:
-            return "Картинка мутная — проверь чистоту объектива."
-        }
-    }
-
     private func technicalPauseSummary(for issue: TechnicalQualityIssueSignal) -> String {
         switch issue.type {
         case .defocus:
@@ -9045,31 +9873,17 @@ final class AnalysisPipeline: ObservableObject {
         }
     }
 
-    private func technicalPauseActionText(for issue: TechnicalQualityIssueSignal) -> String {
-        switch issue.actionType {
-        case .stabilizeCamera:
-            return "Останови движение камеры, прижми локти или используй опору и пересними."
-        case .refocusSubject:
-            return "Тапни по главному объекту, дождись фокуса и пересними кадр."
-        case .reduceExposure:
-            return "Сдвинь экспозицию вниз или поверни камеру так, чтобы яркий источник не доминировал."
-        case .increaseExposure:
-            return "Добавь фронтальный/боковой свет или подними экспозицию до читаемости объекта."
-        case .avoidOcclusion:
-            return "Сдвинь камеру или убери предмет, который перекрывает главный объект."
-        case .cleanLens:
-            return "Протри объектив и повтори кадр."
-        case .reduceIsoNoise:
-            return "Добавь света и пересними с меньшим ISO/шумом."
-        }
-    }
-
     @MainActor
     private func applyLiveHint(candidate: LiveHintPresentation?,
                                snapshot: FrameFeatureSnapshot? = nil,
                                semantics: SceneSemanticsReport? = nil,
                                now: Date) {
         var candidate = candidate
+        if let currentIdentity = currentLiveHint?.subjectIdentity,
+           let nextCandidate = candidate,
+           nextCandidate.subjectIdentity != currentIdentity {
+            clearVisibleLiveSubjectState(now: now)
+        }
         if let technicalCandidate = candidate, isTechnicalLiveHint(technicalCandidate) {
             liveSpatialConfirmation = nil
             guard let snapshot, let semantics else {
@@ -9152,11 +9966,14 @@ final class AnalysisPipeline: ObservableObject {
                 summaryId: candidate.summaryId,
                 traceRootIds: candidate.traceRootIds,
                 targetRegion: candidate.targetRegion,
+                subjectIdentity: candidate.subjectIdentity,
+                observedSourceRegion: candidate.observedSourceRegion,
                 overlayHint: candidate.overlayHint,
                 isFallback: candidate.isFallback,
                 expandedVerdict: candidate.expandedVerdict,
                 semanticActionType: candidate.semanticActionType,
                 technicalIssueType: candidate.technicalIssueType,
+                technicalActionType: candidate.technicalActionType,
                 linkedEvidence: candidate.linkedEvidence
             )
             liveHintExpiresAt = now.addingTimeInterval(liveHintDuration(for: candidate))
@@ -9200,6 +10017,20 @@ final class AnalysisPipeline: ObservableObject {
             || candidate.traceRootIds.contains(where: { $0.hasPrefix("technical_quality_") })
     }
 
+    /// C05 item 1: the planner is the single owner of the final decision. A
+    /// technical hint may only be shown when it speaks about the same action
+    /// family the accepted plan chose (or the plan accepted no correction at
+    /// all). Otherwise it is a silent substitute for the planner's decision
+    /// and must be withheld.
+    private func admitsTechnicalLiveHint(_ hint: LiveHintPresentation,
+                                         plan: RecommendationPlan) -> Bool {
+        guard let technicalAction = hint.technicalActionType else { return true }
+        return CameraAdviceSingleOwner.admitsTechnicalCommand(
+            planPrimaryActionType: plan.primaryAction?.actionType,
+            technicalAction: technicalAction
+        )
+    }
+
     private func resetLiveSpatialConfirmation() {
         liveSpatialConfirmation = nil
     }
@@ -9228,14 +10059,17 @@ final class AnalysisPipeline: ObservableObject {
         let commandKey = "\(issueKey)|\(actionKey)"
         let nextCount: Int
         if let previous = liveTechnicalConfirmation,
-           previous.commandKey == commandKey {
+           previous.commandKey == commandKey,
+           previous.subjectIdentity == candidate.subjectIdentity {
             let gap = snapshot.capturedAt.timeIntervalSince(previous.capturedAt)
             guard gap > 0,
                   gap <= TimeInterval(freshnessLimit) / 1000.0 else {
                 liveTechnicalConfirmation = LiveTechnicalConfirmationState(
                     commandKey: commandKey,
                     capturedAt: snapshot.capturedAt,
-                    count: 1
+                    count: 1,
+                    subjectIdentity: candidate.subjectIdentity,
+                    isFrameGlobal: liveHintBindingDisposition(candidate) == .frameGlobal
                 )
                 return nil
             }
@@ -9247,7 +10081,9 @@ final class AnalysisPipeline: ObservableObject {
         liveTechnicalConfirmation = LiveTechnicalConfirmationState(
             commandKey: commandKey,
             capturedAt: snapshot.capturedAt,
-            count: nextCount
+            count: nextCount,
+            subjectIdentity: candidate.subjectIdentity,
+            isFrameGlobal: liveHintBindingDisposition(candidate) == .frameGlobal
         )
         return nextCount >= 3 ? candidate : nil
     }
@@ -9262,7 +10098,9 @@ final class AnalysisPipeline: ObservableObject {
                   action: candidate.actionType,
                   mode: snapshot.mode,
                   snapshot: snapshot,
-                  semantics: semantics
+                  semantics: semantics,
+                  overlappingInstancePairCount: liveOverlappingInstancePairCount(),
+                  tapGroundedObjectTarget: liveTapGroundedObjectTarget()
               ),
               let actionType = candidate.actionType else {
             liveSpatialConfirmation = nil
@@ -9279,14 +10117,16 @@ final class AnalysisPipeline: ObservableObject {
         let commandKey = actionType.rawValue
         let nextCount: Int
         if let previous = liveSpatialConfirmation,
-           previous.commandKey == commandKey {
+           previous.commandKey == commandKey,
+           previous.subjectIdentity == candidate.subjectIdentity {
             let gap = snapshot.capturedAt.timeIntervalSince(previous.capturedAt)
             guard gap > 0,
                   gap <= TimeInterval(LiveCoachQualityGate.maxVisionFreshnessMilliseconds) / 1000.0 else {
                 liveSpatialConfirmation = LiveSpatialConfirmationState(
                     commandKey: commandKey,
                     capturedAt: snapshot.capturedAt,
-                    count: 1
+                    count: 1,
+                    subjectIdentity: candidate.subjectIdentity
                 )
                 return nil
             }
@@ -9298,7 +10138,8 @@ final class AnalysisPipeline: ObservableObject {
         liveSpatialConfirmation = LiveSpatialConfirmationState(
             commandKey: commandKey,
             capturedAt: snapshot.capturedAt,
-            count: nextCount
+            count: nextCount,
+            subjectIdentity: candidate.subjectIdentity
         )
         return nextCount >= 3 ? candidate : nil
     }
@@ -9326,12 +10167,20 @@ final class AnalysisPipeline: ObservableObject {
             technicalQualitySignal: technicalQualitySignal,
             allowsMixedVerdict: true
         )
-        let contextualCorrection = preservesGoodFrameActions ? nil : contextualSemanticCorrection(
-            snapshot: snapshot,
-            semantics: semantics,
-            critique: critique,
-            technicalQualitySignal: technicalQualitySignal
-        )
+        // A frame the deterministic critique judged good is kept, never "improved". A dominant
+        // defect measured on this very frame by the technical probe is the exception: the eval
+        // contract already refuses to export keep when a dominant technical action exists, so the
+        // presentation must not answer keep for the same evidence.
+        let goodVerdictSuppressesCorrections = critique.verdict == .good
+            && dominantTechnicalQualityIssue(from: technicalQualitySignal) == nil
+        let contextualCorrection = preservesGoodFrameActions || goodVerdictSuppressesCorrections
+            ? nil
+            : contextualSemanticCorrection(
+                snapshot: snapshot,
+                semantics: semantics,
+                critique: critique,
+                technicalQualitySignal: technicalQualitySignal
+            )
         let strengths = contextualCorrection == nil ? critique.strengths.prefix(2).map { strength in
             PauseStrengthRow(
                 strengthId: strength.id,
@@ -9358,6 +10207,7 @@ final class AnalysisPipeline: ObservableObject {
         let semanticActionRows = semanticTips.prefix(4).enumerated().compactMap { index, tip -> PauseActionRow? in
             guard critique.verdict != .good else { return nil }
             guard let action = linkedAction(for: tip, plan: plan) else { return nil }
+            let targetRegion = action.targetRegion ?? firstIssueRegion(linkedIssueIds: tip.linkedIssueIds, critique: critique)
             return PauseActionRow(
                 actionId: "\(action.id)_semantic_\(semanticTipPlanner.stableKey(for: tip))_\(index)",
                 actionType: action.actionType,
@@ -9370,10 +10220,17 @@ final class AnalysisPipeline: ObservableObject {
                     linkedIssueIds: tip.linkedIssueIds
                 ),
                 linkedIssueIds: tip.linkedIssueIds,
-                expectedOutcome: tip.pauseText,
-                targetRegion: action.targetRegion ?? firstIssueRegion(linkedIssueIds: tip.linkedIssueIds, critique: critique),
+                expectedOutcome: CameraAcceptedActionCopy.instruction(for: tip.actionType),
+                targetRegion: targetRegion,
                 overlayHintId: action.overlayHint?.id,
-                traceRefId: tip.linkedTraceIds.first ?? traceRefIdForAction(action: action, critique: critique)
+                traceRefId: tip.linkedTraceIds.first ?? traceRefIdForAction(action: action, critique: critique),
+                // C05/N9.4: a generic simplify/rebalance/hotspot label is a
+                // goal, not an actuator. It expands to a concrete operation
+                // only with a grounded target; otherwise it is not executable.
+                concreteSemanticActionType: CameraAdviceActionExpansion.concreteActuator(
+                    for: tip.actionType,
+                    hasGroundedTarget: tip.targetEntityRef != nil || targetRegion != nil
+                )
             )
         }
         let actions: [PauseActionRow]
@@ -9382,21 +10239,29 @@ final class AnalysisPipeline: ObservableObject {
         } else if let contextualCorrection {
             actions = contextualPauseActionRows(for: contextualCorrection)
         } else if semanticActionRows.isEmpty {
-            let plannedActions = [plan.primaryAction]
-                .compactMap { $0 }
-                + Array(plan.secondaryActions.prefix(2))
+            let plannedActions = goodVerdictSuppressesCorrections
+                ? []
+                : [plan.primaryAction]
+                    .compactMap { $0 }
+                    + Array(plan.secondaryActions.prefix(2))
             actions = plannedActions.prefix(3).map { action in
-                PauseActionRow(
+                let targetRegion = action.targetRegion ?? firstIssueRegion(linkedIssueIds: action.linkedIssueIds, critique: critique)
+                let semanticAction = action.actionType.semanticActionType
+                return PauseActionRow(
                     actionId: action.id,
                     actionType: action.actionType,
-                    semanticActionType: action.actionType.semanticActionType,
+                    semanticActionType: semanticAction,
                     priority: action.priority,
                     confidence: pauseActionConfidence(for: action, plan: plan, critique: critique),
                     linkedIssueIds: action.linkedIssueIds,
-                    expectedOutcome: action.expectedOutcome,
-                    targetRegion: action.targetRegion ?? firstIssueRegion(linkedIssueIds: action.linkedIssueIds, critique: critique),
+                    expectedOutcome: CameraAcceptedActionCopy.instruction(for: semanticAction),
+                    targetRegion: targetRegion,
                     overlayHintId: action.overlayHint?.id,
-                    traceRefId: traceRefIdForAction(action: action, critique: critique)
+                    traceRefId: traceRefIdForAction(action: action, critique: critique),
+                    concreteSemanticActionType: CameraAdviceActionExpansion.concreteActuator(
+                        for: semanticAction,
+                        hasGroundedTarget: targetRegion != nil
+                    )
                 )
             }
         } else {
@@ -9524,12 +10389,26 @@ final class AnalysisPipeline: ObservableObject {
         let traceId: String
         let verdict: FrameVerdict
         let confidence: Double
-        let liveText: String
         let pauseSummary: String
         let whyProblematic: String
-        let pauseActionText: String
         let liveActionType: ActionTypeV1?
         let semanticActionTypes: [SemanticActionType]
+
+        /// C07: the live and pause instruction is the catalog copy for the
+        /// same accepted action, resolved exactly as the overlay resolves it.
+        /// The correction carries the action identity, never a second sentence.
+        var liveText: String { instructionText }
+        var pauseActionText: String { instructionText }
+
+        private var instructionText: String {
+            if let semanticActionType = semanticActionTypes.first {
+                return CameraAcceptedActionCopy.instruction(for: semanticActionType)
+            }
+            if let liveActionType {
+                return CameraAcceptedActionCopy.instruction(for: liveActionType)
+            }
+            return CameraAcceptedActionCopy.seamlessFallback()
+        }
     }
 
     private func shouldPreserveGoodFrameSemanticActions(snapshot: FrameFeatureSnapshot?,
@@ -9850,10 +10729,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_readable_softness_technical_only",
                 verdict: .needsFix,
                 confidence: 0.70,
-                liveText: "Кадр смазан — сначала зафиксируй камеру.",
                 pauseSummary: "Проблема техническая: резкость просела, но композиционный совет не подтверждён",
                 whyProblematic: "Объект читается, а фон не даёт явного композиционного дефекта; поэтому система не должна советовать менять фон или дистанцию до восстановления резкости.",
-                pauseActionText: "Зафиксируй камеру, дождись резкости и пересними кадр.",
                 liveActionType: nil,
                 semanticActionTypes: []
             )
@@ -9865,10 +10742,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_readable_hotspot_angle",
                 verdict: .needsFix,
                 confidence: 0.80,
-                liveText: "Яркое пятно перетягивает взгляд — смени угол или убери источник блика.",
                 pauseSummary: "Кадр читается, но пересвеченный участок спорит с главным объектом",
                 whyProblematic: "Экспозиция уже требует снижения, а небольшой читаемый объект не перекрывает яркий фоновой акцент; поэтому позитивное подтверждение было бы ложным.",
-                pauseActionText: "Смести точку съёмки или убери яркий источник на фоне, чтобы взгляд вернулся к объекту.",
                 liveActionType: .changeAngle,
                 semanticActionTypes: [.removeBackgroundHotspot, .changeCameraAngle]
             )
@@ -9880,10 +10755,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_readable_large_hotspot_angle",
                 verdict: .needsFix,
                 confidence: 0.80,
-                liveText: "Яркая зона перетягивает кадр — смени угол и добавь мягкий свет.",
                 pauseSummary: "Крупная читаемая область спорит с пересвеченным фоном",
                 whyProblematic: "Главный объект занимает много места, но сильный пересвет делает кадр плоским и уводит внимание от формы.",
-                pauseActionText: "Смени угол к источнику света и добавь мягкий фронтальный свет, чтобы вернуть детали.",
                 liveActionType: .changeAngle,
                 semanticActionTypes: [.removeBackgroundHotspot, .changeCameraAngle, .addFrontFillLight]
             )
@@ -9895,10 +10768,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_unknown_hotspot_angle",
                 verdict: .needsFix,
                 confidence: 0.78,
-                liveText: "Пересвет мешает найти центр — смени угол съёмки.",
                 pauseSummary: "Яркое пятно мешает системе выделить главный объект",
                 whyProblematic: "Субъект не закреплён, а экспозиционный перекос уже указывает на сильный световой дефект.",
-                pauseActionText: "Смести камеру или убери яркий источник из кадра, чтобы вернуть читаемый центр.",
                 liveActionType: .changeAngle,
                 semanticActionTypes: [.removeBackgroundHotspot, .changeCameraAngle]
             )
@@ -9910,10 +10781,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_unknown_large_underexposed_subject",
                 verdict: .needsFix,
                 confidence: 0.78,
-                liveText: "Крупный объект провален в темноту — добавь мягкий свет и разверни к источнику.",
                 pauseSummary: "Система видит большую область, но не может уверенно прочитать субъект из-за света",
                 whyProblematic: "Кадр выглядит как крупный план без читаемого центра: большая область занимает полкадра, а экспозиция и шум требуют восстановления света.",
-                pauseActionText: "Добавь мягкий фронтальный свет или разверни объект к источнику, чтобы лицо/форма стали читаемыми.",
                 liveActionType: .improveFrontLight,
                 semanticActionTypes: [.addFrontFillLight, .rotateSubjectTowardLight]
             )
@@ -9925,10 +10794,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_small_stabilized_clutter",
                 verdict: .needsFix,
                 confidence: 0.76,
-                liveText: "Мелкий объект тонет в лишних деталях — убери помехи и упрости фон.",
                 pauseSummary: "Главный объект читается, но композицию забивают посторонние элементы",
                 whyProblematic: "Субъект слишком мал для уверенного keep, а несколько объектов и сигнал стабилизации показывают случайную перегрузку кадра.",
-                pauseActionText: "Убери отвлекающие предметы или дождись чистого фона вокруг объекта.",
                 liveActionType: .reduceBackgroundDistractions,
                 semanticActionTypes: [.removeDistractingObject, .simplifyBackground]
             )
@@ -9940,10 +10807,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_readable_synthetic_glare",
                 verdict: .needsFix,
                 confidence: 0.76,
-                liveText: "Яркий объект слепит и режет кадр — смени угол и отойди на шаг.",
                 pauseSummary: "Световой объект даёт плоский пересвет и тесный crop",
                 whyProblematic: "Небольшой яркий объект слишком агрессивно доминирует в кадре: система не должна подтверждать такую композицию как готовую.",
-                pauseActionText: "Смести точку съёмки, убери пересвеченный источник из доминирующего положения и дай кадру больше воздуха.",
                 liveActionType: .changeAngle,
                 semanticActionTypes: [.removeBackgroundHotspot, .changeCameraAngle, .stepBack]
             )
@@ -9955,10 +10820,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_tiny_readable_underexposure_front_fill",
                 verdict: .needsFix,
                 confidence: 0.80,
-                liveText: "Малый объект провален в темноту — добавь мягкий свет.",
                 pauseSummary: "Главный объект найден, но он слишком тёмный для уверенного кадра",
                 whyProblematic: "Субъект занимает мало места и сильный минус по экспозиции делает подтверждение кадра ложным.",
-                pauseActionText: "Добавь мягкий фронтальный свет или разверни объект к источнику света.",
                 liveActionType: .improveFrontLight,
                 semanticActionTypes: [.addFrontFillLight, .rotateSubjectTowardLight]
             )
@@ -9973,10 +10836,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_high_key_readable_weak_subject",
                 verdict: .mixed,
                 confidence: 0.78,
-                liveText: "Главный объект теряется в светлом кадре — подойди ближе.",
                 pauseSummary: "Кадр слишком светлый и главный объект композиционно слабый",
                 whyProblematic: "Субъект найден, но светлый фон и слабая доля объекта делают совет «оставить как есть» слишком оптимистичным.",
-                pauseActionText: "Подойди ближе и собери кадр вокруг главного объекта, убрав лишнюю пустоту.",
                 liveActionType: .increaseSubjectSize,
                 semanticActionTypes: semanticActions
             )
@@ -9988,10 +10849,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_large_detector_weak_subject_step_closer",
                 verdict: .mixed,
                 confidence: 0.76,
-                liveText: "Система цепляется за фон — подойди ближе к настоящему объекту.",
                 pauseSummary: "Детектор нашёл крупную область, но композиционный центр всё ещё слабый",
                 whyProblematic: "Большая найденная область при слабой резкости и низкой эстетике похожа на ложный foreground, а не на уверенный главный объект.",
-                pauseActionText: "Подойди ближе к настоящему субъекту и пересобери кадр вокруг него.",
                 liveActionType: .increaseSubjectSize,
                 semanticActionTypes: [.stepCloser]
             )
@@ -10003,10 +10862,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_neutral_dense_clutter",
                 verdict: .needsFix,
                 confidence: 0.78,
-                liveText: "Передний план и фон спорят — упрости сцену.",
                 pauseSummary: "Кадр перегружен объектами и не выглядит как намеренный low-key стиль",
                 whyProblematic: "Несколько объектов, нейтральная экспозиция и низкая устойчивость горизонта указывают на случайный визуальный шум, а не на сохранённую стилизацию.",
-                pauseActionText: "Убери отвлекающий объект, упрости фон или немного смени угол съёмки.",
                 liveActionType: .reduceBackgroundDistractions,
                 semanticActionTypes: [.removeDistractingObject, .simplifyBackground, .waitForBackgroundClearance, .changeCameraAngle]
             )
@@ -10018,10 +10875,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_small_foreground_obstruction",
                 verdict: .needsFix,
                 confidence: 0.78,
-                liveText: "Мелкий объект теряется за помехами — дождись чистого фона.",
                 pauseSummary: "Передний план перекрывает слабый композиционный центр",
                 whyProblematic: "Субъект занимает слишком мало места, а несколько объектов в кадре мешают системе уверенно выделить главный центр.",
-                pauseActionText: "Убери помеху из переднего плана или дождись более свободного фона.",
                 liveActionType: .reduceBackgroundDistractions,
                 semanticActionTypes: [.removeDistractingObject, .waitForBackgroundClearance, .shiftFrameLeft]
             )
@@ -10033,10 +10888,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_tight_readable_edge_step_back",
                 verdict: .needsFix,
                 confidence: 0.78,
-                liveText: "Объект упирается в край — отойди на шаг и смести кадр вправо.",
                 pauseSummary: "Главный объект слишком тесно прижат к рамке",
                 whyProblematic: "Читаемый объект занимает почти весь кадр: такой crop легко режет важные части и оставляет слишком мало воздуха вокруг формы.",
-                pauseActionText: "Отойди назад и немного смести рамку вправо, чтобы вернуть объекту воздух.",
                 liveActionType: .changeAngle,
                 semanticActionTypes: [.stepBack, .shiftFrameRight]
             )
@@ -10054,10 +10907,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_small_edge_crop_step_back",
                 verdict: .needsFix,
                 confidence: 0.78,
-                liveText: "Объект режется краем — отойди и смести рамку вправо.",
                 pauseSummary: "Малый читаемый объект слишком близко к краю кадра",
                 whyProblematic: "При небольшой площади субъекта край кадра начинает работать как помеха: объект читается, но композиция выглядит случайно обрезанной.",
-                pauseActionText: "Отойди на шаг, смести рамку вправо и убери отвлекающий крайний объект.",
                 liveActionType: .changeAngle,
                 semanticActionTypes: semanticActions
             )
@@ -10069,10 +10920,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_strong_readable_underexposure_front_fill",
                 verdict: .needsFix,
                 confidence: 0.78,
-                liveText: "Объект тонет в темноте — добавь мягкий свет спереди.",
                 pauseSummary: "Главный объект читается, но сильно недосвечен",
                 whyProblematic: "Субъект найден, однако сильный минус по экспозиции и запрос на увеличение света означают, что позитивное подтверждение будет ложным.",
-                pauseActionText: "Добавь мягкий фронтальный свет или разверни объект к источнику света.",
                 liveActionType: .improveFrontLight,
                 semanticActionTypes: [.addFrontFillLight, .rotateSubjectTowardLight]
             )
@@ -10084,10 +10933,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_readable_synthetic_crooked_horizon",
                 verdict: .mixed,
                 confidence: 0.72,
-                liveText: "Кадр кажется заваленным — выровняй камеру перед дублем.",
                 pauseSummary: "Ориентация кадра выглядит неустойчивой и случайной",
                 whyProblematic: "Главный объект найден слишком слабо или слишком мелко для уверенной композиции, поэтому системе нельзя подтверждать текущий наклон кадра.",
-                pauseActionText: "Выравни горизонт и пересними без случайного завала камеры.",
                 liveActionType: .levelHorizon,
                 semanticActionTypes: [.levelHorizon]
             )
@@ -10099,10 +10946,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_weak_readable_subject_step_closer",
                 verdict: .mixed,
                 confidence: 0.74,
-                liveText: "Главный объект теряется — подойди ближе.",
                 pauseSummary: "Объект найден, но композиционно слишком слабый",
                 whyProblematic: "Субъект занимает мало полезной площади, а технические сигналы просят фокус/стабилизацию: лучше собрать кадр ближе к объекту.",
-                pauseActionText: "Подойди ближе или кадрируй плотнее вокруг главного объекта.",
                 liveActionType: .increaseSubjectSize,
                 semanticActionTypes: [.stepCloser]
             )
@@ -10114,10 +10959,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_readable_synthetic_small_subject",
                 verdict: .mixed,
                 confidence: 0.74,
-                liveText: "Главный объект слишком слабый — подойди ближе.",
                 pauseSummary: "Субъект найден, но в кадре он всё ещё слишком мелкий",
                 whyProblematic: "Даже при найденном объекте сцена тратит слишком много площади на пустоту или второстепенные детали, поэтому позитивное подтверждение будет ложным.",
-                pauseActionText: "Подойди ближе или собери более плотное кадрирование вокруг главного объекта.",
                 liveActionType: .increaseSubjectSize,
                 semanticActionTypes: [.stepCloser]
             )
@@ -10129,10 +10972,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_readable_background_clutter",
                 verdict: .needsFix,
                 confidence: 0.78,
-                liveText: "Фон спорит с объектом — упрости задний план.",
                 pauseSummary: "Фон перегружен и конкурирует с главным объектом",
                 whyProblematic: "Объект читается, но несколько фоновых элементов и низкая эстетическая оценка делают текущую композицию слишком шумной.",
-                pauseActionText: "Убери лишние детали вокруг объекта или смени точку съёмки на более чистый фон.",
                 liveActionType: .reduceBackgroundDistractions,
                 semanticActionTypes: [.simplifyBackground, .removeDistractingObject]
             )
@@ -10144,10 +10985,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_readable_synthetic_clutter",
                 verdict: .needsFix,
                 confidence: 0.76,
-                liveText: "Фон и передний план спорят с объектом — упрости сцену.",
                 pauseSummary: "Кадр композиционно шумный: объект зажат фоном и лишними деталями",
                 whyProblematic: "Несколько объектов и слабая иерархия внимания делают кадр перегруженным, даже если детектор всё ещё находит главный объект.",
-                pauseActionText: "Убери отвлекающие предметы или дождись более чистого момента вокруг объекта.",
                 liveActionType: .reduceBackgroundDistractions,
                 semanticActionTypes: [.simplifyBackground, .removeDistractingObject]
             )
@@ -10159,10 +10998,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_unknown_group_framing",
                 verdict: .mixed,
                 confidence: 0.70,
-                liveText: "Нет ясного центра — упрости фон и смести кадр вправо.",
                 pauseSummary: "Событие читается, но кадру не хватает главного центра",
                 whyProblematic: "Система не находит надёжный субъект, а широкий establishing-паттерн и конкуренция фокуса говорят, что нужен более явный центр внимания.",
-                pauseActionText: "Упрости фон и смести рамку вправо, чтобы собрать сцену вокруг главного центра.",
                 liveActionType: .reduceBackgroundDistractions,
                 semanticActionTypes: [.simplifyBackground, .shiftFrameRight]
             )
@@ -10174,10 +11011,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_unknown_noisy_low_light_step_back",
                 verdict: .mixed,
                 confidence: 0.70,
-                liveText: "Сцена шумит и тесная — отойди на шаг и зафиксируй камеру.",
                 pauseSummary: "Кадр читается как тесный low-light момент без надёжного центра",
                 whyProblematic: "Шум, слабый свет и отсутствие найденного субъекта делают крупный план ненадёжным: лучше дать сцене больше воздуха и переснять стабильнее.",
-                pauseActionText: "Отойди на шаг, стабилизируй камеру и пересними с более читаемой дистанции.",
                 liveActionType: .changeAngle,
                 semanticActionTypes: [.stepBack]
             )
@@ -10189,10 +11024,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_wide_unknown_weak_subject_step_closer",
                 verdict: .mixed,
                 confidence: 0.74,
-                liveText: "Главный объект слишком слабый — подойди ближе перед снимком.",
                 pauseSummary: "Сцена слишком широкая для уверенного главного объекта",
                 whyProblematic: "Субъект не найден, но есть слабый объектный сигнал и запрос на стабилизацию: композиции нужен более явный центр.",
-                pauseActionText: "Подойди ближе к предполагаемому субъекту и пересобери кадр вокруг него.",
                 liveActionType: .increaseSubjectSize,
                 semanticActionTypes: [.stepCloser]
             )
@@ -10208,10 +11041,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_unknown_no_subject_underexposure",
                 verdict: .needsFix,
                 confidence: 0.76,
-                liveText: "Объект тонет в темноте — добавь мягкий свет спереди.",
                 pauseSummary: "Система не может уверенно прочитать объект из-за провала по свету",
                 whyProblematic: "Когда субъект вообще не закрепляется в сцене, а технические сигналы просят поднять экспозицию, подтверждать композицию нельзя.",
-                pauseActionText: "Добавь мягкий фронтальный свет или разверни сцену к более читаемому источнику света.",
                 liveActionType: .improveFrontLight,
                 semanticActionTypes: semanticActions
             )
@@ -10223,10 +11054,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_unknown_no_subject_hotspot",
                 verdict: .needsFix,
                 confidence: 0.76,
-                liveText: "Яркое пятно ломает кадр — смени угол съёмки.",
                 pauseSummary: "Пересвеченный акцент не даёт системе выделить главный объект",
                 whyProblematic: "Сцена распадается на яркий фон и слабый субъект, поэтому позитивное подтверждение было бы ложным.",
-                pauseActionText: "Смести камеру или убери яркий источник из фона, чтобы кадр снова получил читаемый центр.",
                 liveActionType: .changeAngle,
                 semanticActionTypes: [.removeBackgroundHotspot, .changeCameraAngle]
             )
@@ -10238,10 +11067,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_unknown_no_subject_clutter",
                 verdict: .needsFix,
                 confidence: 0.74,
-                liveText: "Сцена без ясного центра — убери помехи из кадра.",
                 pauseSummary: "Фон или передний план перекрывают главный центр внимания",
                 whyProblematic: "Система не закрепляет субъект, а технические сигналы подтверждают нестабильную читаемость: такой кадр нельзя маркировать как готовый.",
-                pauseActionText: "Убери отвлекающий передний план, дождись более чистого фона и пересобери сцену вокруг одного центра.",
                 liveActionType: .reduceBackgroundDistractions,
                 semanticActionTypes: [.removeDistractingObject, .simplifyBackground, .waitForBackgroundClearance]
             )
@@ -10253,10 +11080,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_flash_tight_group_step_back",
                 verdict: .needsFix,
                 confidence: 0.78,
-                liveText: "Слишком тесно и жёсткий свет — отойди на шаг.",
                 pauseSummary: "Жёсткий свет и тесная дистанция перегружают кадр",
                 whyProblematic: "Крупный световой объект, тесная область субъекта и шумный фон указывают на близкую вспышку/групповой момент, где смена угла не даёт достаточно воздуха.",
-                pauseActionText: "Отойди на шаг, зафиксируй камеру и снизь влияние жёсткого света.",
                 liveActionType: .changeAngle,
                 semanticActionTypes: [.stepBack]
             )
@@ -10268,10 +11093,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_large_color_cast_object_front_fill",
                 verdict: .mixed,
                 confidence: 0.74,
-                liveText: "Цветной свет съедает детали — добавь мягкий фронтальный свет.",
                 pauseSummary: "Главный объект слишком доминирует, но детали теряются в цветном свете",
                 whyProblematic: "Объект занимает почти весь кадр, а слабая эстетическая оценка и технические сигналы говорят, что проблема в читаемости света, а не в фоне.",
-                pauseActionText: "Добавь мягкий фронтальный свет или снизь жёсткий цветной источник, сохранив крупность объекта.",
                 liveActionType: .improveFrontLight,
                 semanticActionTypes: [.addFrontFillLight]
             )
@@ -10288,10 +11111,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_unknown_stabilized_technical_silence",
                 verdict: .needsFix,
                 confidence: 0.70,
-                liveText: "Сцена нестабильна — сначала зафиксируй камеру.",
                 pauseSummary: "Главный объект не найден, а кадр требует стабилизации",
                 whyProblematic: "Когда субъект не читается и технический сигнал просит стабилизацию, позитивное подтверждение будет ложным.",
-                pauseActionText: "Стабилизируй камеру и заново выбери главный центр кадра.",
                 liveActionType: nil,
                 semanticActionTypes: []
             )
@@ -10307,10 +11128,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_unknown_dark_technical_silence",
                 verdict: .needsFix,
                 confidence: 0.86,
-                liveText: "Главный объект не читается — сначала поправь свет или стабилизацию.",
                 pauseSummary: "Система не видит надёжный главный объект",
                 whyProblematic: "Слабый свет и отсутствие читаемого субъекта делают позитивное подтверждение ложным сигналом.",
-                pauseActionText: "Сначала восстанови техническую читаемость кадра, затем оцени композицию заново.",
                 liveActionType: nil,
                 semanticActionTypes: []
             )
@@ -10322,10 +11141,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_unreadable_low_light_step_closer_fill",
                 verdict: .needsFix,
                 confidence: 0.75,
-                liveText: "Объект не читается — подойди ближе и добавь мягкий свет.",
                 pauseSummary: "Главный объект слишком мал и тёмен для уверенного разбора",
                 whyProblematic: "Система не видит надёжный субъект, а низкая экспозиция и запрос на фокус говорят, что кадр нужно пересобрать ближе к объекту.",
-                pauseActionText: "Подойди ближе к главному объекту и добавь мягкий фронтальный свет.",
                 liveActionType: .increaseSubjectSize,
                 semanticActionTypes: [.addFrontFillLight, .stepCloser]
             )
@@ -10337,10 +11154,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_unknown_blur_simplify_background",
                 verdict: .needsFix,
                 confidence: 0.86,
-                liveText: "Сцена смазана и без центра — упрости фон перед повтором.",
                 pauseSummary: "Кадр не даёт надёжный главный объект",
                 whyProblematic: "Когда субъект не найден, а технический сигнал просит стабилизацию или фокус, фон становится главным источником шума.",
-                pauseActionText: "Упрости фон, зафиксируй камеру и заново выбери главный объект.",
                 liveActionType: .reduceBackgroundDistractions,
                 semanticActionTypes: [.simplifyBackground]
             )
@@ -10360,10 +11175,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_weak_subject_background",
                 verdict: .mixed,
                 confidence: confidence,
-                liveText: "Нет ясного центра — упрости фон и выбери главный объект.",
                 pauseSummary: "Сцена читается слабо: фон и объект конкурируют",
                 whyProblematic: "Низкая уверенность в субъекте и неизвестный тип сцены означают, что «оставить как есть» будет переоценкой кадра.",
-                pauseActionText: "Убери лишние детали вокруг объекта или перестрой кадр вокруг одного центра.",
                 liveActionType: .reduceBackgroundDistractions,
                 semanticActionTypes: [.simplifyBackground]
             )
@@ -10379,10 +11192,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_motion_like_false_keep",
                 verdict: .needsFix,
                 confidence: 0.86,
-                liveText: "Кадр читается нестабильно — сначала зафиксируй сцену.",
                 pauseSummary: "Позитивное подтверждение скрывало техническую нестабильность",
                 whyProblematic: "Несколько объектов, слабая эстетическая оценка и запрос на стабилизацию не дают основания говорить, что кадр готов.",
-                pauseActionText: "Стабилизируй камеру и проверь резкость перед композиционными советами.",
                 liveActionType: nil,
                 semanticActionTypes: []
             )
@@ -10400,10 +11211,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_dark_object_cluster",
                 verdict: .needsFix,
                 confidence: 0.78,
-                liveText: "Фон перегружен — упрости задний план или дождись просвета.",
                 pauseSummary: "Кадр выглядит перегруженным: главный объект конкурирует с тёмным фоном",
                 whyProblematic: "Несколько крупных объектов и слабый свет делают сцену шумной: позитивное подтверждение здесь было бы слишком уверенным.",
-                pauseActionText: "Убери лишние детали фона или подожди, пока фон станет свободнее.",
                 liveActionType: .reduceBackgroundDistractions,
                 semanticActionTypes: semanticActions
             )
@@ -10420,10 +11229,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_underlit_readable_object",
                 verdict: .mixed,
                 confidence: 0.70,
-                liveText: "Темновато — добавь мягкий свет на главный объект.",
                 pauseSummary: "Кадр читается, но главный объект недосвечен",
                 whyProblematic: "Объект уже найден, но сильный минус по экспозиции и низкая общая оценка света делают совет «оставить как есть» ненадёжным.",
-                pauseActionText: "Добавь мягкий фронтальный или боковой свет, не меняя композицию резко.",
                 liveActionType: .improveFrontLight,
                 semanticActionTypes: [.addFrontFillLight]
             )
@@ -10435,10 +11242,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_readable_underlit_object_front_fill",
                 verdict: .mixed,
                 confidence: 0.74,
-                liveText: "Объект читается, но ему нужен мягкий фронтальный свет.",
                 pauseSummary: "Главный объект найден, но он недосвечен",
                 whyProblematic: "Субъект читается и занимает заметную часть кадра, однако отрицательная экспозиция делает позитивное подтверждение слишком оптимистичным.",
-                pauseActionText: "Добавь мягкий фронтальный свет, сохранив текущую композицию.",
                 liveActionType: .improveFrontLight,
                 semanticActionTypes: [.addFrontFillLight]
             )
@@ -10450,10 +11255,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_low_aesthetic_object_clearance",
                 verdict: .mixed,
                 confidence: 0.74,
-                liveText: "Объект есть, но фон спорит — упрости сцену или дождись просвета.",
                 pauseSummary: "Один объект найден, но кадр всё ещё перегружен фоном",
                 whyProblematic: "Низкая эстетическая оценка и средний размер объекта говорят, что проблема не в приближении, а в фоне и моменте.",
-                pauseActionText: "Упрости фон или дождись более чистого момента вокруг объекта.",
                 liveActionType: .reduceBackgroundDistractions,
                 semanticActionTypes: [.simplifyBackground, .waitForBackgroundClearance]
             )
@@ -10472,10 +11275,8 @@ final class AnalysisPipeline: ObservableObject {
                     traceId: "contextual_small_underlit_light_hotspot",
                     verdict: .needsFix,
                     confidence: 0.86,
-                    liveText: "Световое пятно забивает кадр — смени угол и убери hotspot.",
                     pauseSummary: "Кадр тёмный, а яркий источник перетягивает внимание с субъекта",
                     whyProblematic: "Детектор цепляется за небольшой световой объект без уверенного фокуса; в таком случае проблема не только в недосвете, но и в доминирующем блике.",
-                    pauseActionText: "Смести камеру от яркого источника, убери hotspot из кадра и при необходимости добавь мягкий фронтальный свет.",
                     liveActionType: .changeAngle,
                     semanticActionTypes: [.removeBackgroundHotspot, .changeCameraAngle, .addFrontFillLight]
                 )
@@ -10486,10 +11287,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_small_underlit_light_object",
                 verdict: .needsFix,
                 confidence: 0.86,
-                liveText: "Объект теряется в темноте — добавь мягкий фронтальный свет.",
                 pauseSummary: "Главный объект слишком тёмный и малый",
                 whyProblematic: "Объект найден, но площадь субъекта мала, экспозиция сильно просела и технические сигналы требуют стабилизации или перефокуса.",
-                pauseActionText: "Подсвети главный объект мягким фронтальным светом, не меняя композицию резко.",
                 liveActionType: .improveFrontLight,
                 semanticActionTypes: [.addFrontFillLight]
             )
@@ -10504,10 +11303,8 @@ final class AnalysisPipeline: ObservableObject {
                 traceId: "contextual_low_aesthetic_single_object_crowd",
                 verdict: .needsFix,
                 confidence: 0.86,
-                liveText: "Фон и момент мешают — упрости сцену или дождись чище кадра.",
                 pauseSummary: "Один найденный объект не делает кадр композиционно готовым",
                 whyProblematic: "Низкая общая оценка кадра и небольшой субъект требуют очистить сцену, а не подтверждать текущую композицию.",
-                pauseActionText: "Выбери более чистый момент или освободи фон вокруг объекта.",
                 liveActionType: .reduceBackgroundDistractions,
                 semanticActionTypes: [.simplifyBackground, .waitForBackgroundClearance]
             )
@@ -11086,7 +11883,7 @@ final class AnalysisPipeline: ObservableObject {
                 priority: index + 1,
                 confidence: correction.confidence,
                 linkedIssueIds: [],
-                expectedOutcome: expectedOutcome(for: semanticAction, correction: correction),
+                expectedOutcome: CameraAcceptedActionCopy.instruction(for: semanticAction),
                 targetRegion: nil,
                 overlayHintId: nil,
                 traceRefId: correction.traceId
@@ -11116,32 +11913,6 @@ final class AnalysisPipeline: ObservableObject {
             return .improveFrontLight
         default:
             return .changeAngle
-        }
-    }
-
-    private func expectedOutcome(for semanticAction: SemanticActionType,
-                                 correction: ContextualSemanticCorrection) -> String {
-        switch semanticAction {
-        case .addFrontFillLight:
-            return "Главный объект станет читаемее, а композиция сохранится."
-        case .simplifyBackground:
-            return "Меньше фоновых деталей будет конкурировать с главным объектом."
-        case .waitForBackgroundClearance:
-            return "Свободный фон отделит объект от визуального шума."
-        case .removeDistractingObject:
-            return "Отвлекающий предмет перестанет конкурировать с главным объектом."
-        case .stepCloser:
-            return "Главный объект станет заметнее и легче читаемым."
-        case .stepBack:
-            return "В кадре появится больше воздуха, а жёсткий крупный план станет спокойнее."
-        case .shiftFrameRight:
-            return "Смещение рамки вправо вернёт воздух у края кадра."
-        case .shiftFrameLeft:
-            return "Смещение рамки влево вернёт воздух у края кадра."
-        case .rotateSubjectTowardLight:
-            return "Поворот к свету сделает главный объект читаемее."
-        default:
-            return correction.pauseActionText
         }
     }
 
@@ -11498,6 +12269,9 @@ final class AnalysisPipeline: ObservableObject {
             } else if reason == "canceled_due_to_state_change" {
                 event = "visual_evidence.cancel.pause_exit"
                 logType = .debug
+            } else if reason == "offline" {
+                event = "visual_evidence.fail.offline"
+                logType = .debug
             } else {
                 event = "visual_evidence.fail.runtime"
                 logType = .error
@@ -11507,6 +12281,26 @@ final class AnalysisPipeline: ObservableObject {
                 log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                 type: logType,
                 event,
+                frameId,
+                diagnostics.fallbackReason ?? reason
+            )
+            return nil
+        case let .refused(reason, diagnostics):
+            // Provider refusal is terminal for this request: no retry, no
+            // additional data sent, local deterministic advice is preserved.
+            os_log(
+                "visual_evidence.refused frame=%{private}@ reason=%{private}@",
+                log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                type: .debug,
+                frameId,
+                diagnostics.fallbackReason ?? reason
+            )
+            return nil
+        case let .unavailable(reason, diagnostics):
+            os_log(
+                "visual_evidence.unavailable frame=%{private}@ reason=%{private}@",
+                log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
+                type: .debug,
                 frameId,
                 diagnostics.fallbackReason ?? reason
             )
@@ -11735,7 +12529,9 @@ final class AnalysisPipeline: ObservableObject {
                 expectedOutcome: refinedActionOutcomes[row.actionId] ?? row.expectedOutcome,
                 targetRegion: row.targetRegion,
                 overlayHintId: row.overlayHintId,
-                traceRefId: row.traceRefId
+                traceRefId: row.traceRefId,
+                alternativeGroupID: row.alternativeGroupID,
+                concreteSemanticActionType: row.concreteSemanticActionType
             )
         }
 
@@ -11989,12 +12785,50 @@ final class AnalysisPipeline: ObservableObject {
             nextTimestamp += 10
         }
 
+        // R03 read-only consumer: multi-object identity state travels on the
+        // decision-trace surface only (audience .debug); no advice path reads it.
+        if critique.mode == .live,
+           let summary = subjectIdentityRegistry?.multiObjectSummary(),
+           summary.identityCount > 0 {
+            items.append(
+                ExplainabilityTraceItem(
+                    id: "subject_identities_\(frameId)",
+                    frameId: frameId,
+                    mode: critique.mode,
+                    stage: .observation,
+                    sourceKind: .snapshotSignal,
+                    certainty: .deterministic,
+                    confidence: 1.0,
+                    timestampMs: nextTimestamp,
+                    statement: multiObjectIdentityStatement(summary),
+                    evidenceKeys: [],
+                    dependsOn: [],
+                    links: [],
+                    audiences: [.debug],
+                    metadata: [
+                        "identityCount": "\(summary.identityCount)",
+                        "overlapPairs": "\(summary.overlappingTrackIDPairs.count)",
+                        "edgeCutCount": "\(summary.edgeCutTrackIDs.count)"
+                    ]
+                )
+            )
+            nextTimestamp += 10
+        }
+
         return ExplainabilityTraceBundle(
             frameId: frameId,
             mode: critique.mode,
             items: items,
             rootSummaryIds: [summaryTraceId]
         )
+    }
+
+    private func multiObjectIdentityStatement(_ summary: MultiObjectSceneSummary) -> String {
+        let labels = summary.identityCountByLabel
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key): \($0.value)" }
+            .joined(separator: ", ")
+        return "Отслеживается объектов: \(summary.identityCount) (\(labels)); пересечений: \(summary.overlappingTrackIDPairs.count); обрезано краем: \(summary.edgeCutTrackIDs.count)"
     }
 
     private func fusionMetadata(for decision: HybridFusionDecision?,
@@ -12088,10 +12922,15 @@ final class AnalysisPipeline: ObservableObject {
                                         mode: AnalysisMode,
                                         legacySuggestions: [Suggestion],
                                         forceLegacyOnly: Bool = false,
-                                        liveHint: LiveHintPresentation? = nil) -> [OverlayAnnotationPresentation] {
+                                        liveHint: LiveHintPresentation? = nil,
+                                        selectionContext: LiveFrameSelectionContext? = nil) -> [OverlayAnnotationPresentation] {
         var annotations: [OverlayAnnotationPresentation] = []
 
         if mode == .live {
+            if let selectionContext,
+               !liveHintMatchesSelectionContext(liveHint, context: selectionContext) {
+                return []
+            }
             if !currentDemoOverlayAnnotations.isEmpty {
                 return currentDemoOverlayAnnotations
             }
@@ -12146,6 +12985,25 @@ final class AnalysisPipeline: ObservableObject {
             grouped.max(by: { $0.emphasis < $1.emphasis })
         }
         return coalesced.sorted { lhs, rhs in lhs.id < rhs.id }
+    }
+
+    private func liveHintMatchesSelectionContext(
+        _ hint: LiveHintPresentation?,
+        context: LiveFrameSelectionContext
+    ) -> Bool {
+        guard let hint else { return true }
+        guard hint.frameId == context.frameEvidence.sourceFrameId else { return false }
+        switch liveHintBindingDisposition(hint) {
+        case .unsupported:
+            return false
+        case .frameGlobal:
+            return hint.subjectIdentity == nil && hint.observedSourceRegion == nil
+        case .subjectBound:
+            guard !context.subjectSelectionInvalidated,
+                  let binding = context.subjectBinding else { return false }
+            return hint.subjectIdentity == binding.identity
+                && hint.observedSourceRegion == binding.region
+        }
     }
 
     private func makeActionAnnotation(frameId: String,
@@ -12242,7 +13100,7 @@ final class AnalysisPipeline: ObservableObject {
             let direction = overlayDirectionForComposition(features.composition)
             let actionType = actionTypeForComposition(features.composition)
             let targetRegion = issue.affectedRegion.flatMap {
-                actionType.subjectTargetRegion(from: $0)
+                actionType.subjectTargetRegion(from: $0, sourceSpace: .vision)
             }
             return OverlayAnnotationPresentation(
                 id: annotationId(
@@ -13012,6 +13870,53 @@ final class AnalysisPipeline: ObservableObject {
     }
 }
 
+// MARK: - CC-I05 intent clarification (production path)
+
+extension AnalysisPipeline {
+
+    /// CC-I05: records the session answer for one style cue. Confirmed intent
+    /// suppresses the conflicting corrective families in the safety gate for
+    /// the rest of the session; a "no" answer keeps them actionable and stops
+    /// re-asking.
+    func recordIntentClarification(cue: CameraStyleCue, intended: Bool) {
+        intentClarification.record(cue: cue, intended: intended)
+    }
+
+    /// Ends the intent session (a UI/session owner calls this, not the
+    /// per-episode reset).
+    func resetIntentClarificationSession() {
+        intentClarification.resetSession()
+    }
+
+    /// Records the user's answer for the currently pending cue and clears it.
+    func answerIntentClarification(intended: Bool) {
+        guard let cue = pendingIntentClarificationCue else { return }
+        intentClarification.record(cue: cue, intended: intended)
+        pendingIntentClarificationCue = nil
+    }
+
+    /// Per-frame cue detection: publishes the first unanswered detected style
+    /// cue so the overlay can ask one yes/no question.
+    private func updateIntentClarification(snapshot: FrameFeatureSnapshot,
+                                           semantics: SceneSemanticsReport) {
+        let cues = CameraIntentClarificationPolicy.detectedCues(
+            from: CameraStyleCueEvidence(
+                horizonAngleDegrees: snapshot.horizon.angleDegrees,
+                horizonConfidence: snapshot.horizon.confidence,
+                exposureBiasHint: snapshot.lighting.exposureBiasHint,
+                backlightIndex: snapshot.lighting.backlightIndex,
+                shakeLevel: snapshot.motion.shakeLevel,
+                subjectReadable: semantics.readability.subjectReadable,
+                hasClearFocus: semantics.dominance.hasClearFocus
+            )
+        )
+        pendingIntentClarificationCue = cues
+            .sorted { $0.rawValue < $1.rawValue }
+            .first { !intentClarification.hasAnswered($0) }
+    }
+
+}
+
 #if DEBUG
 extension AnalysisPipeline {
     private func invokePauseTerminalClaimHookForTesting() {
@@ -13696,12 +14601,59 @@ extension AnalysisPipeline {
             "scene_type_confidence": semantics.sceneTypeConfidence,
             "separation_score": semantics.readability.separationScore,
             "subject_area_ratio": snapshot.composition.subjectAreaRatio,
-            "verdict_confidence": critique.verdictConfidence
+            "verdict_confidence": critique.verdictConfidence,
+            "primary_subject_base_confidence": snapshot.subjectSignals.primaryCandidateConfidence ?? 0
         ]
         if let pixelBuffer {
+            let textureStats = Self.computeTextureStats(pixelBuffer: pixelBuffer)
+            features["texture_complexity"] = textureStats.mean
+            features["texture_variance"] = textureStats.variance
+        }
+        if let pixelBuffer {
             features["frame_aspect_ratio"] = testingSemanticEvalFrameAspectRatio(pixelBuffer: pixelBuffer)
+            let signal = technicalQualitySignal(for: pixelBuffer)
+            features["technical_issue_count"] = Double(signal.issues.count)
+            features["technical_dominant_count"] = Double(signal.issues.filter(\.isDominant).count)
+            features["technical_max_severity"] = signal.issues.map(\.severity).max() ?? 0
+            features["technical_max_confidence"] = signal.issues.map(\.confidence).max() ?? 0
+        }
+        for issue in critique.issues {
+            features["severity_\(issue.type.rawValue)"] = issue.severity
         }
         return features
+    }
+
+    /// Edge density from a downsampled luma grid — proxy for background
+    /// texture complexity. Higher = busier background.
+    private static func computeTextureStats(pixelBuffer: CVPixelBuffer) -> (mean: Double, variance: Double) {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return (0, 0) }
+        let w = CVPixelBufferGetWidth(pixelBuffer)
+        let h = CVPixelBufferGetHeight(pixelBuffer)
+        let bpr = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let step = max(1, max(w, h) / 64)
+        var gradients: [Double] = []
+        let ptr = base.assumingMemoryBound(to: UInt8.self)
+        var row = 1
+        while row < h - 1 {
+            var col = 1
+            while col < w - 1 {
+                let off = row * bpr + col * 4
+                let luma0 = 0.299 * Double(ptr[off]) + 0.587 * Double(ptr[off+1]) + 0.114 * Double(ptr[off+2])
+                let rightOff = off + 4
+                let lumaR = 0.299 * Double(ptr[rightOff]) + 0.587 * Double(ptr[rightOff+1]) + 0.114 * Double(ptr[rightOff+2])
+                let downOff = off + bpr
+                let lumaD = 0.299 * Double(ptr[downOff]) + 0.587 * Double(ptr[downOff+1]) + 0.114 * Double(ptr[downOff+2])
+                gradients.append(abs(luma0 - lumaR) + abs(luma0 - lumaD))
+                col += step
+            }
+            row += step
+        }
+        guard !gradients.isEmpty else { return (0, 0) }
+        let mean = gradients.reduce(0, +) / Double(gradients.count)
+        let varr = gradients.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(gradients.count)
+        return (mean, varr)
     }
 
     private func testingSemanticEvalFrameAspectRatio(pixelBuffer: CVPixelBuffer) -> Double {
@@ -13713,7 +14665,7 @@ extension AnalysisPipeline {
 
     private func testingSemanticEvalDebugSemanticLabels(semantics: SceneSemanticsReport,
                                                         critique: CritiqueReport) -> [String: String] {
-        [
+        var labels = [
             "has_clear_focus": semantics.dominance.hasClearFocus ? "true" : "false",
             "look_space_adequate": semantics.readability.lookSpaceAdequate.map { $0 ? "true" : "false" } ?? "nil",
             "primary_subject_kind": semantics.primarySubject.kind.rawValue,
@@ -13722,6 +14674,13 @@ extension AnalysisPipeline {
             "subject_readable": semantics.readability.subjectReadable ? "true" : "false",
             "verdict": critique.verdict.rawValue
         ]
+        for issue in critique.issues {
+            if let region = issue.affectedRegion {
+                labels["region_\(issue.type.rawValue)"] =
+                    "\(region.x),\(region.y),\(region.width),\(region.height)"
+            }
+        }
+        return labels
     }
 
     private func testingSemanticEvalTechnicalConfidenceFloor(_ signal: TechnicalQualitySignal,
@@ -14093,7 +15052,7 @@ extension AnalysisPipeline {
                 semantics: resolvedSemantics
             )
         )
-        publishLivePresentation(
+        let presentationCandidate = makeLivePresentationCandidate(
             frameId: frameId,
             critique: critique,
             plan: plan,
@@ -14102,7 +15061,20 @@ extension AnalysisPipeline {
             semanticTips: semanticTips,
             legacySuggestion: legacySuggestion,
             structuredAvailable: structuredAvailable,
+            technicalQualitySignal: .empty,
             now: now
+        )
+        // DEBUG-only formatting seam: without immutable frame evidence this
+        // intentionally does not perform production subject admission.
+        applyLiveHint(
+            candidate: presentationCandidate.hint,
+            snapshot: snapshot,
+            semantics: resolvedSemantics,
+            now: now
+        )
+        retainFormattingDemoAnnotations(
+            presentationCandidate.demoAnnotations,
+            candidate: presentationCandidate.hint
         )
         if currentLiveHint?.id.hasPrefix("lh_demo_") == true {
             publishOverlayAnnotations(currentDemoOverlayAnnotations, now: now)
@@ -14126,10 +15098,11 @@ extension AnalysisPipeline {
                 mode: critique.mode,
                 critique: critique,
                 recommendationPlan: plan,
-                semantics: semantics
+                semantics: semantics,
+                currentLiveTipKey: currentSemanticLiveTipKey()
             )
         )
-        publishLivePresentation(
+        let presentationCandidate = makeLivePresentationCandidate(
             frameId: frameId,
             critique: critique,
             plan: plan,
@@ -14138,13 +15111,119 @@ extension AnalysisPipeline {
             semanticTips: semanticTips,
             legacySuggestion: legacySuggestion,
             structuredAvailable: structuredAvailable,
+            technicalQualitySignal: .empty,
             now: now
+        )
+        // DEBUG-only formatting seam: no production identity or binding is
+        // synthesized from this snapshot-only helper.
+        applyLiveHint(
+            candidate: presentationCandidate.hint,
+            snapshot: snapshot,
+            semantics: semantics,
+            now: now
+        )
+        retainFormattingDemoAnnotations(
+            presentationCandidate.demoAnnotations,
+            candidate: presentationCandidate.hint
         )
         if currentLiveHint?.id.hasPrefix("lh_demo_") == true {
             publishOverlayAnnotations(currentDemoOverlayAnnotations, now: now)
         } else if !currentDemoOverlayAnnotations.isEmpty {
             publishOverlayAnnotations(currentDemoOverlayAnnotations, now: now)
         }
+    }
+
+    /// DEBUG-only integration ingress for the complete production live frame.
+    /// Callers must provide the immutable capture/evidence envelope; this
+    /// method uses the capture store's provenance admission before preparing
+    /// the shared selection context. Without this, stale fixture frames can
+    /// mutate scene identity despite being impossible on the capture path.
+    @MainActor
+    func testingPublishLiveProductionFrame(
+        snapshot: FrameFeatureSnapshot,
+        semantics: SceneSemanticsReport,
+        critique: CritiqueReport,
+        plan: RecommendationPlan,
+        frameEvidence: LatestFrameEvidenceStore.Snapshot,
+        evaluatedAt: Date,
+        legacySuggestion: Suggestion?,
+        structuredAvailable: Bool,
+        technicalQualitySignal: TechnicalQualitySignal = .empty,
+        allowStabilityWhileMoving: Bool = false,
+        now: Date? = nil
+    ) {
+        guard latestFrameEvidenceStore.publish(
+            pixelBuffer: frameEvidence.pixelBuffer,
+            orientation: frameEvidence.orientation,
+            sourceFrameId: frameEvidence.sourceFrameId,
+            capturedAt: frameEvidence.capturedAt,
+            isStable: frameEvidence.isStable,
+            lensID: frameEvidence.lensID,
+            previewGeometry: frameEvidence.previewGeometry,
+            adapterState: frameEvidence.adapterState,
+            lensGeneration: frameEvidence.lensGeneration,
+            samplePresentationTimestamp: frameEvidence.samplePresentationTimestamp,
+            sessionGeneration: frameEvidence.sessionGeneration
+        ) else { return }
+        let presentationNow = now ?? evaluatedAt
+        let semanticTips = semanticTipPlanner.plan(
+            input: SemanticTipPlannerInput(
+                frameId: snapshot.frameId,
+                mode: .live,
+                critique: critique,
+                recommendationPlan: plan,
+                semantics: semantics,
+                currentLiveTipKey: currentSemanticLiveTipKey()
+            )
+        )
+        publishLiveProductionFrame(
+            snapshot: snapshot,
+            semantics: semantics,
+            critique: critique,
+            plan: plan,
+            frameEvidence: frameEvidence,
+            evaluatedAt: evaluatedAt,
+            presentationNow: presentationNow,
+            semanticTips: semanticTips,
+            localFeatures: frameEvidence.adapterState?.features ?? featureQueue.sync { features },
+            legacySuggestion: legacySuggestion,
+            structuredAvailable: structuredAvailable,
+            technicalQualitySignal: technicalQualitySignal,
+            allowStabilityWhileMoving: allowStabilityWhileMoving
+        )
+    }
+
+    /// DEBUG-only admission probe for a caller that already owns an
+    /// immutable effective candidate (for example, a demo replacement). The
+    /// evidence is mandatory: this never synthesizes a subject identity from
+    /// a snapshot-only presentation helper.
+    @MainActor
+    func testingAdmitLiveHintCandidate(
+        _ candidate: LiveHintPresentation,
+        snapshot: FrameFeatureSnapshot,
+        semantics: SceneSemanticsReport,
+        frameEvidence: LatestFrameEvidenceStore.Snapshot,
+        evaluatedAt: Date,
+        now: Date? = nil
+    ) {
+        let presentationNow = now ?? evaluatedAt
+        guard let selectionContext = prepareLiveFrameSelectionContext(
+            snapshot: snapshot,
+            semantics: semantics,
+            frameEvidence: frameEvidence,
+            evaluatedAt: evaluatedAt
+        ) else { return }
+        let admittedCandidate = bindLiveHintCandidate(
+            candidate,
+            to: selectionContext,
+            now: presentationNow
+        )
+        applyLiveHint(
+            candidate: admittedCandidate,
+            snapshot: snapshot,
+            semantics: semantics,
+            now: presentationNow
+        )
     }
 
     @MainActor
@@ -14326,6 +15405,33 @@ extension AnalysisPipeline {
 
     var testingLifecycleGeneration: UInt64 {
         currentGeneration()
+    }
+
+    var testingSubjectIdentityRegistry: SubjectIdentityRegistry? {
+        subjectIdentityRegistry
+    }
+
+    /// O02/O05 groundwork consumer scaffolding: the derived multi-object facts
+    /// for the current live frame. Diagnostic only — no advice path reads it.
+    var testingSubjectMultiObjectSummary: MultiObjectSceneSummary? {
+        subjectIdentityRegistry?.multiObjectSummary()
+    }
+
+
+
+    var testingIntentSuppressedFamilies: Set<CameraAdviceActionFamily> {
+        intentClarification.suppressedFamilies
+    }
+
+
+
+    func testingUpdateIntentClarification(snapshot: FrameFeatureSnapshot,
+                                          semantics: SceneSemanticsReport) {
+        updateIntentClarification(snapshot: snapshot, semantics: semantics)
+    }
+
+    func testingIntentAnswer(for cue: CameraStyleCue) -> Bool? {
+        intentClarification.answers[cue]
     }
 
     var testingDirectFrameAcceptanceCount: Int {

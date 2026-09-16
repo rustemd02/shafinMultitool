@@ -17,6 +17,16 @@ EXPECTED_TOP_LEVEL_KEYS=(
     NSPrivacyAccessedAPITypes
 )
 
+# category:reason, in declaration order. Extending this list requires the same
+# evidence standard as the source audit: one entry per required-reason API that
+# is actually reachable from the app target, never a speculative declaration.
+EXPECTED_REQUIRED_REASON_ENTRIES=(
+    "NSPrivacyAccessedAPICategoryUserDefaults:CA92.1"
+    "NSPrivacyAccessedAPICategorySystemBootTime:35F9.1"
+    "NSPrivacyAccessedAPICategoryFileTimestamp:C617.1"
+    "NSPrivacyAccessedAPICategoryDiskSpace:E174.1"
+)
+
 DEFAULT_ROOT_RELATIVE_PATH="PrivacyInfo.xcprivacy"
 DEFAULT_SNAPKIT_RELATIVE_PATH="Frameworks/SnapKit.framework/SnapKit_Privacy.bundle/PrivacyInfo.xcprivacy"
 
@@ -157,6 +167,13 @@ validate_app_baseline_manifest() {
     local manifest="$1"
     local description="$2"
     local entry_manifest
+    local entry_count="${#EXPECTED_REQUIRED_REASON_ENTRIES[@]}"
+    local index
+    local pair
+    local expected_category
+    local expected_reason
+    local categories=""
+    local reasons=""
 
     lint_manifest "$manifest" "$description"
     assert_exact_keys "$manifest" "${EXPECTED_TOP_LEVEL_KEYS[@]}"
@@ -171,42 +188,38 @@ validate_app_baseline_manifest() {
     assert_raw_value "$manifest" "NSPrivacyCollectedDataTypes" 0
 
     assert_type "$manifest" "NSPrivacyAccessedAPITypes" array
-    assert_raw_value "$manifest" "NSPrivacyAccessedAPITypes" 2
-    assert_type "$manifest" "NSPrivacyAccessedAPITypes.0" dictionary
-    assert_type "$manifest" "NSPrivacyAccessedAPITypes.1" dictionary
+    assert_raw_value "$manifest" "NSPrivacyAccessedAPITypes" "$entry_count"
 
     entry_manifest="$(next_temp_path required-reason-entry)"
-    if ! plutil -extract "NSPrivacyAccessedAPITypes.0" xml1 -o "$entry_manifest" -- "$manifest" >/dev/null 2>&1; then
-        fail "$(basename "$manifest"): could not inspect required-reason entry"
-    fi
-    if ! plutil -lint -- "$entry_manifest" >/dev/null 2>&1; then
-        fail "$(basename "$manifest"): required-reason entry is not a valid plist"
-    fi
-    assert_exact_keys "$entry_manifest" "NSPrivacyAccessedAPIType" "NSPrivacyAccessedAPITypeReasons"
+    for index in "${!EXPECTED_REQUIRED_REASON_ENTRIES[@]}"; do
+        pair="${EXPECTED_REQUIRED_REASON_ENTRIES[$index]}"
+        expected_category="${pair%%:*}"
+        expected_reason="${pair##*:}"
 
-    assert_type "$manifest" "NSPrivacyAccessedAPITypes.0.NSPrivacyAccessedAPIType" string
-    assert_raw_value "$manifest" "NSPrivacyAccessedAPITypes.0.NSPrivacyAccessedAPIType" "NSPrivacyAccessedAPICategoryUserDefaults"
-    assert_type "$manifest" "NSPrivacyAccessedAPITypes.0.NSPrivacyAccessedAPITypeReasons" array
-    assert_raw_value "$manifest" "NSPrivacyAccessedAPITypes.0.NSPrivacyAccessedAPITypeReasons" 1
-    assert_type "$manifest" "NSPrivacyAccessedAPITypes.0.NSPrivacyAccessedAPITypeReasons.0" string
-    assert_raw_value "$manifest" "NSPrivacyAccessedAPITypes.0.NSPrivacyAccessedAPITypeReasons.0" "CA92.1"
+        assert_type "$manifest" "NSPrivacyAccessedAPITypes.$index" dictionary
+        if ! plutil -extract "NSPrivacyAccessedAPITypes.$index" xml1 -o "$entry_manifest" -- "$manifest" >/dev/null 2>&1; then
+            fail "$(basename "$manifest"): could not inspect required-reason entry $index"
+        fi
+        if ! plutil -lint -- "$entry_manifest" >/dev/null 2>&1; then
+            fail "$(basename "$manifest"): required-reason entry $index is not a valid plist"
+        fi
+        assert_exact_keys "$entry_manifest" "NSPrivacyAccessedAPIType" "NSPrivacyAccessedAPITypeReasons"
 
-    if ! plutil -extract "NSPrivacyAccessedAPITypes.1" xml1 -o "$entry_manifest" -- "$manifest" >/dev/null 2>&1; then
-        fail "$(basename "$manifest"): could not inspect required-reason entry"
-    fi
-    if ! plutil -lint -- "$entry_manifest" >/dev/null 2>&1; then
-        fail "$(basename "$manifest"): required-reason entry is not a valid plist"
-    fi
-    assert_exact_keys "$entry_manifest" "NSPrivacyAccessedAPIType" "NSPrivacyAccessedAPITypeReasons"
+        assert_type "$manifest" "NSPrivacyAccessedAPITypes.$index.NSPrivacyAccessedAPIType" string
+        assert_raw_value "$manifest" "NSPrivacyAccessedAPITypes.$index.NSPrivacyAccessedAPIType" "$expected_category"
+        assert_type "$manifest" "NSPrivacyAccessedAPITypes.$index.NSPrivacyAccessedAPITypeReasons" array
+        assert_raw_value "$manifest" "NSPrivacyAccessedAPITypes.$index.NSPrivacyAccessedAPITypeReasons" 1
+        assert_type "$manifest" "NSPrivacyAccessedAPITypes.$index.NSPrivacyAccessedAPITypeReasons.0" string
+        assert_raw_value "$manifest" "NSPrivacyAccessedAPITypes.$index.NSPrivacyAccessedAPITypeReasons.0" "$expected_reason"
 
-    assert_type "$manifest" "NSPrivacyAccessedAPITypes.1.NSPrivacyAccessedAPIType" string
-    assert_raw_value "$manifest" "NSPrivacyAccessedAPITypes.1.NSPrivacyAccessedAPIType" "NSPrivacyAccessedAPICategorySystemBootTime"
-    assert_type "$manifest" "NSPrivacyAccessedAPITypes.1.NSPrivacyAccessedAPITypeReasons" array
-    assert_raw_value "$manifest" "NSPrivacyAccessedAPITypes.1.NSPrivacyAccessedAPITypeReasons" 1
-    assert_type "$manifest" "NSPrivacyAccessedAPITypes.1.NSPrivacyAccessedAPITypeReasons.0" string
-    assert_raw_value "$manifest" "NSPrivacyAccessedAPITypes.1.NSPrivacyAccessedAPITypeReasons.0" "35F9.1"
+        categories="${categories}${expected_category} "
+        reasons="${reasons}${expected_reason} "
+    done
 
-    printf 'PASS %s baseline: tracking=false, trackingDomains=0, collectedDataTypes=0, requiredReasonEntries=2, categories=NSPrivacyAccessedAPICategoryUserDefaults+NSPrivacyAccessedAPICategorySystemBootTime, reasons=CA92.1+35F9.1\n' "$description"
+    categories="${categories% }"
+    reasons="${reasons% }"
+    printf 'PASS %s baseline: tracking=false, trackingDomains=0, collectedDataTypes=0, requiredReasonEntries=%s, categories=%s, reasons=%s\n' \
+        "$description" "$entry_count" "${categories// /+}" "${reasons// /+}"
 }
 
 is_allowed_relative_path() {
@@ -288,6 +301,8 @@ run_self_test() {
     local missing_app="$TEMP_ROOT/missing-root.app"
     local wrong_reason_app="$TEMP_ROOT/wrong-reason.app"
     local wrong_boot_reason_app="$TEMP_ROOT/wrong-boot-reason.app"
+    local wrong_timestamp_reason_app="$TEMP_ROOT/wrong-timestamp-reason.app"
+    local wrong_disk_reason_app="$TEMP_ROOT/wrong-disk-reason.app"
     local unexpected_extra_app="$TEMP_ROOT/unexpected-extra.app"
 
     mkdir -p "$(dirname "$fixture_nested")"
@@ -312,12 +327,24 @@ run_self_test() {
     fi
     expect_failure wrong-boot-reason "$SCRIPT_PATH" --source-manifest "$source_manifest" --app "$wrong_boot_reason_app"
 
+    cp -R "$fixture_app" "$wrong_timestamp_reason_app"
+    if ! plutil -replace "NSPrivacyAccessedAPITypes.2.NSPrivacyAccessedAPITypeReasons.0" -string C617.2 "$wrong_timestamp_reason_app/$DEFAULT_ROOT_RELATIVE_PATH" >/dev/null 2>&1; then
+        fail "could not create wrong-timestamp-reason negative fixture"
+    fi
+    expect_failure wrong-timestamp-reason "$SCRIPT_PATH" --source-manifest "$source_manifest" --app "$wrong_timestamp_reason_app"
+
+    cp -R "$fixture_app" "$wrong_disk_reason_app"
+    if ! plutil -replace "NSPrivacyAccessedAPITypes.3.NSPrivacyAccessedAPITypeReasons.0" -string E174.2 "$wrong_disk_reason_app/$DEFAULT_ROOT_RELATIVE_PATH" >/dev/null 2>&1; then
+        fail "could not create wrong-disk-reason negative fixture"
+    fi
+    expect_failure wrong-disk-reason "$SCRIPT_PATH" --source-manifest "$source_manifest" --app "$wrong_disk_reason_app"
+
     cp -R "$fixture_app" "$unexpected_extra_app"
     mkdir -p "$unexpected_extra_app/Frameworks/Unexpected.framework"
     cp "$source_manifest" "$unexpected_extra_app/Frameworks/Unexpected.framework/PrivacyInfo.xcprivacy"
     expect_failure unexpected-extra "$SCRIPT_PATH" --source-manifest "$source_manifest" --app "$unexpected_extra_app"
 
-    printf 'PASS validator self-test: positive, missing-root, wrong-reason, wrong-boot-reason, unexpected-extra\n'
+    printf 'PASS validator self-test: positive, missing-root, wrong-reason, wrong-boot-reason, wrong-timestamp-reason, wrong-disk-reason, unexpected-extra\n'
 }
 
 while [ "$#" -gt 0 ]; do

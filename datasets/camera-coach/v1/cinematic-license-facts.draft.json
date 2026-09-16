@@ -1,0 +1,60 @@
+{
+  "schema_id": "camera-cinematic-license-facts-v1",
+  "status": "research_facts_only_pending_owner_decision",
+  "fetched_utc": "2026-09-13",
+  "not_legal_advice": "These are verbatim facts from the publishers' own pages. Whether they permit shipping frames inside an App Store product is the owner's legal decision, recorded in rights-attestation; this file decides nothing.",
+  "license": {
+    "id": "CC-BY-3.0",
+    "url": "https://creativecommons.org/licenses/by/3.0/",
+    "share": "copy and redistribute the material in any medium or format for any purpose, even commercially",
+    "adapt": "remix, transform, and build upon the material for any purpose, even commercially",
+    "attribution_required": [
+      "name of the creator and attribution parties",
+      "a copyright notice",
+      "a license notice",
+      "a disclaimer notice",
+      "a link to the material",
+      "the title of the material if supplied (required for versions prior to 4.0)"
+    ],
+    "no_additional_restrictions": true,
+    "license_own_note": "The license may not give you all of the permissions necessary for your intended use. For example, other rights such as publicity, privacy, or moral rights may still limit how you use the material."
+  },
+  "films": [
+    {
+      "film": "big_buck_bunny",
+      "queue_records": 146,
+      "publisher_page": "https://peach.blender.org/about/",
+      "publisher_statement_commercial": "In short, this means you can freely reuse and distribute this content, also commercially, as long you provide a proper attribution.",
+      "attribution_rule_for_our_case": "case 3 — re-use (or screen, broadcast) parts of the movie",
+      "attribution_string": "(c) copyright 2008, Blender Foundation / www.bigbuckbunny.org",
+      "attribution_string_provenance": "verbatim from the publisher's page (case 3, re-using parts)",
+      "excluded_from_license": [
+        "all logos (including Blender logo, Creative Commons logo) and associated trademarks",
+        "the DVD cover (inlay) and DVD disc print"
+      ],
+      "decision": "pending_owner"
+    },
+    {
+      "film": "tears_of_steel",
+      "queue_records": 167,
+      "publisher_page": "https://mango.blender.org/",
+      "publisher_statement_constraint": "Note about Creative Commons Attribution: apart from the obvious crediting, you have to be aware that the actors keep their Personal Image (Portrait) and Privacy Rights. That means the footage is OK to use for technical demos, showcases, tutorials etc. But not to use the actor for making a commercial.",
+      "attribution_string": null,
+      "attribution_string_provenance": "not published on the fetched page; must be taken from the publisher's own credit (site footer or film end credits) by the owner — not invented here",
+      "decision": "pending_owner",
+      "why_decision_is_binding": "the publisher itself distinguishes permitted uses (technical demos, showcases, tutorials) from prohibited use of the actor commercially"
+    },
+    {
+      "film": "tos_teaser",
+      "queue_records": 0,
+      "source_manifest_records": 6,
+      "note": "all 6 teaser frames are absent from the annotation queue (queue predates their ingestion)",
+      "decision": "pending_owner"
+    }
+  ],
+  "consequence_for_packet_A1": [
+    "The two subsets are not equivalent: for Big Buck Bunny the publisher states commercial reuse and distribution are allowed with proper attribution; for Tears of Steel/teaser the publisher states the actors keep portrait and privacy rights and that commercial use of the actor is not allowed.",
+    "Owner decision options per subset: admit for release-bundled use / admit for research+technical-demo use only / quarantine.",
+    "Attribution must include creator, copyright notice, license notice, disclaimer, link and title; logos and trademarks are excluded from the license and must not be bundled."
+  ]
+}

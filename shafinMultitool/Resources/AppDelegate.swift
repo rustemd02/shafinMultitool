@@ -15,6 +15,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         NSLog("[Startup] AppDelegate didFinishLaunching")
+        // Opt-in deployment composition: no remote Scene provider is wired
+        // unless the environment explicitly configures one.
+        _ = SceneRemoteServiceBootstrap.configureIfEnabled()
         return true
     }
 

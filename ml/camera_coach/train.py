@@ -10,6 +10,11 @@ Run from the repository root with::
     python3 -m ml.camera_coach.train \
         --config ml/camera_coach/configs/synthetic_dry_run.json \
         --run-dir /private/tmp/setos-m4-006-example
+
+The same entry point dispatches a ``camera_training.v2`` config to the M01
+``production_records`` mode in :mod:`ml.camera_coach.trainer_records`.  The
+silver research lane stays in ``train_silver_actions.py``; this module does not
+replace or duplicate it.
 """
 
 from __future__ import annotations
@@ -1031,13 +1036,29 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _config_version(path: str | Path) -> str | None:
+    try:
+        with Path(path).open(encoding="utf-8") as stream:
+            raw = json.load(stream)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return raw.get("config_version") if isinstance(raw, dict) else None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     try:
         args = _parse_args(raw_argv)
-        config = TrainingConfig.from_file(args.config)
-        receipt = run_training(config, config_path=args.config, run_dir=args.run_dir, argv=raw_argv)
-    except (ConfigError, TrainingError, OSError) as exc:
+        if _config_version(args.config) == "camera_training.v2":
+            # M01 production-record mode lives in the same trainer package and
+            # is documented as ``python3 -m ml.camera_coach.train --config ...``.
+            from ml.camera_coach.trainer_records import run_from_config
+
+            receipt = run_from_config(args.config, run_dir=args.run_dir, argv=raw_argv)
+        else:
+            config = TrainingConfig.from_file(args.config)
+            receipt = run_training(config, config_path=args.config, run_dir=args.run_dir, argv=raw_argv)
+    except (ConfigError, TrainingError, OSError, ValueError) as exc:
         print(f"training environment rejected: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(receipt, ensure_ascii=False, sort_keys=True, indent=2))

@@ -31,7 +31,9 @@ final class DiagnosticsCalculator {
     ) -> ParsingDiagnostics {
         print("🔍 [DIAGNOSTICS] === НАЧАЛО ВЫЧИСЛЕНИЯ ДИАГНОСТИКИ ===")
         print("🔍 [DIAGNOSTICS] Script: actors=\(script.actors.count), objects=\(script.objects.count), actions=\(script.actions.count)")
+        #if DEBUG
         print("🔍 [DIAGNOSTICS] OriginalText: '\(originalText)'")
+        #endif
         print("🔍 [DIAGNOSTICS] MarkedObjects: \(markedObjects.count), matchedMarkedObjects: \(matchedMarkedObjects.count)")
         
         var notes: [String] = []

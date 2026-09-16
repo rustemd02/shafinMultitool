@@ -76,3 +76,55 @@ its recorded artifact; partial completion may not be reported as a PASS.
 Steps run in order on a freshly installed build of a single locked commit.
 Any failure re-runs the step once; a persistent failure records the step as
 `FAIL` with the receipt and reopens the corresponding tracker dependency.
+
+## v3 case checks (recording/media) — added Q03, not yet executed
+
+These checks extend the v1 steps above with the recording/media cases from
+`camera-coach.domain.v3-draft.1` (`docs/cameraanalysis/03-domain-contracts.md`
+N9–N12) and the required demonstrations in the release runbook §10.1. They do
+not restate the v1 handbook. The matching AR-side v3 checks are in
+`ar-workspace-v1.md`.
+
+**Status rule:** every check starts `not_executed` and stays so until a real
+device run records its artifact. Q03 preparation must not mark any check `pass`.
+Allowed statuses (enforced by `tools/device/import_device_report.py`):
+`executed_pass`, `executed_fail`, `not_supported`, `blocked_source`,
+`blocked_external`, `not_executed`. A `not_*` status must carry a written
+reason.
+
+The operation registry (`docs/cameraanalysis/operations-registry.v3-draft.json`)
+is still `draft_for_review`; a check whose operation has no qualified
+`qualificationRef` records `not_supported`, never a fabricated pass.
+
+16. **`v3.video_temporal_coverage`** — cases CC-V01/V02/V03/V06/V08. Record a
+    30–60 s selected clip while the subject moves: the coverage report carries a
+    qualified temporal window with real PTS; one in-zone frame does not complete
+    `maintain_subject_zone`; a scene cut or track loss cancels the active tip and
+    an answer for an old frame never revives it. A sparse still sample is not
+    evidence of absence of flicker, judder or identity change.
+    Per-row evidence: qualified window + PTS from a `metadata_dump`/`benchmark_summary`
+    JSON on the device, plus a `screen_recording` of the playback. Category
+    `functional`.
+17. **`v3.track_swap_incomparable`** — cases CC-I06/CC-R02. Two similar objects;
+    force a same-label track swap, partial occlusion and a swap of which object
+    is the main subject. The episode must end `incomparable`; success must never
+    be inferred from a subject moving. Recovery uses new analysis, not the stale
+    advice. Evidence: `metadata_dump` (track ids/envelopes) + `screen_recording`.
+    Category `functional`.
+18. **`v3.output_crop`** — case CC-F01. With `reserve_output_region` in play,
+    the final crop must not cut the protected element. Measure the crop rectangle
+    from output metadata; a screenshot of the preview is not the crop proof.
+    Evidence: output `metadata_dump` (crop rect + protected region) + exported
+    clip checksum. Category `functional`.
+19. **`v3.technical_action_verify`** — cases CC-T01/T02/T03/T05/T06. The
+    technical actions (`refocus_subject`, exposure adjust, `hold_steady`,
+    obstruction/blur checks) are verified by measurement over the take window
+    (focus-state trace, exposure delta, timebase monotonicity), not by the
+    advice text or a before/after still. Evidence: device `benchmark_summary` /
+    `metadata_dump` with the measured trace. Category `functional`.
+
+The existing steps 7 (`rec.av_sync`), 8 (`rec.drops_backpressure`) and 15
+(`rec.soak`) are the only recording checks whose evidence may not be a
+screenshot or screen recording: the importer requires a device-origin
+`audio_sync_report`/`benchmark_summary` with measured `sync_error_*_ms` and
+`thermal_*_samples` values. Steps 7, 8, 15 remain `not_executed` until Q04.

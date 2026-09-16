@@ -1,0 +1,142 @@
+{
+  "report_id": "drift-174-future-action-decomposition",
+  "question": "What causes the 8 missing_future_action failures on the technical-override lane, and does any cause admit a deterministic fix?",
+  "captured_at": "2026-09-13T03:10:00+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Failure decomposition only; no source change, no release measurement.",
+  "method": {
+    "source_lane": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/scored/case_results.jsonl",
+    "labels": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/camera_full_labels.jsonl (field future_needed_actions)",
+    "evidence_proxy": "emitted future_actions union over live+pause rows; future actions are derived from TechnicalQualitySignal.issues (pixel-driven probe), so an absent expected future action means the probe did not fire on those pixels"
+  },
+  "decomposition": {
+    "total": 8,
+    "occlusion_recall_misses": {
+      "rows": [
+        "ca_img_213",
+        "ca_img_221",
+        "ca_img_222",
+        "ca_img_225",
+        "ca_img_230"
+      ],
+      "count": 5,
+      "reading": "labels saw foreground obstruction; the probe does not detect occlusion on these pixels, so avoid_occlusion is never emitted. Detector-recall limitation, same family as EV-CA-EVAL-017 but the recall direction: routing was already measured net-negative, and no occlusion signal exists on these records to route."
+    },
+    "exposure_direction_contradictions": {
+      "rows": [
+        "ca_img_101",
+        "ca_img_223"
+      ],
+      "count": 2,
+      "reading": "labels claim overexposure, but measured pixels are dark (exposure_bias -2.60 and -1.71) and the probe emits increase_exposure. Label-contradicted class: the fix is label revision with pixel evidence, not code; consistent with the EV-CA-EVAL-019 framing-audit policy of not fitting rules to contradicted labels."
+    },
+    "sharpness_recall_misses": {
+      "rows": [
+        "ca_img_097"
+      ],
+      "count": 1,
+      "reading": "label claims motion_blur and expects stabilize_camera; the probe's gradient thresholds do not fire on these pixels and no other future action is emitted either. Signal-limited."
+    }
+  },
+  "row_detail": {
+    "ca_img_097": {
+      "quality_label": "bad",
+      "label_defects": [
+        "motion_blur"
+      ],
+      "label_future_needed": [
+        "stabilize_camera"
+      ],
+      "emitted_future": []
+    },
+    "ca_img_101": {
+      "quality_label": "mixed",
+      "label_defects": [
+        "color_cast",
+        "overexposure"
+      ],
+      "label_future_needed": [
+        "reduce_exposure"
+      ],
+      "emitted_future": [
+        "increase_exposure",
+        "reduce_iso_noise",
+        "refocus_subject",
+        "stabilize_camera"
+      ]
+    },
+    "ca_img_213": {
+      "quality_label": "bad",
+      "label_defects": [],
+      "label_future_needed": [
+        "avoid_occlusion"
+      ],
+      "emitted_future": [
+        "increase_exposure",
+        "reduce_iso_noise",
+        "refocus_subject",
+        "stabilize_camera"
+      ]
+    },
+    "ca_img_221": {
+      "quality_label": "bad",
+      "label_defects": [],
+      "label_future_needed": [
+        "avoid_occlusion"
+      ],
+      "emitted_future": []
+    },
+    "ca_img_222": {
+      "quality_label": "bad",
+      "label_defects": [],
+      "label_future_needed": [
+        "avoid_occlusion"
+      ],
+      "emitted_future": [
+        "increase_exposure",
+        "stabilize_camera"
+      ]
+    },
+    "ca_img_223": {
+      "quality_label": "bad",
+      "label_defects": [
+        "overexposure"
+      ],
+      "label_future_needed": [
+        "reduce_exposure"
+      ],
+      "emitted_future": [
+        "increase_exposure",
+        "reduce_iso_noise",
+        "refocus_subject",
+        "stabilize_camera"
+      ]
+    },
+    "ca_img_225": {
+      "quality_label": "bad",
+      "label_defects": [],
+      "label_future_needed": [
+        "avoid_occlusion"
+      ],
+      "emitted_future": [
+        "reduce_exposure",
+        "stabilize_camera"
+      ]
+    },
+    "ca_img_230": {
+      "quality_label": "bad",
+      "label_defects": [],
+      "label_future_needed": [
+        "avoid_occlusion"
+      ],
+      "emitted_future": [
+        "increase_exposure",
+        "reduce_iso_noise"
+      ]
+    }
+  },
+  "decision": {
+    "applied": false,
+    "reading": "All 8 failures are explained by three classes, none of which admits a deterministic lever: 5 detector-recall misses (no signal), 2 label-direction contradictions (revision candidates with pixel evidence), 1 sharpness-recall miss (no signal). With EV-CA-EVAL-014/015/019/022 this closes the failure-class accounting for the still-replay lane: every remaining expectation failure is now attributed to signal-limited detection or label revision."
+  },
+  "source_change": "none"
+}

@@ -484,7 +484,14 @@ final class SceneSaveLoadTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: projectURL.path))
     }
 
-    func testArtifactCleanupFailureDoesNotChangeSuccessfulMetadataDeletion() throws {
+    /// Deletion is transactional: owned artifacts are staged first, metadata
+    /// is removed only after staging succeeds, and a staging failure (here an
+    /// unexpected file inside the owned project directory) rolls everything
+    /// back. The caller gets a typed failure and the authoritative paths
+    /// survive for repair — the previous expectation that metadata deletion
+    /// proceeds independently of artifact cleanup contradicts the staged
+    /// design.
+    func testArtifactCleanupFailureRollsBackAndKeepsMetadata() throws {
         let applicationSupportURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("scene-db-recordings-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
@@ -503,8 +510,8 @@ final class SceneSaveLoadTests: XCTestCase {
         var deleted: Bool?
         service.deleteUnifiedSceneProject(named: name) { deleted = $0 }
 
-        XCTAssertEqual(deleted, true)
-        XCTAssertNil(service.loadUnifiedSceneProject(named: name))
+        XCTAssertEqual(deleted, false)
+        XCTAssertNotNil(service.loadUnifiedSceneProject(named: name))
         XCTAssertTrue(FileManager.default.fileExists(atPath: unexpectedURL.path))
     }
 

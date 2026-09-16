@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Export options for the SET OS / Shafin Multitool App Store lane.
+
+  This file is committed so the export step is reproducible, but it cannot run
+  until the owner supplies the distribution identity: an Apple Distribution
+  certificate and a provisioning profile for team 5NAKQ28539, plus an App Store
+  Connect app record for com.vigvamcev-media.shafinMultitool. Until then it is
+  documentation, not a working pipeline, and nothing in this repository signs,
+  archives, uploads or publishes on its own.
+
+  Usage, once the identity exists:
+
+    xcodebuild -workspace shafinMultitool.xcworkspace \
+      -scheme shafinMultitool \
+      -configuration Release \
+      -destination 'generic/platform=iOS' \
+      -archivePath <external>/ShafinMultitool.xcarchive \
+      archive
+
+    xcodebuild -exportArchive \
+      -archivePath <external>/ShafinMultitool.xcarchive \
+      -exportOptionsPlist docs/implementation/release/ExportOptions.plist \
+      -exportPath <external>/export
+
+  `destination = export` produces a signed .ipa without uploading it; switching
+  to `upload` is a separate, owner-approved action.
+-->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>destination</key>
+	<string>export</string>
+	<key>teamID</key>
+	<string>5NAKQ28539</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>stripSwiftSymbols</key>
+	<true/>
+	<key>uploadSymbols</key>
+	<true/>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>compileBitcode</key>
+	<false/>
+</dict>
+</plist>

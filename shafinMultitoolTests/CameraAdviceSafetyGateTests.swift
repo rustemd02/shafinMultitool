@@ -36,6 +36,39 @@ final class CameraAdviceSafetyGateTests: XCTestCase {
         )
     }
 
+    func testConfirmedIntentSuppressesOnlyTheDeclaredFamilies() {
+        func withSuppression(_ families: Set<CameraAdviceActionFamily>) -> CameraAdviceSafetyInput {
+            var value = input()
+            value.intentionallySuppressedFamilies = families
+            return value
+        }
+
+        XCTAssertEqual(
+            CameraAdviceSafetyGate.evaluate(actionFamily: .exposure, input: withSuppression([.exposure])),
+            .abstain(reason: .intentionalStylePreserved),
+            "a user-declared low-key style must not be 'corrected'"
+        )
+        XCTAssertEqual(
+            CameraAdviceSafetyGate.evaluate(actionFamily: .horizon, input: withSuppression([.exposure])),
+            .allow,
+            "unrelated families stay actionable"
+        )
+        XCTAssertEqual(
+            CameraAdviceSafetyGate.evaluate(actionFamily: .composition, input: input()),
+            .allow,
+            "no suppression by default"
+        )
+    }
+
+    func testSuppressionWinsOverOtherwiseActionableEvidence() {
+        var value = input(calibratedProbability: 0.99, minimumConfidence: 0.5)
+        value.intentionallySuppressedFamilies = [.composition]
+        XCTAssertEqual(
+            CameraAdviceSafetyGate.evaluate(actionFamily: .composition, input: value),
+            .abstain(reason: .intentionalStylePreserved)
+        )
+    }
+
     // MARK: - Per-family forbidden rules (table)
 
     func testHorizonFamilyRequiresAvailableHorizonEvidence() {
@@ -191,6 +224,81 @@ final class CameraAdviceSafetyGateTests: XCTestCase {
                 input: input(subjectTrackLost: true)
             ),
             .abstain(reason: .subjectIdentityLost)
+        )
+    }
+
+    // MARK: - C05 pre-ranking admissibility
+
+    private func admissibility(
+        intent: Bool = true,
+        manipulation: Bool = true,
+        resource: Bool = true,
+        destination: Bool = true,
+        mode: Bool = true,
+        calibratedEvidence: Bool = true,
+        verifier: Bool = true,
+        targetFresh: Bool = true
+    ) -> CameraAdviceAdmissibilityInput {
+        CameraAdviceAdmissibilityInput(
+            intentAllowsCorrection: intent,
+            manipulationPermitted: manipulation,
+            resourceAvailable: resource,
+            destinationReachable: destination,
+            modeAdmitted: mode,
+            calibratedEvidenceAvailable: calibratedEvidence,
+            verifierSupported: verifier,
+            targetFresh: targetFresh
+        )
+    }
+
+    func testAdmissibilityAllPrerequisitesEstablished() {
+        XCTAssertEqual(
+            CameraAdviceSafetyGate.evaluateAdmissibility(admissibility()),
+            .admissible
+        )
+    }
+
+    func testEachMissingPrerequisiteRejectsInFixedOrder() {
+        let expected: [(CameraAdviceAdmissibilityInput, SafetyBlockReason)] = [
+            (admissibility(intent: false), .intentionalStylePreserved),
+            (admissibility(manipulation: false), .manipulationNotPermitted),
+            (admissibility(resource: false), .resourceUnavailable),
+            (admissibility(destination: false), .destinationUnreachable),
+            (admissibility(mode: false), .modeNotAdmitted),
+            (admissibility(calibratedEvidence: false), .calibratedProbabilityMissing),
+            (admissibility(verifier: false), .verifierUnsupported),
+            (admissibility(targetFresh: false), .targetStale),
+        ]
+        for (input, reason) in expected {
+            XCTAssertEqual(
+                CameraAdviceSafetyGate.evaluateAdmissibility(input),
+                .rejected(reason: reason),
+                "\(reason) must reject"
+            )
+        }
+    }
+
+    func testFirstFailingPrerequisiteWinsDeterministically() {
+        // Both intent and resource are missing: the earlier check reports.
+        XCTAssertEqual(
+            CameraAdviceSafetyGate.evaluateAdmissibility(
+                admissibility(intent: false, resource: false)
+            ),
+            .rejected(reason: .intentionalStylePreserved)
+        )
+    }
+
+    func testStaleTargetIsWaitAndProhibitionsAreAbstain() {
+        XCTAssertEqual(
+            CameraAdviceSafetyGate.evaluateAdmissibility(admissibility(targetFresh: false)).plannerDecision,
+            .wait
+        )
+        XCTAssertEqual(
+            CameraAdviceSafetyGate.evaluateAdmissibility(admissibility(verifier: false)).plannerDecision,
+            .abstain
+        )
+        XCTAssertFalse(
+            CameraAdviceSafetyGate.evaluateAdmissibility(admissibility(verifier: false)).isAdmissible
         )
     }
 }

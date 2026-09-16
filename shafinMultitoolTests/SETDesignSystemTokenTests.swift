@@ -74,6 +74,32 @@ final class SETDesignSystemTokenTests: XCTestCase {
         XCTAssertEqual(SETReflowLayout(count: 3, selectedIndex: 1).fraction(for: 1), 0.5, accuracy: 0.0001)
         XCTAssertEqual(SETReflowLayout(count: 3, selectedIndex: 1).fraction(for: 0), 0.25, accuracy: 0.0001)
         XCTAssertTrue(SETReflowLayout(count: 3, selectedIndex: 1).hasSingleCutSeam)
+
+        let wrappedRailContent = SETCameraCoachRailContent(
+            observation: "Сравниваю с предыдущим кадром… Hold the frame steady while I check",
+            actionInstruction: "Продолжить съёмку / Continue shooting",
+            explanation: "Не могу надёжно сравнить эти кадры без достаточной устойчивости изображения. Keep the frame steady while the checked issue is compared.",
+            whyLabel: "Скрыть причину",
+            continueLabel: "Продолжить съёмку"
+        )
+        XCTAssertGreaterThan(
+            SETCameraCoachMetric.liveRailHeight(
+                canvasSize: CGSize(width: 390, height: 844),
+                isAccessibilityType: false,
+                isExpanded: false,
+                content: wrappedRailContent
+            ),
+            SETCameraCoachMetric.liveRailPortraitHeight
+        )
+        XCTAssertGreaterThan(
+            SETCameraCoachMetric.liveRailHeight(
+                canvasSize: CGSize(width: 844, height: 390),
+                isAccessibilityType: false,
+                isExpanded: false,
+                content: wrappedRailContent
+            ),
+            SETCameraCoachMetric.liveRailLandscapeHeight
+        )
     }
 
     func testMotionAndTypographyPresetsStayTyped() {

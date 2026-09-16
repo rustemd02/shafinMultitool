@@ -1,0 +1,19 @@
+{
+  "version": "camera-coach.research-probe.1",
+  "research_only": true, "human_gold": false, "release_admissible": false,
+  "annotation_source": "existing analytic corruption receipt; not a real camera episode or aesthetic gold",
+  "cases": [
+    {
+      "id": "room-rotation-corrected", "source_id": "commons-170357210",
+      "pair_id": "pair_4eb5c643351f2d5df0fc477f12f1b62febc2cfaf", "derivative_position": "before",
+      "task": "Первый кадр до, второй после. Это синтетическая проверка изменения изображения, не реальная съёмка. Сравни наклон архитектурных линий и кадрирование. Только наблюдение; не делай выводов о физическом перемещении мебели и не предлагай новых исправлений.",
+      "expected_comparison": "changed", "observation_only": true, "no_move": true
+    },
+    {
+      "id": "room-rotation-introduced", "source_id": "commons-170357210",
+      "pair_id": "pair_4eb5c643351f2d5df0fc477f12f1b62febc2cfaf", "derivative_position": "after",
+      "task": "Первый кадр до, второй после. Это синтетическая проверка изменения изображения, не реальная съёмка. Сравни наклон архитектурных линий и кадрирование. Только наблюдение; не делай выводов о физическом перемещении мебели и не предлагай новых исправлений.",
+      "expected_comparison": "changed", "observation_only": true, "no_move": true
+    }
+  ]
+}

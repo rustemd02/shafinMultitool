@@ -4,6 +4,14 @@ source: /Users/unterlantas/Downloads/ДИССЕР.md
 last_synced: 2026-05-29
 last_updated: 2026-06-05
 chapter: conclusion
+needs_update_reason: >-
+  2026-09-13 Q05 round 4: EV-REL-POLICY-001/CL-REL-POLICY-001 (versioned executable acceptance
+  policy, behaviorally bound to the gate instrument in both directions; the release freeze proves
+  silent drift exit 1 / versioned change exit 2 on the real policy) and EV-REL-DEFGAP-001/
+  CL-REL-DEFGAP-001 (ten of the 26 §5.1 rows have a threshold and no operational definition in the
+  repository) bound any conclusion that presents the acceptance gates as defined, measurable or
+  passed; EV-REL-PRODUCERS-001/CL-REL-PRODUCERS-001 and EV-REL-REHEARSAL-001/CL-REL-REHEARSAL-001
+  are tooling/connectivity evidence, not accepted data or a passed release.
 ---
 
 # **Заключение** {#заключение}

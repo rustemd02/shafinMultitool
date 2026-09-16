@@ -101,6 +101,16 @@ struct CoachingEpisodeBaseline: Equatable, Sendable {
     let geometryContext: ActionVerificationGeometryContext?
     /// Frozen exposure-settling evidence, when supplied by the capture owner.
     let exposureState: ActionVerificationExposureState?
+    /// C04.2: the verification scope frozen with the accepted action. Target
+    /// and protected refs come from the action owner, never from the observer.
+    let scope: ActionVerificationScope
+    /// C04.2: absence evidence frozen with an `exclude_entity` baseline.
+    let absenceEvidence: [ActionVerificationAbsenceEvidence]
+    /// C04.2: required only for `.matchedMedia`.
+    let matchedMediaMappingRef: String?
+    /// C04.2: frozen intent revision; a later frame with a different known
+    /// revision cancels the episode.
+    let intentRevision: Int?
 
     init(advice: StabilizedAdvice,
          actionID: String,
@@ -116,7 +126,11 @@ struct CoachingEpisodeBaseline: Equatable, Sendable {
          captureGeneration: UInt64,
          subjectRegion: NormalizedRect?,
          geometryContext: ActionVerificationGeometryContext?,
-         exposureState: ActionVerificationExposureState?) {
+         exposureState: ActionVerificationExposureState?,
+         scope: ActionVerificationScope = .none,
+         absenceEvidence: [ActionVerificationAbsenceEvidence] = [],
+         matchedMediaMappingRef: String? = nil,
+         intentRevision: Int? = nil) {
         self.advice = advice
         self.actionID = actionID
         self.frame = frame
@@ -132,6 +146,10 @@ struct CoachingEpisodeBaseline: Equatable, Sendable {
         self.subjectRegion = subjectRegion
         self.geometryContext = geometryContext
         self.exposureState = exposureState
+        self.scope = scope
+        self.absenceEvidence = absenceEvidence
+        self.matchedMediaMappingRef = matchedMediaMappingRef
+        self.intentRevision = intentRevision
     }
 }
 
@@ -160,6 +178,11 @@ struct CoachingEpisodeObservation: Equatable, Sendable {
     let isStable: Bool
     let geometryContext: ActionVerificationGeometryContext?
     let exposureState: ActionVerificationExposureState?
+    /// C04.2: verification scope supplied by the action owner.
+    let scope: ActionVerificationScope
+    let absenceEvidence: [ActionVerificationAbsenceEvidence]
+    let matchedMediaMappingRef: String?
+    let intentRevision: Int?
 
     init?(frame: UserMovementFrame,
           stabilizedAdvice: StabilizedAdvice,
@@ -167,7 +190,11 @@ struct CoachingEpisodeObservation: Equatable, Sendable {
           lifecycle: SubjectTrackLifecycleContext,
           isStable: Bool,
           geometryContext: ActionVerificationGeometryContext? = nil,
-          exposureState: ActionVerificationExposureState? = nil) {
+          exposureState: ActionVerificationExposureState? = nil,
+          scope: ActionVerificationScope = .none,
+          absenceEvidence: [ActionVerificationAbsenceEvidence] = [],
+          matchedMediaMappingRef: String? = nil,
+          intentRevision: Int? = nil) {
         guard stabilizedAdvice.decision == .correct,
               let actionID = stabilizedAdvice.actionID,
               !actionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -184,8 +211,14 @@ struct CoachingEpisodeObservation: Equatable, Sendable {
             return nil
         }
 
+        guard actionFamily.requiresSubjectBinding || stabilizedAdvice.targetIdentity == nil else {
+            return nil
+        }
+
         if actionFamily.requiresSubjectBinding {
-            guard let subjectTrack,
+            guard let targetIdentity = stabilizedAdvice.targetIdentity,
+                  let subjectTrack,
+                  targetIdentity == subjectTrack.identity,
                   Self.isValidSubjectBinding(
                     evidence.subjectBinding,
                     frame: frame,
@@ -224,6 +257,10 @@ struct CoachingEpisodeObservation: Equatable, Sendable {
         self.isStable = isStable
         self.geometryContext = geometryContext
         self.exposureState = exposureState
+        self.scope = scope
+        self.absenceEvidence = absenceEvidence
+        self.matchedMediaMappingRef = matchedMediaMappingRef
+        self.intentRevision = intentRevision
     }
 
     private static func isValidSubjectBinding(
@@ -260,7 +297,9 @@ struct CoachingEpisodeObservation: Equatable, Sendable {
             isStable: isStable,
             currentActionID: currentActionID,
             geometryContext: geometryContext,
-            exposureState: exposureState
+            exposureState: exposureState,
+            scope: scope,
+            intentRevision: intentRevision
         )
     }
 }
@@ -277,6 +316,10 @@ struct CoachingEpisodeFrameEvidence: Equatable, Sendable {
     let currentActionID: String?
     let geometryContext: ActionVerificationGeometryContext?
     let exposureState: ActionVerificationExposureState?
+    /// C04.2: target scope kept with the frame so the movement/stable-after
+    /// comparison measures the commanded entity, not the primary subject.
+    let scope: ActionVerificationScope
+    let intentRevision: Int?
 
     init?(frame: UserMovementFrame,
           subjectTrack: SubjectTrackState?,
@@ -284,7 +327,9 @@ struct CoachingEpisodeFrameEvidence: Equatable, Sendable {
           isStable: Bool,
           currentActionID: String? = nil,
           geometryContext: ActionVerificationGeometryContext? = nil,
-          exposureState: ActionVerificationExposureState? = nil) {
+          exposureState: ActionVerificationExposureState? = nil,
+          scope: ActionVerificationScope = .none,
+          intentRevision: Int? = nil) {
         let normalizedActionID = currentActionID?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedActionID,
            (normalizedActionID.isEmpty || UserMovementObserver.actionFamily(for: normalizedActionID) == nil) {
@@ -341,6 +386,8 @@ struct CoachingEpisodeFrameEvidence: Equatable, Sendable {
         self.currentActionID = normalizedActionID
         self.geometryContext = geometryContext
         self.exposureState = exposureState
+        self.scope = scope
+        self.intentRevision = intentRevision
     }
 }
 
@@ -374,6 +421,17 @@ struct CoachingEpisodeState: Equatable, Sendable {
     )
 }
 
+/// Preview geometry owned by the episode coordinator. Subject rectangles are
+/// normalized to Vision space before they reach the preview-layer mapper. The
+/// validated binding remains the source of truth; a subjectTarget binding is
+/// converted exactly once at this boundary.
+struct CoachingEpisodePreviewGeometry: Equatable, Sendable {
+    let subjectRegion: NormalizedRect?
+    let targetRegion: NormalizedRect?
+
+    static let none = Self(subjectRegion: nil, targetRegion: nil)
+}
+
 /// Production owner for one movement-and-after-frame episode. No clock is
 /// captured and no timer can complete an episode: the only progress source is
 /// immutable, fresh frame evidence supplied by `UserMovementTracker`.
@@ -394,6 +452,84 @@ struct CoachingEpisodeCoordinator {
     var phase: CoachingEpisodePhase { state.phase }
     var isReadyForVerification: Bool { state.phase == .readyForVerification }
     var episodeToken: CoachingEpisodeToken? { state.token }
+
+    /// Resolves the one preview geometry projection shared by CameraViewModel,
+    /// the production surface and the UX presentation owner. Active episodes
+    /// use only the baseline's original validated source binding. Idle uses
+    /// only an identity-bound current hint; terminal history is never shown.
+    static func previewGeometry(
+        for state: CoachingEpisodeState,
+        actionID: String?,
+        subjectIdentity: SubjectTrackIdentity?,
+        observedSourceRegion: NormalizedRect?,
+        targetRegion: NormalizedRect?
+    ) -> CoachingEpisodePreviewGeometry {
+        switch state.phase {
+        case .awaitingMovement, .collectingStableAfterFrames, .readyForVerification:
+            guard let baseline = state.baseline,
+                  let actionFamily = UserMovementObserver.actionFamily(for: baseline.actionID),
+                  actionFamily.requiresSubjectBinding,
+                  let baselineIdentity = baseline.subjectIdentity,
+                  let binding = baseline.frame.evidence?.subjectBinding,
+                  binding.identity == baselineIdentity,
+                  let sourceRegion = binding.region.converted(
+                      from: binding.coordinateSpace,
+                      to: .vision
+                  ) else {
+                return .none
+            }
+            return CoachingEpisodePreviewGeometry(
+                subjectRegion: sourceRegion,
+                targetRegion: targetRegionForBaseline(
+                    actionID: baseline.actionID,
+                    subjectRegion: sourceRegion,
+                    sourceSpace: .vision
+                )
+            )
+
+        case .idle:
+            guard let actionID,
+                  let actionFamily = UserMovementObserver.actionFamily(for: actionID),
+                  actionFamily.requiresSubjectBinding,
+                  subjectIdentity != nil,
+                  let observedSourceRegion = observedSourceRegion?.converted(
+                      from: .vision,
+                      to: .vision
+                  ) else {
+                return .none
+            }
+            return CoachingEpisodePreviewGeometry(
+                subjectRegion: observedSourceRegion,
+                targetRegion: targetRegion?.converted(from: .vision, to: .vision)
+            )
+
+        case .cancelled, .expired:
+            return .none
+        }
+    }
+
+    private static func targetRegionForBaseline(
+        actionID: String,
+        subjectRegion: NormalizedRect,
+        sourceSpace: CameraCoordinateSpaceV2
+    ) -> NormalizedRect? {
+        if let semanticAction = SemanticActionType(rawValue: actionID) {
+            return semanticAction.subjectTargetRegion(
+                from: subjectRegion,
+                sourceSpace: sourceSpace
+            )
+        }
+        if let legacyAction = ActionTypeV1(rawValue: actionID) {
+            return legacyAction.subjectTargetRegion(
+                from: subjectRegion,
+                sourceSpace: sourceSpace
+            )
+        }
+        guard UserMovementObserver.actionFamily(for: actionID)?.requiresSubjectBinding == true else {
+            return nil
+        }
+        return subjectRegion
+    }
 
     /// Exact handoff for M2-025. It exists only after the coordinator has
     /// accepted the configured stable-after frame; terminal/cancelled states
@@ -418,7 +554,12 @@ struct CoachingEpisodeCoordinator {
             afterGeometry: finalObservation.geometryContext,
             beforeExposureState: baseline.exposureState,
             afterExposureState: finalObservation.exposureState,
-            subjectIdentity: baseline.subjectIdentity
+            subjectIdentity: baseline.subjectIdentity,
+            scope: baseline.scope,
+            absenceEvidence: baseline.absenceEvidence,
+            matchedMediaMappingRef: baseline.matchedMediaMappingRef,
+            beforeIntentRevision: baseline.intentRevision,
+            afterIntentRevision: finalObservation.intentRevision
         )
     }
 
@@ -455,6 +596,7 @@ struct CoachingEpisodeCoordinator {
         let guardState = SubjectTrackLifecycleGuard(context: observation.lifecycle)
         var tracker = UserMovementTracker(
             actionID: actionID,
+            targetRefs: observation.scope.targetRefs,
             requiredRelevantFrames: configuration.requiredMovementFrames
         )
         // Seed the tracker with the exact baseline. The first observation is
@@ -488,7 +630,11 @@ struct CoachingEpisodeCoordinator {
             captureGeneration: observation.lifecycle.generation,
             subjectRegion: actionFamily.requiresSubjectBinding ? subjectRegion : nil,
             geometryContext: observation.geometryContext,
-            exposureState: observation.exposureState
+            exposureState: observation.exposureState,
+            scope: observation.scope,
+            absenceEvidence: observation.absenceEvidence,
+            matchedMediaMappingRef: observation.matchedMediaMappingRef,
+            intentRevision: observation.intentRevision
         )
         state = CoachingEpisodeState(
             phase: .awaitingMovement,
@@ -605,6 +751,18 @@ struct CoachingEpisodeCoordinator {
             return cancel(reason: .actionChanged)
         }
 
+        // C04.2/N7 step 2: a changed verification scope (target/protected
+        // refs) or intent revision makes the frozen baseline non-comparable;
+        // the episode is cancelled instead of silently re-pointed.
+        if frameEvidence.scope != baseline.scope {
+            return cancel(reason: .subjectChanged)
+        }
+        if let frameIntentRevision = frameEvidence.intentRevision,
+           let baselineIntentRevision = baseline.intentRevision,
+           frameIntentRevision != baselineIntentRevision {
+            return cancel(reason: .actionChanged)
+        }
+
         guard frameEvidence.lifecycle.generation == baseline.captureGeneration,
               frameEvidence.lifecycle.orientation == baseline.orientation,
               frameEvidence.lifecycle.lensID == baseline.lensID,
@@ -691,6 +849,7 @@ struct CoachingEpisodeCoordinator {
                 previous: previous.frame,
                 current: frameEvidence.frame,
                 actionID: baseline.actionID,
+                targetRefs: baseline.scope.targetRefs,
                 asOf: evidence.evaluatedAt
             )
             let isFreshStableAfterFrame: Bool

@@ -1,0 +1,161 @@
+{
+  "report_id": "drift-174-confidence-gate",
+  "question": "Does a pause-verdict confidence gate (silence below threshold instead of corrective actions) repair the good-frame overcorrections, and does any threshold improve the lane?",
+  "captured_at": "2026-09-13T01:30:00+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Gate simulation over the committed technical-override lane rows through the canonical scorer; no source change, no release measurement.",
+  "method": {
+    "source_lane": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/m4-001-fullruntime-174-drift-r1-technical-override.jsonl",
+    "scorer": "docs/cameraanalysis/eval/semantic_output_schema.py score_semantic_candidate_outputs (canonical evaluator)",
+    "gate_rule": "clear semantic_actions on the pause row when the pause row confidence < t; merge and score; live rows untouched",
+    "reproduction_check": "ungated merge scores pass_rate=0.534483 / preservation=0.839506 / expected_hit=0.689655, matching the committed lane"
+  },
+  "separation": {
+    "finding": "Pause confidence does not separate overcorrected good frames from correctly-kept good frames.",
+    "good_frames": 81,
+    "corrected_good_frames": 13,
+    "corrected_good_conf_range": [
+      0.648,
+      1.0
+    ],
+    "corrected_good_conf_median": 0.74,
+    "kept_good_frames": 65,
+    "kept_good_conf_range": [
+      0.463,
+      1.0
+    ],
+    "kept_good_conf_median": 0.75,
+    "silent_good_frames": [
+      "ca_img_044",
+      "ca_img_045",
+      "ca_img_150"
+    ],
+    "corrected_good_confidences": {
+      "ca_img_001": 0.74,
+      "ca_img_011": 0.648,
+      "ca_img_019": 0.74,
+      "ca_img_020": 0.75,
+      "ca_img_034": 0.74,
+      "ca_img_036": 1.0,
+      "ca_img_050": 1.0,
+      "ca_img_123": 0.75,
+      "ca_img_128": 0.74,
+      "ca_img_130": 0.75,
+      "ca_img_138": 0.74,
+      "ca_img_145": 0.75,
+      "ca_img_156": 0.683
+    },
+    "mechanism_note": "Mixed verdicts with corrections are capped at 0.74 by pauseVerdictConfidence and dominant-issue good verdicts are floored at 0.75, so the gate's low-confidence region contains almost no corrected good frames while it does contain kept good frames down to 0.463."
+  },
+  "sweep": {
+    "0.59": {
+      "pass_rate": 0.522989,
+      "preservation": 0.839506,
+      "forbidden_rate": 0.132184,
+      "expected_hit": 0.678161,
+      "failure_counts": {
+        "confidence_band_mismatch": 48,
+        "forbidden_action_violation": 23,
+        "good_frame_overcorrection": 13,
+        "missing_expected_action": 56,
+        "missing_future_action": 8,
+        "missing_positive_confirmation": 17,
+        "semantic_overreach_on_technical_failure": 1
+      }
+    },
+    "0.65": {
+      "pass_rate": 0.522989,
+      "preservation": 0.851852,
+      "forbidden_rate": 0.132184,
+      "expected_hit": 0.678161,
+      "failure_counts": {
+        "confidence_band_mismatch": 48,
+        "forbidden_action_violation": 23,
+        "good_frame_overcorrection": 12,
+        "missing_expected_action": 56,
+        "missing_future_action": 8,
+        "missing_positive_confirmation": 17,
+        "semantic_overreach_on_technical_failure": 1
+      }
+    },
+    "0.69": {
+      "pass_rate": 0.522989,
+      "preservation": 0.864198,
+      "forbidden_rate": 0.126437,
+      "expected_hit": 0.666667,
+      "failure_counts": {
+        "confidence_band_mismatch": 48,
+        "forbidden_action_violation": 22,
+        "good_frame_overcorrection": 11,
+        "missing_expected_action": 58,
+        "missing_future_action": 8,
+        "missing_positive_confirmation": 17,
+        "semantic_overreach_on_technical_failure": 1
+      }
+    },
+    "0.70": {
+      "pass_rate": 0.522989,
+      "preservation": 0.864198,
+      "forbidden_rate": 0.126437,
+      "expected_hit": 0.666667,
+      "failure_counts": {
+        "confidence_band_mismatch": 48,
+        "forbidden_action_violation": 22,
+        "good_frame_overcorrection": 11,
+        "missing_expected_action": 58,
+        "missing_future_action": 8,
+        "missing_positive_confirmation": 17,
+        "semantic_overreach_on_technical_failure": 1
+      }
+    },
+    "0.71": {
+      "pass_rate": 0.477011,
+      "preservation": 0.864198,
+      "forbidden_rate": 0.103448,
+      "expected_hit": 0.609195,
+      "failure_counts": {
+        "confidence_band_mismatch": 45,
+        "forbidden_action_violation": 18,
+        "good_frame_overcorrection": 11,
+        "missing_expected_action": 68,
+        "missing_future_action": 8,
+        "missing_positive_confirmation": 26,
+        "semantic_overreach_on_technical_failure": 1
+      }
+    },
+    "0.75": {
+      "pass_rate": 0.465517,
+      "preservation": 0.925926,
+      "forbidden_rate": 0.091954,
+      "expected_hit": 0.597701,
+      "failure_counts": {
+        "confidence_band_mismatch": 43,
+        "forbidden_action_violation": 16,
+        "good_frame_overcorrection": 6,
+        "missing_expected_action": 70,
+        "missing_future_action": 8,
+        "missing_positive_confirmation": 26
+      }
+    }
+  },
+  "full_silence_degenerate": {
+    "pass_rate": 0.137931,
+    "preservation": 0.975309,
+    "forbidden_rate": 0.022989,
+    "expected_hit": 0.172414,
+    "failure_counts": {
+      "confidence_band_mismatch": 41,
+      "forbidden_action_violation": 4,
+      "good_frame_overcorrection": 2,
+      "missing_expected_action": 144,
+      "missing_future_action": 8,
+      "missing_positive_confirmation": 76
+    }
+  },
+  "decision": {
+    "applied": false,
+    "arithmetic": "No threshold raises pass_rate: the best passing count under the gate is 92/174 (t<=0.58) against the ungated 93/174, and at t=0.69-0.70, where preservation improves to 0.864198 and forbidden violations drop to 22, pass_rate falls to 91/174 (0.522989) because missing_expected_action grows faster (+3) than the overcorrection (-2) and forbidden (-2) repairs. At t=0.75 preservation reaches 0.925926 but pass_rate collapses to 81/174 (0.465517). No threshold approaches the release forbidden gate of <= 0.02: the best reachable forbidden rate is 0.091954 at t=0.75 with the lane destroyed.",
+    "reading": "The gate is a monotone trade that buys preservation with expected-action hits, and the confidence signal is compressed into the wrong region by the existing verdict-confidence caps. Rejected at every threshold; recorded as a known limitation of pause confidence as an uncertainty signal."
+  },
+  "source_change": "none",
+  "consequence": "With this, the pause-confidence lever joins the exhausted set (clutter thresholds, occlusion routing, distractor/subject-size signals, confidence-parity restoration, isolation-rule relaxation). The remaining open work on this lane is owner-gated or requires new labeled data."
+}

@@ -4,9 +4,18 @@ import XCTest
 final class SceneScriptsMarkdownSmokeTests: XCTestCase {
     private let liveModelOverrideKey = "scene_generator_llm_model_path"
     private let v9RuntimeModeKey = "scene_generator_v9_runtime_mode"
-    private let scriptsPath = "/Users/unterlantas/Documents/XCode/shafinMultitool/scripts/scripts.md"
-    private let modelPath = "/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Resources/Models/dataset_v9_event_sft_q4_k_m.gguf"
-    private let outputPath = "/private/tmp/scene_scripts_md_results.json"
+    /// Derived from this file's location, not from one machine's absolute path:
+    /// the hardcoded paths this used to carry made the smoke test unusable from any
+    /// other checkout while still looking configured.
+    private static let repositoryRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .path
+    private let scriptsPath = SceneScriptsMarkdownSmokeTests.repositoryRoot + "/scripts/scripts.md"
+    private let modelPath = SceneScriptsMarkdownSmokeTests.repositoryRoot
+        + "/shafinMultitool/Resources/Models/dataset_v9_event_sft_q4_k_m.gguf"
+    private let outputPath = FileManager.default.temporaryDirectory
+        .appendingPathComponent("scene_scripts_md_results.json").path
     private let maxChunkCharacters = 5_000
     private let minMeaningfulUnitCharacters = 250
 

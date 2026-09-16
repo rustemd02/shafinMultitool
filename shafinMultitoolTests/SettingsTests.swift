@@ -120,13 +120,22 @@ final class SettingsTests: XCTestCase {
     func testChangeISOThroughPicker() throws {
         // Устанавливаем начальный ISO 200
         UserDefaults.standard.set(200, forKey: "iso")
-        
+
         let isoValues = [50, 100, 200, 400, 800]
-        
+
         // Проверяем количество строк в picker view
         let numberOfRows = interactor.getNumberOfRowsInPickerView(tag: 1)
         XCTAssertEqual(numberOfRows, isoValues.count, "Количество строк должно соответствовать количеству значений ISO")
-        
+
+        guard CameraService.shared.isCaptureDeviceAvailable else {
+            // Without a capture device the M9-009 policy rejects the change:
+            // a rejected selection never pollutes stored settings.
+            interactor.didSelectRow(row: 0, tag: 1)
+            let settings = dbService.fetchSettingsButtonValues()
+            XCTAssertEqual(settings.iso, 200, "Отклонённая смена ISO не должна менять сохранённое значение")
+            return
+        }
+
         // Выбираем каждое значение ISO
         for (index, isoValue) in isoValues.enumerated() {
             interactor.didSelectRow(row: index, tag: 1)
@@ -140,14 +149,24 @@ final class SettingsTests: XCTestCase {
     func testChangeWhiteBalanceThroughPicker() throws {
         // Устанавливаем начальный баланс белого 4000K
         UserDefaults.standard.set(4000, forKey: "whiteBalance")
-        
-        // Генерируем значения баланса белого (2400-8000 с шагом 100)
+
+        // Таблица баланса белого статична (2400-8000 с шагом 100) и доступна
+        // без настроенной камеры
         let wbValues = Array(stride(from: 2400, through: 8000, by: 100))
-        
+
         // Проверяем количество строк в picker view
         let numberOfRows = interactor.getNumberOfRowsInPickerView(tag: 2)
         XCTAssertEqual(numberOfRows, wbValues.count, "Количество строк должно соответствовать количеству значений WB")
-        
+
+        guard CameraService.shared.isCaptureDeviceAvailable else {
+            // Without a capture device the M9-012 policy rejects the change:
+            // a rejected selection never pollutes stored settings.
+            interactor.didSelectRow(row: wbValues.count - 1, tag: 2)
+            let settings = dbService.fetchSettingsButtonValues()
+            XCTAssertEqual(settings.wb, 4000, "Отклонённая смена WB не должна менять сохранённое значение")
+            return
+        }
+
         // Выбираем несколько значений баланса белого
         let testIndices = [0, wbValues.count / 2, wbValues.count - 1]
         for index in testIndices {

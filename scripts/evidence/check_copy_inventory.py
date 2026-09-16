@@ -21,6 +21,13 @@ for path in prod_files:
         if re.search(rf'\b{camel}\b', text) and '#if DEBUG' not in text[max(0, text.find(camel)-500):text.find(camel)]:
             untagged_use.append(f"{path}:{key}")
 print(f"COPY INVENTORY: {len(strings)} keys, {len(fixture_keys)} fixture-tagged")
+if not strings:
+    print("COPY INVENTORY FAIL: the string table has 0 keys — nothing was checked")
+    sys.exit(1)
+if not prod_files:
+    print("COPY INVENTORY FAIL: 0 production Swift files were scanned, so the fixture-usage "
+          "check examined nothing")
+    sys.exit(1)
 if bad_values:
     print(f"FAIL values: {bad_values[:5]}")
     sys.exit(1)

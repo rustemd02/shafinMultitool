@@ -1,0 +1,187 @@
+{
+  "action_coverage": {
+    "add_front_fill_light": {
+      "emitted": 10,
+      "expected": 15
+    },
+    "cause": "step_closer is emitted on 2 of 348 rows and step_back on 4; no record whose label expects step_closer ever receives it, and remove_distracting_object is expected 13 times but emitted 3. step_closer and step_back are reachable only through the subjectNotProminentEnough tip path (step_back also through the edge-issue path), and subjectNotProminentEnough fires on 8 rows lane-wide while subject_too_close_to_edge fires on 7. The actions exist in the catalog and in the demo whitelist but are practically unreachable on this corpus.",
+    "keep_current_setup": {
+      "emitted": 98,
+      "expected": 81
+    },
+    "note": "Emissions are counted over all 348 exported rows; expectations over the 174 labels.",
+    "remove_distracting_object": {
+      "emitted": 3,
+      "expected": 13
+    },
+    "simplify_background": {
+      "emitted": 38,
+      "expected": 21
+    },
+    "step_back": {
+      "emitted": 4,
+      "expected": 11
+    },
+    "step_closer": {
+      "emitted": 2,
+      "expected": 9
+    }
+  },
+  "candidate_gate_rejected": {
+    "gain_record_ids": [
+      "ca_img_036",
+      "ca_img_050",
+      "ca_img_123",
+      "ca_img_130"
+    ],
+    "gain_records": 4,
+    "loss_record_ids": [
+      "ca_img_006",
+      "ca_img_007",
+      "ca_img_035",
+      "ca_img_058",
+      "ca_img_061",
+      "ca_img_062",
+      "ca_img_064",
+      "ca_img_065",
+      "ca_img_069",
+      "ca_img_072",
+      "ca_img_073",
+      "ca_img_075",
+      "ca_img_076",
+      "ca_img_080",
+      "ca_img_082",
+      "ca_img_083",
+      "ca_img_084",
+      "ca_img_087",
+      "ca_img_088",
+      "ca_img_089",
+      "ca_img_093",
+      "ca_img_098",
+      "ca_img_099",
+      "ca_img_100",
+      "ca_img_101",
+      "ca_img_107",
+      "ca_img_215",
+      "ca_img_223",
+      "ca_img_225",
+      "ca_img_239"
+    ],
+    "loss_records": 30,
+    "loss_records_on_the_dominant_technical_card_path": 26,
+    "loss_records_where_the_removed_advice_already_matched_the_label": 23,
+    "proposal": "Return nil from technicalPauseIssue when structuredVerdict == .good, so a good critique can surface a live hint and a future technical action but not a pause correction card.",
+    "verdict": "Rejected: it would fix 4 records but remove corrective advice from 30 non-good records, 26 of them through the dominant technical card path and several of them already matching the labelled action (for example ca_img_006 add_front_fill_light, ca_img_064 remove_background_hotspot, ca_img_065 change_camera_angle). No single verdict-level gate separates the 4 misfires from the 26 correct cards."
+  },
+  "captured_at": "2026-09-12T23:05:09+03:00",
+  "classes": {
+    "background_correction_expected_but_absent": {
+      "cause": "The clutter signal itself is absent: on these records background_clutter sits at or below the lane median and several have object_count 0, so no COCO detection or density measure marks a distractor.",
+      "fixability": "not rule-fixable from current signals; needs a region/saliency-level distractor detector",
+      "lane_median_background_clutter": 0.2271,
+      "median_background_clutter": 0.1814,
+      "median_object_count": 1.0,
+      "record_ids": [
+        "ca_img_013",
+        "ca_img_014",
+        "ca_img_067",
+        "ca_img_077",
+        "ca_img_085",
+        "ca_img_097",
+        "ca_img_104",
+        "ca_img_208",
+        "ca_img_209",
+        "ca_img_212",
+        "ca_img_213",
+        "ca_img_216",
+        "ca_img_219",
+        "ca_img_221",
+        "ca_img_227",
+        "ca_img_231",
+        "ca_img_232",
+        "ca_img_237"
+      ],
+      "records": 18
+    },
+    "framing_distance_expected_but_absent": {
+      "record_ids": [
+        "ca_img_080",
+        "ca_img_085",
+        "ca_img_092",
+        "ca_img_093",
+        "ca_img_095",
+        "ca_img_096",
+        "ca_img_208",
+        "ca_img_209",
+        "ca_img_212",
+        "ca_img_213",
+        "ca_img_216",
+        "ca_img_220",
+        "ca_img_222",
+        "ca_img_225",
+        "ca_img_226",
+        "ca_img_228",
+        "ca_img_230",
+        "ca_img_235",
+        "ca_img_236"
+      ],
+      "records": 19
+    },
+    "front_fill_expected_but_absent": {
+      "record_ids": [
+        "ca_img_022",
+        "ca_img_093",
+        "ca_img_210",
+        "ca_img_211",
+        "ca_img_217",
+        "ca_img_218",
+        "ca_img_224",
+        "ca_img_229",
+        "ca_img_233",
+        "ca_img_238"
+      ],
+      "records": 10
+    },
+    "keep_expected_but_corrected": {
+      "cause": "A dominant technical defect on a frame the critique judged good admits a technical pause card; the preservation guards do not hold for these frames.",
+      "fixability": "candidate single gate measured and rejected below",
+      "record_ids": [
+        "ca_img_001",
+        "ca_img_011",
+        "ca_img_019",
+        "ca_img_020",
+        "ca_img_034",
+        "ca_img_044",
+        "ca_img_045",
+        "ca_img_123",
+        "ca_img_128",
+        "ca_img_130",
+        "ca_img_138",
+        "ca_img_145",
+        "ca_img_150",
+        "ca_img_156"
+      ],
+      "records": 14
+    }
+  },
+  "conclusion": "The remaining expectation failures are coverage- and signal-limited rather than rule-limited. Nineteen expected framing-distance actions cannot be earned by construction (step_closer is never emitted on a record that expects it, step_back on one), remove_distracting_object is expected 13 times and emitted 3, eighteen expected background corrections sit on records whose clutter signal is at or below the lane median with no detected objects, and the keep-preservation class cannot be separated from the technical cards that already match the label on 23 of 30 non-good records. The two rule-level levers the data supported (object edge pressure, dominant technical override) have been taken; further gains require new detection or coverage, not another gate.",
+  "issue_frequency": {
+    "background_competes_with_subject": 6,
+    "backlight_hides_subject": 3,
+    "frame_visually_overloaded": 7,
+    "scene_has_no_clear_focus": 12,
+    "subject_not_prominent_enough": 8,
+    "subject_too_close_to_edge": 7
+  },
+  "recommended_next_package": "A detector-level work item with its own measurable definition: add a region/saliency distractor signal and a subject-size signal, evaluate both as a new baseline lane against the 174 labels, and only then revisit the remaining expectation tests. This is not a threshold change and cannot be validated by the current signals.",
+  "report_id": "drift-174-failure-class-decomposition",
+  "source_pins": {
+    "instrumented_lane": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-probe-instrumentation/m4-001-fullruntime-174-drift-r1-probe-instrumented.jsonl",
+    "pipeline_sha256": "9391c81bd8ba08ec4c72b8e4587f65246456ebea5bd1f020b58cbe7db77f400a"
+  },
+  "suite_state": {
+    "note": "Suite state from the last full control run on the current source; the 35 failures are the expectation tests still open.",
+    "phase_a": "18 total / 17 passed / 1 failed",
+    "phase_b": "177 / 142 passed / 35 failed"
+  }
+}

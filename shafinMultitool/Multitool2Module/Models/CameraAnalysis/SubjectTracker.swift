@@ -34,6 +34,70 @@ struct SubjectTrackState: Codable, Equatable, Sendable {
     var isLost: Bool { phase == .lost }
 }
 
+/// One locally tracked detector object. lastObserved* fields describe the
+/// last accepted detector observation; frameID/sampleSequence describe the
+/// update that produced this state, including a loss/invalidation update.
+struct ObjectTrackState: Codable, Equatable, Sendable {
+    let identity: SubjectTrackIdentity
+    let label: String?
+    let lastObservedRegion: NormalizedRect?
+    let lastObservedFrameID: String?
+    let lastObservedSampleSequence: UInt64?
+    let phase: SubjectTrackPhase
+    let frameID: String
+    let sampleSequence: UInt64
+
+    var region: NormalizedRect? {
+        phase == .active ? lastObservedRegion : nil
+    }
+
+    var isActive: Bool { phase == .active }
+    var isLost: Bool { phase == .lost }
+}
+
+/// A frozen selection on one tracked object (C03.2/C03.4). Identity is the
+/// session `trackID`; `displayLabel` is presentation-only and never proves
+/// identity. Resolution never silently follows a different object: when the
+/// bound track is lost, absent, or belongs to a retired generation the binding
+/// fails closed to `.unresolved` instead of re-pointing at another same-label
+/// object.
+struct ObjectTargetBinding: Equatable, Sendable {
+    let trackID: String
+    /// Presentation label of the selected object. Not an identity key.
+    let displayLabel: String?
+    let generation: UInt64
+    let boundAtFrameID: String
+
+    enum UnresolvedReason: String, Codable, CaseIterable, Equatable, Sendable {
+        /// No live object carries the bound trackID.
+        case trackUnknown = "track_unknown"
+        /// The bound track exists but is currently lost.
+        case trackLost = "track_lost"
+        /// The capture generation changed; the old identity is retired.
+        case generationChanged = "generation_changed"
+    }
+
+    enum Resolution: Equatable, Sendable {
+        case bound(region: NormalizedRect)
+        case unresolved(reason: UnresolvedReason)
+    }
+
+    /// Resolves the binding against the tracker's current object set. Only the
+    /// exact bound trackID can resolve; a same-label sibling is never adopted.
+    func resolve(in objects: [ObjectTrackState], generation: UInt64) -> Resolution {
+        guard generation == self.generation else {
+            return .unresolved(reason: .generationChanged)
+        }
+        guard let object = objects.first(where: { $0.identity.trackID == trackID }) else {
+            return .unresolved(reason: .trackUnknown)
+        }
+        guard object.phase == .active, let region = object.lastObservedRegion else {
+            return .unresolved(reason: .trackLost)
+        }
+        return .bound(region: region)
+    }
+}
+
 final class SubjectTracker {
 
     /// Minimum IoU between the tracked region and a candidate to treat them
@@ -51,6 +115,16 @@ final class SubjectTracker {
     private(set) var framesSinceLastRedetection = 0
 
     var current: SubjectTrackState? { state }
+
+    /// Bounded local object tracking is intentionally owned by this tracker,
+    /// while remaining independent from the selected primary subject.
+    var maxObjectCount: Int = 4
+
+    private(set) var currentObjects: [ObjectTrackState] = []
+
+    private var objectGeneration: UInt64?
+    private var objectSampleSequence: UInt64?
+    private var nextObjectOrdinal: UInt64 = 0
 
     /// Starts tracking from a resolved subject (M2-008 auto or M2-009 tap).
     func begin(resolution: SubjectResolutionV2, frameID: String, generation: UInt64) {
@@ -153,6 +227,198 @@ final class SubjectTracker {
         return current
     }
 
+    /// Updates the bounded local object set. Detector IDs are frame-local and
+    /// deliberately ignored; identities come only from conservative geometry
+    /// and label matching.
+    @discardableResult
+    func updateObjects(
+        candidates: [SubjectCandidate],
+        frameID: String,
+        generation: UInt64,
+        sampleSequence: UInt64
+    ) -> [ObjectTrackState] {
+        if let currentGeneration = objectGeneration {
+            guard generation >= currentGeneration else {
+                // A retired generation is stale even if its sample sequence is
+                // numerically newer. Keep the last accepted object state and
+                // its provenance until a newer generation is observed.
+                return currentObjects
+            }
+            guard generation > currentGeneration else {
+                // Same generation: the sample-sequence fence below decides
+                // whether this observation is new.
+                if let previousSequence = objectSampleSequence,
+                   sampleSequence <= previousSequence {
+                    return currentObjects
+                }
+                objectSampleSequence = sampleSequence
+                return updateObjectsInCurrentGeneration(
+                    candidates: candidates,
+                    frameID: frameID,
+                    generation: generation,
+                    sampleSequence: sampleSequence
+                )
+            }
+            currentObjects.removeAll(keepingCapacity: true)
+            objectGeneration = generation
+            objectSampleSequence = nil
+        } else {
+            objectGeneration = generation
+        }
+
+        if let previousSequence = objectSampleSequence,
+           sampleSequence <= previousSequence {
+            // Do not stamp an older observation as current. The exposed
+            // states retain the provenance of the last accepted sample.
+            return currentObjects
+        }
+        objectSampleSequence = sampleSequence
+
+        return updateObjectsInCurrentGeneration(
+            candidates: candidates,
+            frameID: frameID,
+            generation: generation,
+            sampleSequence: sampleSequence
+        )
+    }
+
+    private func updateObjectsInCurrentGeneration(
+        candidates: [SubjectCandidate],
+        frameID: String,
+        generation: UInt64,
+        sampleSequence: UInt64
+    ) -> [ObjectTrackState] {
+
+        let validCandidates = uniqueValidObjectCandidates(candidates)
+        let activeTracks = currentObjects
+            .filter { $0.phase == .active }
+            .sorted(by: objectStatePrecedes)
+        let lostTracks = currentObjects
+            .filter { $0.phase == .lost }
+            .sorted(by: objectStatePrecedes)
+        let capacity = min(4, max(0, maxObjectCount))
+
+        var nextStates = lostTracks.map {
+            lostObjectState($0, frameID: frameID, sampleSequence: sampleSequence)
+        }
+        if activeTracks.isEmpty {
+            for candidateIndex in validCandidates.indices
+                where !ambiguousNewCandidate(at: candidateIndex, among: validCandidates) {
+                let candidate = validCandidates[candidateIndex]
+                let compatibleLost = lostTracks.filter {
+                    objectCanMatch($0, candidate: candidate)
+                }
+                guard compatibleLost.count <= 1 else { continue }
+                addFreshObject(
+                    candidate,
+                    to: &nextStates,
+                    capacity: capacity,
+                    frameID: frameID,
+                    generation: generation,
+                    sampleSequence: sampleSequence,
+                    replacingLost: compatibleLost
+                )
+            }
+            currentObjects = limitedObjectStates(nextStates, capacity: capacity)
+            return currentObjects
+        }
+
+        var trackCandidates = Array(repeating: [Int](), count: activeTracks.count)
+        var candidateTracks = Array(repeating: [Int](), count: validCandidates.count)
+        for (trackIndex, track) in activeTracks.enumerated() {
+            for (candidateIndex, candidate) in validCandidates.enumerated()
+                where objectCanMatch(track, candidate: candidate) {
+                trackCandidates[trackIndex].append(candidateIndex)
+                candidateTracks[candidateIndex].append(trackIndex)
+            }
+        }
+
+        var ambiguousTracks = Set<Int>()
+        var ambiguousCandidates = Set<Int>()
+        for (trackIndex, matches) in trackCandidates.enumerated() where matches.count > 1 {
+            ambiguousTracks.insert(trackIndex)
+            ambiguousCandidates.formUnion(matches)
+        }
+        for (candidateIndex, matches) in candidateTracks.enumerated() where matches.count > 1 {
+            ambiguousCandidates.insert(candidateIndex)
+        }
+        for (candidateIndex, candidate) in validCandidates.enumerated() {
+            let compatibleLostCount = lostTracks.reduce(into: 0) { count, lostTrack in
+                if objectCanMatch(lostTrack, candidate: candidate) {
+                    count += 1
+                }
+            }
+            // A candidate that could explain both an active and a historical
+            // lost identity is ambiguous. Do not keep the active match or
+            // resurrect the lost identity from geometry alone.
+            if candidateTracks[candidateIndex].count + compatibleLostCount > 1 {
+                ambiguousCandidates.insert(candidateIndex)
+            }
+        }
+        for firstIndex in validCandidates.indices {
+            for secondIndex in validCandidates.indices where secondIndex > firstIndex {
+                guard objectCanMatch(
+                    validCandidates[firstIndex],
+                    candidate: validCandidates[secondIndex]
+                ) else { continue }
+                ambiguousCandidates.insert(firstIndex)
+                ambiguousCandidates.insert(secondIndex)
+            }
+        }
+
+        var matchedCandidates = Set<Int>()
+        for (trackIndex, track) in activeTracks.enumerated() {
+            guard !ambiguousTracks.contains(trackIndex),
+                  trackCandidates[trackIndex].count == 1,
+                  let candidateIndex = trackCandidates[trackIndex].first,
+                  !ambiguousCandidates.contains(candidateIndex) else {
+                nextStates.append(
+                    lostObjectState(track, frameID: frameID, sampleSequence: sampleSequence)
+                )
+                continue
+            }
+            let candidate = validCandidates[candidateIndex]
+            nextStates.append(
+                ObjectTrackState(
+                    identity: track.identity,
+                    label: candidate.label,
+                    lastObservedRegion: candidate.region!,
+                    lastObservedFrameID: frameID,
+                    lastObservedSampleSequence: sampleSequence,
+                    phase: .active,
+                    frameID: frameID,
+                    sampleSequence: sampleSequence
+                )
+            )
+            matchedCandidates.insert(candidateIndex)
+        }
+
+        for candidateIndex in validCandidates.indices
+            where !matchedCandidates.contains(candidateIndex)
+                && !ambiguousCandidates.contains(candidateIndex) {
+            let candidate = validCandidates[candidateIndex]
+            let compatibleLost = lostTracks.filter {
+                objectCanMatch($0, candidate: candidate)
+            }
+            // A lost track is never matched back. A single compatible lost
+            // state may be replaced by a fresh identity; competing lost
+            // states keep this candidate ambiguous and unusable.
+            guard compatibleLost.count <= 1 else { continue }
+            addFreshObject(
+                candidate,
+                to: &nextStates,
+                capacity: capacity,
+                frameID: frameID,
+                generation: generation,
+                sampleSequence: sampleSequence,
+                replacingLost: compatibleLost
+            )
+        }
+
+        currentObjects = limitedObjectStates(nextStates, capacity: capacity)
+        return currentObjects
+    }
+
     /// Explicit loss (route exit, lens change, declared occlusion): advice
     /// consumers must invalidate immediately.
     func markLost(frameID: String) {
@@ -191,9 +457,255 @@ final class SubjectTracker {
     func reset() {
         state = nil
         framesSinceLastRedetection = 0
+        resetObjects()
+    }
+
+    /// Clears only the independently tracked object set. The next accepted
+    /// sample starts fresh identities in its generation.
+    func resetObjects() {
+        currentObjects.removeAll(keepingCapacity: true)
+        objectGeneration = nil
+        objectSampleSequence = nil
+    }
+
+    private func invalidateObjects(frameID: String) {
+        let sequence = objectSampleSequence ?? 0
+        currentObjects = currentObjects.map {
+            lostObjectState($0, frameID: frameID, sampleSequence: sequence)
+        }
     }
 
     // MARK: - Matching
+
+    private func uniqueValidObjectCandidates(
+        _ candidates: [SubjectCandidate]
+    ) -> [SubjectCandidate] {
+        let sorted = candidates
+            .filter(isValidObjectCandidate)
+            .sorted(by: objectCandidatePrecedes)
+        var result: [SubjectCandidate] = []
+        var index = 0
+        while index < sorted.count {
+            guard let region = sorted[index].region else {
+                index += 1
+                continue
+            }
+            var end = index + 1
+            while end < sorted.count, sorted[end].region == region {
+                end += 1
+            }
+            let group = Array(sorted[index..<end])
+            let groupLabel = objectLabelKey(group[0].label)
+            if group.dropFirst().allSatisfy({ objectLabelKey($0.label) == groupLabel }),
+               let selected = group.sorted(by: objectCandidatePrecedesBest).first {
+                result.append(selected)
+            }
+            index = end
+        }
+        return result.sorted(by: objectCandidatePrecedes)
+    }
+
+    private func isValidObjectCandidate(_ candidate: SubjectCandidate) -> Bool {
+        guard candidate.kind == .object,
+              candidate.confidence.isFinite,
+              candidate.confidence >= 0.55,
+              let region = candidate.region else {
+            return false
+        }
+        return region.x.isFinite
+            && region.y.isFinite
+            && region.width.isFinite
+            && region.height.isFinite
+            && region.x >= 0
+            && region.y >= 0
+            && region.width > 0
+            && region.height > 0
+            && region.x + region.width <= 1
+            && region.y + region.height <= 1
+    }
+
+    private func objectLabelKey(_ label: String?) -> String? {
+        guard let label else { return nil }
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed.lowercased()
+    }
+
+    private func objectLabelsCompatible(_ lhs: String?, _ rhs: String?) -> Bool {
+        objectLabelKey(lhs) == objectLabelKey(rhs)
+    }
+
+    private func objectCandidatePrecedes(
+        _ lhs: SubjectCandidate,
+        _ rhs: SubjectCandidate
+    ) -> Bool {
+        guard let left = lhs.region, let right = rhs.region else { return lhs.region != nil }
+        if left.x != right.x { return left.x < right.x }
+        if left.y != right.y { return left.y < right.y }
+        if left.width != right.width { return left.width < right.width }
+        if left.height != right.height { return left.height < right.height }
+        let leftLabel = objectLabelKey(lhs.label) ?? ""
+        let rightLabel = objectLabelKey(rhs.label) ?? ""
+        if leftLabel != rightLabel { return leftLabel < rightLabel }
+        return lhs.confidence > rhs.confidence
+    }
+
+    private func objectCandidatePrecedesBest(
+        _ lhs: SubjectCandidate,
+        _ rhs: SubjectCandidate
+    ) -> Bool {
+        if lhs.confidence != rhs.confidence {
+            return lhs.confidence > rhs.confidence
+        }
+        let leftLabel = lhs.label ?? ""
+        let rightLabel = rhs.label ?? ""
+        return leftLabel < rightLabel
+    }
+
+    private func objectStatePrecedes(
+        _ lhs: ObjectTrackState,
+        _ rhs: ObjectTrackState
+    ) -> Bool {
+        guard let left = lhs.lastObservedRegion, let right = rhs.lastObservedRegion else {
+            if lhs.lastObservedRegion != nil { return true }
+            if rhs.lastObservedRegion != nil { return false }
+            return lhs.identity.trackID < rhs.identity.trackID
+        }
+        if left.x != right.x { return left.x < right.x }
+        if left.y != right.y { return left.y < right.y }
+        if left.width != right.width { return left.width < right.width }
+        if left.height != right.height { return left.height < right.height }
+        return lhs.identity.trackID < rhs.identity.trackID
+    }
+
+    private func objectCanMatch(
+        _ track: ObjectTrackState,
+        candidate: SubjectCandidate
+    ) -> Bool {
+        guard objectLabelsCompatible(track.label, candidate.label),
+              let trackedRegion = track.lastObservedRegion,
+              let region = candidate.region else { return false }
+        return objectCanMatch(trackedRegion, candidateRegion: region)
+    }
+
+    private func objectCanMatch(
+        _ lhs: SubjectCandidate,
+        candidate: SubjectCandidate
+    ) -> Bool {
+        guard objectLabelsCompatible(lhs.label, candidate.label),
+              let left = lhs.region,
+              let right = candidate.region else { return false }
+        return objectCanMatch(left, candidateRegion: right)
+    }
+
+    private func objectCanMatch(
+        _ trackedRegion: NormalizedRect,
+        candidateRegion: NormalizedRect
+    ) -> Bool {
+        guard Self.intersectionOverUnion(trackedRegion, candidateRegion) >= iouMatchThreshold else {
+            return false
+        }
+        return centerDistance(trackedRegion, candidateRegion) <= centerJumpThreshold
+    }
+
+    private func centerDistance(_ lhs: NormalizedRect, _ rhs: NormalizedRect) -> Double {
+        let dx = (lhs.x + lhs.width / 2) - (rhs.x + rhs.width / 2)
+        let dy = (lhs.y + lhs.height / 2) - (rhs.y + rhs.height / 2)
+        return (dx * dx + dy * dy).squareRoot()
+    }
+
+    private func ambiguousNewCandidate(
+        at index: Int,
+        among candidates: [SubjectCandidate]
+    ) -> Bool {
+        for otherIndex in candidates.indices where otherIndex != index {
+            if objectCanMatch(candidates[index], candidate: candidates[otherIndex]) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func freshObjectState(
+        _ candidate: SubjectCandidate,
+        frameID: String,
+        generation: UInt64,
+        sampleSequence: UInt64
+    ) -> ObjectTrackState {
+        nextObjectOrdinal &+= 1
+        let identity = SubjectTrackIdentity(
+            trackID: "object-track-\(nextObjectOrdinal)",
+            firstSeenFrameID: frameID,
+            generation: generation
+        )
+        return ObjectTrackState(
+            identity: identity,
+            label: candidate.label,
+            lastObservedRegion: candidate.region!,
+            lastObservedFrameID: frameID,
+            lastObservedSampleSequence: sampleSequence,
+            phase: .active,
+            frameID: frameID,
+            sampleSequence: sampleSequence
+        )
+    }
+
+    private func lostObjectState(
+        _ state: ObjectTrackState,
+        frameID: String,
+        sampleSequence: UInt64
+    ) -> ObjectTrackState {
+        ObjectTrackState(
+            identity: state.identity,
+            label: state.label,
+            lastObservedRegion: state.lastObservedRegion,
+            lastObservedFrameID: state.lastObservedFrameID,
+            lastObservedSampleSequence: state.lastObservedSampleSequence,
+            phase: .lost,
+            frameID: frameID,
+            sampleSequence: sampleSequence
+        )
+    }
+
+    private func addFreshObject(
+        _ candidate: SubjectCandidate,
+        to states: inout [ObjectTrackState],
+        capacity: Int,
+        frameID: String,
+        generation: UInt64,
+        sampleSequence: UInt64,
+        replacingLost: [ObjectTrackState]
+    ) {
+        guard capacity > 0 else { return }
+        for lost in replacingLost {
+            states.removeAll { $0.identity == lost.identity }
+        }
+        if states.count >= capacity {
+            guard let lostIndex = states.firstIndex(where: { $0.phase == .lost }) else {
+                return
+            }
+            states.remove(at: lostIndex)
+        }
+        states.append(
+            freshObjectState(
+                candidate,
+                frameID: frameID,
+                generation: generation,
+                sampleSequence: sampleSequence
+            )
+        )
+    }
+
+    private func limitedObjectStates(
+        _ states: [ObjectTrackState],
+        capacity: Int
+    ) -> [ObjectTrackState] {
+        guard capacity > 0 else { return [] }
+        let sorted = states.sorted(by: objectStatePrecedes)
+        if sorted.count <= capacity { return sorted }
+        let active = sorted.filter { $0.phase == .active }
+        let lost = sorted.filter { $0.phase == .lost }
+        return Array((active + lost).prefix(capacity)).sorted(by: objectStatePrecedes)
+    }
 
     private func bestMatch(
         for track: SubjectTrackState,
@@ -341,9 +853,14 @@ extension SubjectTracker {
     /// invalidate.
     @discardableResult
     func invalidate(cause: SubjectTrackInvalidationCause, frameID: String) -> String? {
-        guard let state, state.phase == .active else { return nil }
-        let invalidatedTrackID = state.identity.trackID
-        markLost(frameID: frameID)
+        let invalidatedTrackID: String?
+        if let state, state.phase == .active {
+            invalidatedTrackID = state.identity.trackID
+            markLost(frameID: frameID)
+        } else {
+            invalidatedTrackID = nil
+        }
+        invalidateObjects(frameID: frameID)
         return invalidatedTrackID
     }
 }

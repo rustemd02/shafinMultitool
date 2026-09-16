@@ -1,0 +1,473 @@
+{
+  "contract_id": "SETCompositionNet",
+  "contract_version": "setcompositionnet.v2",
+  "input_contract_version": "setcompositionnet.input.v2",
+  "preprocessing_version": "setcompositionnet.preprocessing.v2",
+  "feature_version": "setcompositionnet.features.v2",
+  "output_contract_version": "setcompositionnet.output.v2",
+  "tensor_layout": "HWC",
+  "inputs": {
+    "full_frame_rgb": {
+      "dtype": "float32",
+      "shape": [320, 320, 3],
+      "channel_order": ["R", "G", "B"],
+      "value_range": [0.0, 1.0]
+    },
+    "subject_crop_rgb": {
+      "dtype": "float32",
+      "shape": [192, 192, 3],
+      "channel_order": ["R", "G", "B"],
+      "value_range": [0.0, 1.0]
+    },
+    "roi_normalized_xywh": {
+      "dtype": "float32",
+      "shape": [4],
+      "ordered_names": ["x", "y", "width", "height"],
+      "coordinate_space": "oriented_full_frame",
+      "origin": "top_left",
+      "axis_direction": ["right", "down"],
+      "value_range": [0.0, 1.0],
+      "bounds": ["x + width <= 1.0", "y + height <= 1.0"],
+      "missing_value": [0.0, 0.0, 0.0, 0.0]
+    },
+    "roi_mask": {
+      "dtype": "float32",
+      "shape": [320, 320, 1],
+      "value_range": [0.0, 1.0],
+      "values": [0.0, 1.0],
+      "rasterization": "one when pixel center is inside normalized xywh; zero otherwise",
+      "missing_value": 0.0
+    },
+    "scalar_features": {
+      "dtype": "float32",
+      "shape": [40],
+      "count": 40,
+      "inherited_from": "setcompositionnet.input.v1",
+      "ordered_names": [
+        "subject_bbox_x",
+        "subject_bbox_y",
+        "subject_bbox_width",
+        "subject_bbox_height",
+        "subject_area_ratio",
+        "subject_edge_pressure_left",
+        "subject_edge_pressure_right",
+        "subject_edge_pressure_top",
+        "subject_edge_pressure_bottom",
+        "person_count",
+        "face_count",
+        "group_count",
+        "person_confidence",
+        "face_confidence",
+        "group_confidence",
+        "saliency_left_right_balance",
+        "saliency_top_bottom_balance",
+        "saliency_subject_mean",
+        "saliency_background_mean",
+        "saliency_subject_background_delta",
+        "horizon_angle",
+        "horizon_confidence",
+        "subject_mean_luma",
+        "background_mean_luma",
+        "subject_luma_delta",
+        "subject_clipped_ratio",
+        "background_hotspot_ratio",
+        "motion_shake",
+        "motion_stability",
+        "focus_readability",
+        "focus_confidence",
+        "orientation_category",
+        "mirroring_flag",
+        "lens_category",
+        "format_aspect_ratio",
+        "roi_present",
+        "roi_area_ratio",
+        "roi_mask_coverage",
+        "subject_separation",
+        "camera_exposure_bias"
+      ],
+      "missing_mask": {
+        "dtype": "float32",
+        "shape": [40],
+        "ordered_names": "same_as_scalar_features",
+        "values": [0.0, 1.0],
+        "fill_value": 0.0,
+        "semantics": "one means the equally indexed scalar feature is missing"
+      }
+    },
+    "intent_features": {
+      "dtype": "float32",
+      "shape": [9],
+      "count": 9,
+      "value_range": [0.0, 1.0],
+      "values": [0.0, 1.0],
+      "separate_input": true,
+      "not_encoded_in_scalar_features": "This is a separate 9-component input. The 40 scalar slots above remain untouched and are never reused to carry intent.",
+      "source": "CaptureIntent.styles",
+      "ordered_names": [
+        "natural",
+        "silhouette",
+        "low_key",
+        "symmetry",
+        "negative_space",
+        "dutch_angle",
+        "intentional_motion_blur",
+        "handheld",
+        "known"
+      ],
+      "style_flags": {
+        "count": 8,
+        "indices": [0, 1, 2, 3, 4, 5, 6, 7],
+        "ordered_names": [
+          "natural",
+          "silhouette",
+          "low_key",
+          "symmetry",
+          "negative_space",
+          "dutch_angle",
+          "intentional_motion_blur",
+          "handheld"
+        ],
+        "one_hot": false,
+        "multi_style_allowed": true,
+        "multi_style_semantics": "Several explicitly selected styles are preserved simultaneously. Flags are independent and are not mutually exclusive."
+      },
+      "known_flag": {
+        "name": "known",
+        "index": 8,
+        "values": [0.0, 1.0],
+        "semantics": "1.0 means the user supplied an explicit non-empty style set; 0.0 means the intent is unknown or empty."
+      },
+      "unknown_encoding": {
+        "known": 0.0,
+        "style_flags": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "forbidden_default": "natural",
+        "rule": "An empty or unknown intent MUST be encoded as known=0 with all eight style flags 0.0. The natural flag MUST NOT be used as the placeholder for an absent intent."
+      },
+      "known_encoding": {
+        "requires": "known=1.0 requires at least one of the eight style flags to be 1.0",
+        "empty_with_known_one_invalid": true
+      },
+      "explicit_natural": {
+        "allowed": true,
+        "distinct_from_unknown": true,
+        "rule": "A user who explicitly selects natural encodes natural=1.0 and known=1.0. This is a distinct input from an unknown intent and must never be conflated with it."
+      },
+      "distinctness": "For identical pixels and ROI, an explicit-natural record and an unknown record differ only at intent_features[natural] and intent_features[known]."
+    }
+  },
+  "preprocessing": {
+    "source_color_space": "sRGB",
+    "source_pixel_format": "32BGRA",
+    "model_channel_order": ["R", "G", "B"],
+    "alpha": "discard",
+    "orientation": "apply the ImageIO orientation exactly once before crop and resize",
+    "mirroring": "honor ImageIO mirrored orientations; apply no additional mirror",
+    "resize_interpolation": "bilinear",
+    "resize_geometry": "independent_scale_to_target",
+    "normalization": {
+      "source_dtype": "uint8",
+      "target_dtype": "float32",
+      "source_range": [0, 255],
+      "formula": "uint8_channel / 255.0",
+      "denominator": 255.0,
+      "value_range": [0.0, 1.0],
+      "per_channel_offset": [0.0, 0.0, 0.0],
+      "per_channel_scale": [0.00392156862745098, 0.00392156862745098, 0.00392156862745098]
+    },
+    "subject_crop": {
+      "recipe_version": "square_expand_1.25.v1",
+      "square_side": "1.25 * max(roi.width_pixels, roi.height_pixels)",
+      "clipping": "derive raw padded square bounds first; clip padded square to oriented full-frame bounds by intersection without shifting",
+      "missing_crop": "zero-filled 192x192x3 tensor"
+    },
+    "intent_encoding": {
+      "recipe_version": "explicit_style_flags.v2",
+      "source_state": "CaptureIntent.styles plus intent selection state",
+      "order": "manifest inputs.intent_features.ordered_names",
+      "empty_selection": "unknown",
+      "unknown": "known=0.0 with all eight style flags 0.0",
+      "known": "known=1.0 with at least one explicit style flag 1.0",
+      "natural_is_explicit": true,
+      "no_silent_default": "Missing or empty intent state MUST NOT be replaced by natural and MUST NOT be dropped; the unknown encoding is materialized explicitly."
+    }
+  },
+  "categorical_features": {
+    "orientation_category": {
+      "count": 4,
+      "ordered_names": [
+        "up",
+        "right",
+        "down",
+        "left"
+      ],
+      "allowed_normalized_values": [0.0, 0.3333333333333333, 0.6666666666666666, 1.0],
+      "index_semantics": "oriented quarter-turn order up, right, down, left; mirror state is carried by mirroring_flag"
+    },
+    "lens_category": {
+      "count": 3,
+      "ordered_names": ["ultra_wide", "wide", "tele"],
+      "allowed_normalized_values": [0.0, 0.5, 1.0],
+      "index_semantics": "CameraLens.rawValue order"
+    }
+  },
+  "feature_normalization": {
+    "unit_interval": {
+      "formula": "clip(raw, 0.0, 1.0)",
+      "value_range": [0.0, 1.0]
+    },
+    "signed_unit_interval": {
+      "formula": "clip(raw, -1.0, 1.0)",
+      "value_range": [-1.0, 1.0]
+    },
+    "count_0_to_8": {
+      "formula": "clip(raw, 0.0, 8.0) / 8.0",
+      "value_range": [0.0, 1.0]
+    },
+    "angle_degrees_to_unit": {
+      "formula": "clip(raw_degrees / 180.0, -1.0, 1.0)",
+      "value_range": [-1.0, 1.0]
+    },
+    "categorical_index": {
+      "formula": "index / (category_count - 1)",
+      "value_range": [0.0, 1.0]
+    },
+    "aspect_ratio": {
+      "formula": "clip(raw_width / raw_height, 0.0, 4.0) / 4.0",
+      "value_range": [0.0, 1.0]
+    },
+    "feature_to_normalization": {
+      "subject_bbox_x": "unit_interval",
+      "subject_bbox_y": "unit_interval",
+      "subject_bbox_width": "unit_interval",
+      "subject_bbox_height": "unit_interval",
+      "subject_area_ratio": "unit_interval",
+      "subject_edge_pressure_left": "unit_interval",
+      "subject_edge_pressure_right": "unit_interval",
+      "subject_edge_pressure_top": "unit_interval",
+      "subject_edge_pressure_bottom": "unit_interval",
+      "person_count": "count_0_to_8",
+      "face_count": "count_0_to_8",
+      "group_count": "count_0_to_8",
+      "person_confidence": "unit_interval",
+      "face_confidence": "unit_interval",
+      "group_confidence": "unit_interval",
+      "saliency_left_right_balance": "signed_unit_interval",
+      "saliency_top_bottom_balance": "signed_unit_interval",
+      "saliency_subject_mean": "unit_interval",
+      "saliency_background_mean": "unit_interval",
+      "saliency_subject_background_delta": "signed_unit_interval",
+      "horizon_angle": "angle_degrees_to_unit",
+      "horizon_confidence": "unit_interval",
+      "subject_mean_luma": "unit_interval",
+      "background_mean_luma": "unit_interval",
+      "subject_luma_delta": "signed_unit_interval",
+      "subject_clipped_ratio": "unit_interval",
+      "background_hotspot_ratio": "unit_interval",
+      "motion_shake": "unit_interval",
+      "motion_stability": "unit_interval",
+      "focus_readability": "unit_interval",
+      "focus_confidence": "unit_interval",
+      "orientation_category": "categorical_index",
+      "mirroring_flag": "unit_interval",
+      "lens_category": "categorical_index",
+      "format_aspect_ratio": "aspect_ratio",
+      "roi_present": "unit_interval",
+      "roi_area_ratio": "unit_interval",
+      "roi_mask_coverage": "unit_interval",
+      "subject_separation": "unit_interval",
+      "camera_exposure_bias": "signed_unit_interval"
+    }
+  },
+  "supervision": {
+    "principle": "Neural utility and risk supervision describe only information present in the supplied inputs: the visual benefit and risk of the frame for the given explicit style and the chosen ROI. Hidden runtime constraints are never learned as if they were visible in pixels.",
+    "runtime_gates_owner": "Real user constraints, physical manipulation limits, and resource availability stay in deterministic runtime gates and are not neural targets.",
+    "intent_conditioned_heads": [
+      "good_frame_probability",
+      "risk_probability",
+      "action_utility_logits",
+      "continuous_target_deltas"
+    ],
+    "intent_independent_heads": [
+      "scene_class_logits",
+      "subjectness_roi_agreement_logits",
+      "issue_logits",
+      "abstention_probability",
+      "embedding"
+    ],
+    "supervision_mask": {
+      "dtype": "float32",
+      "shape": [4],
+      "ordered_names": [
+        "good_frame_probability",
+        "risk_probability",
+        "action_utility_logits",
+        "continuous_target_deltas"
+      ],
+      "values": [0.0, 1.0],
+      "fill_value": 0.0,
+      "semantics": "1.0 means neural supervision of the equally indexed intent-conditioned head is admissible for this record; 0.0 means the neural target is unsupported, receives no loss, and its human annotation is retained only for policy evaluation."
+    },
+    "admissibility": {
+      "requires_intent_known": true,
+      "requires_roi_present": true,
+      "rule": "mask=1.0 for every intent-conditioned head if and only if intent_features[known]==1.0 and roi_present==1.0; otherwise mask=0.0 for every intent-conditioned head."
+    },
+    "unsupported_target_rule": {
+      "preserve_human_annotation": true,
+      "set_neural_mask_zero": true,
+      "mark_neural_target_unsupported": true,
+      "runtime_action": "request intent clarification or ABSTAIN",
+      "fabricated_conditional_label_forbidden": true
+    },
+    "forbidden_neural_targets": [
+      {
+        "signal": "object_ownership",
+        "example": "an object belongs to someone else",
+        "reason": "ownership is not observable in pixels",
+        "policy_evaluation_label_retained": true,
+        "neural_target": false
+      },
+      {
+        "signal": "support_stability",
+        "example": "unknown physical support",
+        "reason": "physical support is not observable in pixels",
+        "policy_evaluation_label_retained": true,
+        "neural_target": false
+      },
+      {
+        "signal": "path_availability",
+        "example": "passage unavailable",
+        "reason": "path availability is not observable in pixels",
+        "policy_evaluation_label_retained": true,
+        "neural_target": false
+      }
+    ],
+    "new_intent_inputs": "Adding further intent inputs requires a separate schema decision; new inputs cannot be smuggled into the existing 9-component vector or the 40 scalar slots."
+  },
+  "outputs": {
+    "head_order": [
+      "scene_class_logits",
+      "subjectness_roi_agreement_logits",
+      "issue_logits",
+      "action_utility_logits",
+      "good_frame_probability",
+      "abstention_probability",
+      "risk_probability",
+      "continuous_target_deltas",
+      "embedding"
+    ],
+    "heads": [
+      {
+        "name": "scene_class_logits",
+        "dtype": "float32",
+        "shape": [8],
+        "ordered_names": [
+          "dialogue_closeup",
+          "single_character_medium",
+          "two_character_frame",
+          "object_insert",
+          "establishing_like_frame",
+          "moody_backlit_subject",
+          "unknown",
+          "out_of_domain"
+        ],
+        "value_semantics": "unbounded logits"
+      },
+      {
+        "name": "subjectness_roi_agreement_logits",
+        "dtype": "float32",
+        "shape": [3],
+        "ordered_names": ["subjectness", "roi_agreement", "ambiguity"],
+        "value_semantics": "unbounded logits"
+      },
+      {
+        "name": "issue_logits",
+        "dtype": "float32",
+        "shape": [8],
+        "ordered_names": [
+          "subject_too_close_to_edge",
+          "subject_not_prominent_enough",
+          "background_competes_with_subject",
+          "insufficient_look_space",
+          "backlight_hides_subject",
+          "scene_has_no_clear_focus",
+          "frame_visually_overloaded",
+          "horizon_distracts"
+        ],
+        "value_semantics": "bounded operational issue catalog logits"
+      },
+      {
+        "name": "action_utility_logits",
+        "dtype": "float32",
+        "shape": [26],
+        "ordered_names": [
+          "shift_frame_left",
+          "shift_frame_right",
+          "shift_frame_up",
+          "shift_frame_down",
+          "step_back",
+          "step_closer",
+          "lower_camera",
+          "raise_camera",
+          "change_camera_angle",
+          "level_horizon",
+          "rotate_subject_toward_light",
+          "move_subject_left",
+          "move_subject_right",
+          "move_subject_away_from_background",
+          "move_object_left",
+          "move_object_right",
+          "move_object_forward",
+          "move_object_back",
+          "remove_distracting_object",
+          "reposition_prop_for_balance",
+          "add_front_fill_light",
+          "add_background_light",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance",
+          "keep_current_setup"
+        ],
+        "catalog_version": 2,
+        "catalog_source": "CameraCoachContractV2.production.approvedActionIDs",
+        "value_semantics": "bounded CameraCoachContractV2 approved SemanticActionType utility logits, conditioned on the explicit intent and the chosen ROI"
+      },
+      {
+        "name": "good_frame_probability",
+        "dtype": "float32",
+        "shape": [1],
+        "value_range": [0.0, 1.0]
+      },
+      {
+        "name": "abstention_probability",
+        "dtype": "float32",
+        "shape": [1],
+        "value_range": [0.0, 1.0]
+      },
+      {
+        "name": "risk_probability",
+        "dtype": "float32",
+        "shape": [1],
+        "value_range": [0.0, 1.0]
+      },
+      {
+        "name": "continuous_target_deltas",
+        "dtype": "float32",
+        "shape": [5],
+        "ordered_names": ["delta_x", "delta_y", "scale_delta", "light_delta", "horizon_delta"],
+        "value_range": [-1.0, 1.0],
+        "value_semantics": "bounded normalized target deltas"
+      },
+      {
+        "name": "embedding",
+        "dtype": "float32",
+        "shape": [128],
+        "value_semantics": "internal visual-semantic embedding only"
+      }
+    ],
+    "forbidden_outputs": [
+      "generated_text",
+      "arbitrary_object_name"
+    ]
+  }
+}

@@ -6,6 +6,8 @@
 **Required output:** one verified signed App Store build containing the full owner-approved 1.0 scope.  
 **Visual authority:** `docs/implementation/ux/set-os-visual-policy.md` — SET OS v2.6.
 
+**Актуальное продолжение от 2026-09-11:** [§24 — подробный план доведения сервера, клиента, ML и выпуска](#24-план-доведения-до-app-store--2026-09-11). Читать его первым при продолжении работ. Числа readiness, READY_NOW и FIRST_EXECUTION_PACKET в исходных §1–23 относятся к исходному снимку, не являются текущим процентом готовности и не требуют повторить уже закрытый M0. Новое расширение Camera Coach описано как предложение релизного охвата с явными approval gates; оно не отменяет исходные ограничения молча.
+
 ## Operating constraints
 
 - Start every execution wave by inspecting the actual current diff and protecting user changes.
@@ -2847,3 +2849,621 @@ The physical-device and external-action counts overlap and must not be added tog
 Begin with `FIRST_EXECUTION_PACKET`. Do not start a redesign or a mass refactor. Do not remove mandatory neural, Scene, AR, Storyboard, recording, lenses, Pro Controls, or iPad scope. Establish the current checkout, then advance only through dependency-valid tasks and preserve exact evidence.
 
 The project is complete only when one exact signed App Store Connect build proves the full fixed scope on the locked neural/human/device/release gates. Source volume, fixture success, historical tests, simulator screenshots, or a worker statement cannot substitute for that evidence.
+
+---
+
+# 24. План доведения до App Store — 2026-09-11
+
+## 24.1. Цель, статус и как исполнять этот документ
+
+**Goal:** довести SET OS / Shafin Multitool до работающего, красивого и проверенного приложения: Camera Coach для фото и видео, полный Scene workflow, безопасный сервер и одна квалифицированная сборка для App Store. Результат — не набор моделей, контрактов и экранов по отдельности, а законченные пользовательские действия.
+
+**Architecture:** две поставляемые части — iOS/iPadOS-клиент и один сервер. Клиент владеет камерой, локальным распознаванием, идентичностью предметов, допуском советов, UI и проверкой результата. Сервер владеет авторизацией, квотами, внешними AI-запросами и заданиями Scene Generator. Данные, обучение и оценка — отдельный offline-процесс разработки, а не третья production-служба.
+
+**Tech Stack:** переиспользовать Swift/SwiftUI/UIKit, AVFoundation/AVKit, Vision, Core ML, ARKit и существующие SET OS primitives. Для сервера рекомендован Python-сервис с одним HTTP API и транзакционным хранилищем заданий/квот; конкретный framework, управляемая БД и hosting выбираются при закрытии инфраструктурного решения, не объявляются уже установленными. Обучение — существующий PyTorch pipeline, первоначально Colab; конвертация/проверка Core ML — macOS.
+
+**Baseline / Authority Refs:** исходные §1–23 этого master plan; `EXECUTION_STATE.md`; `HANDOVER-2026-09-08.md`; `docs/cameraanalysis/camera-analysis-requirements-draft.md` §23; `docs/cameraanalysis/03-domain-contracts.md` N1–N12; `docs/cameraanalysis/25-vlm-visual-semantic-evidence-contract.md`; `docs/implementation/ux/set-os-visual-policy.md`; `docs/implementation/ux/camera-coach-state-spec.md`; `docs/implementation/backend-service-boundary-v1.md`; `docs/cameraanalysis/eval/POLZA_RESEARCH_PROBE.md`; `ml/camera_coach/contracts/set_composition_net_v1.json`.
+
+**Compatibility Boundary:** сохраняются пользовательские проекты/медиа, shell routes, async teardown, accessibility IDs, канонические системы координат и владельцы решений. Никаких production API-ключей в приложении. Никакого включения research checkpoint в bundle. Серверная отправка кадров, расширение release scope и новые внешние расходы требуют отмеченных ниже решений владельца.
+
+**TDD Route:** mode `off`, strict `skipped`; строгий test-first цикл не запрошен. Проверка — узкая регрессия изменяемого поведения, schema/parity и интеграционные сценарии. Ранее пользователь прямо запросил автоматизацию тестов Camera Coach; расширение проверок служит конкретным рискам, а не количеству тестов. Полная release-проверка выполняется только в соответствующей фазе, не после каждой правки документа.
+
+**Verification:** на каждый пакет — исходное состояние, проверяемый результат, команда/сценарий, артефакт и ограничения. Релиз связывает точные source/model/backend/build версии. Написанный тест не равен пройденному; выполненный simulator-тест не равен физической проверке.
+
+**Статус:** подробный delivery-план и предлагаемый расширенный Camera scope, не разрешение на публикацию, не факт готовности. Пользователь запросил план; в этом раунде не запускаются обучение, платные эксперименты, deployment, signing или отправка в ASC.
+
+### Правила приоритета
+
+1. Исходный обязательный 1.0 scope не сокращается ради удобного PASS. Новые предметные/облачные возможности проходят отдельное согласование D1; до него допустимы локальная реализация и изолированный research/staging, но не production camera egress.
+2. Этот раздел уточняет порядок доведения и добавляет новые пакеты, но не пересчитывает автоматически 424 старые задачи. `R-*` ниже — пакеты исполнения, а не новые заявления CLOSED и не дополнительный процент готовности.
+3. Статусы старых задач проверяются по последним конкретным записям журнала. Его верхний bootstrap и старые машинные счётчики не отражают всю историю. Последнее заявленное значение — 288/424; это не означает «68% до App Store».
+4. Открытые решения описаны с рекомендацией и точным местом остановки. Это позволяет готовить код/данные параллельно, не выдавая гипотезу за согласованный production-контракт.
+5. Не писать ещё один master plan при следующем продолжении. Уточнять этот раздел, существующие domain/API/visual документы и append-only журнал.
+
+### Подходы и выбранное направление
+
+| Подход | Польза | Ограничение | План |
+|---|---|---|---|
+| Только локальная компактная модель | Приватность, offline, предсказуемая задержка | Не даёт автоматически широкое предметное понимание и осмысленные советы про реквизит | Сохранить как обязательную основу live-пути |
+| Весь анализ непрерывно в облаке | Широкое визуальное понимание без своего большого VLM | Задержки, расходы, согласие, сеть, нестабильные координаты; плохо подходит для live arrows | Не выбирать |
+| Гибрид: локальный live + подробный анализ по запросу | Совмещает отзывчивость и предметный разбор | Нужно связать evidence, объект и проверяемое действие, построить сервер | Рекомендация для расширенного Camera Coach; production зависит от D1/D2 |
+
+План не предусматривает обучение собственного большого VLM с нуля и не предполагает, что весь интеллект можно заменить правилами. Модели извлекают визуальные признаки и гипотезы; код отвечает за геометрию, состояние, безопасность, стоимость и правдивость UI.
+
+## 24.2. Проверенный старт и реальные пробелы
+
+Снимок планирования: HEAD `0733df2cb83c8e3687c31251e11e5d0747052602`, ветка `store`, намеренно dirty ML/data/docs и новые research-файлы. До любой реализации заново проверить HEAD/status; этот hash не включает незакоммиченные изменения.
+
+| Область | Что есть | Чего наличие этих файлов не доказывает |
+|---|---|---|
+| Camera runtime | `AnalysisPipeline`, `SubjectResolver`, `SubjectTracker`, `CameraBoundedActionPlanner`, `CoachingEpisodeCoordinator`, `ActionVerifier`, production UI | Полный предметный цикл с несколькими независимо отслеживаемыми объектами и надёжным физическим советом |
+| Предметный контракт | 68 кейсов, domain v3 draft, ограниченный DEBUG ingress | Полный executable s2/v3, production-интеграцию или фактическую точность распознавания |
+| Сервер Scene | OpenAPI/schema, Python reference job/limits/provider semantics | Работающий HTTP-сервис, постоянную БД, deployment и production auth |
+| Клиент Scene | `SceneGenerationClient` и boundary/validator компоненты | Подключённый production remote workflow; требуется проверка composition и реального endpoint |
+| UI | SET OS v2.6, production screens, motion tokens и прежние visual evidence | Готовность всех новых состояний Coach, физическую плавность или финальный visual approval |
+| Данные | 15 301 исходное изображение с Vision geometry; 5 597 paired-corruption примеров | Human-gold, независимый test split, коммерческий допуск всех источников или реальные действия до/после |
+| Обучение | Stage 1 encoder, Stage 2 issue/action/delta fit, research FP16 export/parity | Обученные good/risk/abstention, качество на независимой выборке, калибровку или release model |
+| VLM research | 140 ответов, 6 моделей, 7 оригинальных Commons изображений, 95.20637306 RUB | Масштабную точность, безопасные перестановки, качество видео или финальный выбор production-провайдера |
+| Выпуск | Release/privacy/device scripts, старые source/simulator gates | Signed RC, завершённый TestFlight, готовность Apple account или одобрение App Review |
+
+Нельзя «просто подключить endpoint»: существующий `SubjectTracker` хранит одну выбранную цель; новый кейс требует несколько идентичностей. `ActionVerifier` проверяет существующие action families, а не произвольный текст VLM. `train.py` сейчас является synthetic smoke инфраструктурой, не полным trainer на human-gold.
+
+**Исправление качества evidence:** последние 6 DEBUG ingress тестов записаны на iPhone 17 Pro simulator, тогда как master plan запрещает использовать iPhone 17 Pro. Этот запуск не считать разрешённым release evidence; при следующей узкой проверке перенести suite на разрешённый simulator. Исторический результат не стирать и не выдавать за физическую проверку. Новое разрешение на запрещённое устройство не подразумевается.
+
+## 24.3. Что пользователь должен получить
+
+### Сквозной цикл Camera Coach
+
+1. Открыть камеру без зависания и понять, что уже доступно локально.
+2. Выбрать главный предмет/человека, формат фото/видео и при необходимости стиль. Автовыбор не должен тихо менять пользовательскую цель.
+3. Получить локальную подсказку по проверенным признакам либо запросить подробный анализ конкретного кадра с явным согласием.
+4. Увидеть выделенный объект и одно действие: что изменить, в какую сторону относительно какой системы координат и зачем.
+5. Выполнить действие без сменяющихся взаимоисключающих команд.
+6. Получить честный результат: изменилось как ожидалось, не помогло, стало хуже или сравнить нельзя.
+7. Снять фото/видео, сохранить/экспортировать реальный результат и продолжить работу без потери проекта.
+
+### Обязательная демонстрация с двумя лампами
+
+- Две видимые лампы имеют разные локальные IDs и отдельные области; лицо/главный объект — защищаемая цель.
+- Приложение не выводит подвижность, доступность розетки или температуру лампы из одного класса `lamp`. Возможность перестановки подтверждается контекстом/пользователем; при отсутствии данных — только кадрирование или отказ от физического действия.
+- Сначала показывается одна выбранная лампа. Совет не опирается на перепутанные XYXY/XYWH, зеркальность или устаревший кадр.
+- Для «вправо» явно указано, что двигается: телефон, предмет в сцене или положение предмета в кадре. Не выдавать сантиметры/градусы без измерительного основания.
+- После перестановки приложение переоценивает именно эту лампу и защищённую цель. Перестановка другой лампы не засчитывается как успех.
+- Если лампы пересеклись, исчезли, отражаются в стекле или камера резко переместилась, совет снимается до восстановления идентичности.
+- Второе действие появляется только после завершения/отмены первого. Пользователь может сказать «оставить как есть».
+
+### Охват всех семейств
+
+| Кейсы из requirements §23 | Реализация | Особая проверка |
+|---|---|---|
+| CC-I01…I06: цель, группа, стиль, неоднозначность | Client intent/selection + evidence + UI | Сохранение выбора и намеренного стиля |
+| CC-C01…C08: композиция, крупность, горизонт, ракурс | Local geometry/ML + bounded planner | Правильное направление, сохранность главного |
+| CC-O01…O08: реквизит, две лампы, фон | Grounding, multi-object identity, relations, verifier | Нельзя перепутать объект или выдумать доступную область |
+| CC-L01…L08: свет, блики, цвет | Exposure evidence + VLM hypothesis + capability checks | Не обещать эффект неизвестного света; защита low-key |
+| CC-P01…P06: люди и группы | Local person/face evidence + intent | Не оценивать привлекательность; защищать всех выбранных |
+| CC-S01…S08 (семейство F): предметка, еда, интерьер, улица и другие жанры | Intent-conditioned общий planner | Не плодить отдельную модель/экран для каждого жанра |
+| CC-T01…T06 (семейство G): техническая читаемость | Focus/motion/exposure evidence | Не путать художественный blur с дефектом |
+| CC-V01…V08 (семейство H): видео во времени | Temporal evidence, motion, scene-cut handling | Один кадр не подтверждает движение или завершение действия |
+| CC-F01…F04 (семейство I): фото/формат/дубль | Capture/result/format projection | Overlay и итоговый crop должны совпадать |
+| CC-R01…R06 (семейство J): хороший кадр, отказ, результат | Calibrated KEEP/ABSTAIN, episode verifier | Не «улучшать» всё подряд и не подтверждать несуществующий успех |
+
+Детальные 68 acceptance cases остаются в requirements §23; их текст не дублируется. Пакет R00 строит точное соответствие каждому ID: mode, owner, data slice, verifier, UI state, проверка, status. Семейство нельзя считать реализованным только по одному showcase. Кейс, требующий недоступных наблюдений, должен иметь определённый безопасный исход; обязательное положительное поведение нельзя заменить вечным ABSTAIN и объявить готовым.
+
+## 24.4. Две поставляемые части и границы ответственности
+
+```text
+Камера / выбранное фото / разрешённый фрагмент
+  → Client: orientation + geometry + local perception + intent
+  → Local evidence / локальные идентичности
+  → [по запросу и после согласия] единственный backend → выбранный VLM
+  ← request-bound предложения и отказы, не команды управления
+  → Client grounding / safety / существующий planner
+  → один UI-совет и связанный overlay
+  → новый сопоставимый кадр / temporal evidence
+  → существующий episode coordinator + action verifier → результат
+
+Текст сцены → тот же backend → Scene job → validated plan
+  → client compiler → Library / AR / Storyboard / Recording / Export
+
+Offline: поиск данных → права → разметка → split → training → calibration
+  → locked eval → Core ML parity → device qualification → bundled model
+```
+
+**Не создавать:** второй planner, отдельный cloud identity owner, независимую систему motion, микросервисы на каждую модель, постоянную загрузку видео на сервер, custom annotation UI при пригодности существующего инструмента. Новые файлы допустимы для реально отсутствующих границ; сначала проверить аналогичный владелец в repo.
+
+## 24.5. Часть A — сервер
+
+### A1. Размещение и минимальная архитектура
+
+Сохранить locked boundary: один отдельный сервис вне app bundle. В app repo остаются клиентские контракты/reference semantics; production source/deploy — в согласованном отдельном service repo. Не создавать/публиковать remote repo без разрешения. До D2 можно подготовить спецификацию и локальный адаптер к существующим контрактам, но не объявить сервер развёрнутым.
+
+Рекомендация: один API deployment, одна транзакционная БД для jobs/quota/idempotency, worker внутри того же сервиса либо отдельный процесс того же deployable при подтверждённой необходимости. Redis/Kafka/Kubernetes и мульти-провайдерный runtime не нужны для первого выпуска. Временное объектное хранилище вводить только если bounded HTTP payload/память не покрывают размер и длительность задания; TTL и удаление обязательны.
+
+Среды local/staging/production разделены ключами, данными и бюджетами. Staging не использует реальные личные снимки без отдельного согласия. Секреты — secret manager/runtime injection, без repo, app, аналитики и prompt receipts.
+
+### A2. API и задания
+
+Scene API расширять из `backend/openapi-scene-v1.yaml`, а не создавать несовместимый второй job protocol. Camera API добавляется к тому же сервису отдельным ресурсом; URL/schema фиксируются после D1, до production-клиента. Базовые операции: создать анализ, получить результат/состояние, отменить, удалить временные данные. Не обещать, что отмена уже отправленного provider request вернёт стоимость.
+
+Camera request должен содержать:
+
+- schema/catalog/policy versions, request/analysis/session IDs и generation;
+- idempotency key + hash нормализованного payload; серверный timestamp;
+- mode/intent, защищаемые цели и подтверждённые разрешённые действия;
+- frame ID, orientation/mirroring/transform reference, размеры, формат;
+- один выбранный кадр; temporal bundle только для режима, чей контракт и лимиты утверждены;
+- consent version/allowed purpose; отсутствие consent нельзя заменить default `true`;
+- ограниченные MIME, bytes, decoded pixels, число кадров и длительность.
+
+Response: bounded structured evidence с областями/отношениями, frame binding, limitations/refusal и model revision. Provider-local proposal IDs никогда не становятся локальными track IDs. Любая неизвестная версия, неверная область, ссылка, нарушение времени или неоднозначная семантика координат отклоняет соответствующий ответ по утверждённой политике, без молчаливого clipping/rescaling.
+
+Job lifecycle наследует действующую Scene семантику там, где она подходит. Для camera не добавлять clarification state без реального UI consumer. Гонки cancel/complete/timeout, повторный submit, повторная доставка и рестарт worker проверяются до staging pilot. Сеть не обеспечивает exactly-once provider execution: фиксировать возможность неизвестного исхода, не повторять оплачиваемый запрос автоматически при неопределённом биллинге.
+
+При переносе reference modules устранить конкретные разрывы: `scene_job_store.py` хранит данные в памяти, cleanup запускается sweep-вызовом, а lock охватывает provider call. В service нужны durable transactions/unique constraints, независимое истечение срока и отсутствие долгого сетевого вызова внутри общей блокировки. Состояния reference store `queued/succeeded/expired` не сериализовать напрямую в API `pending/running/awaiting_clarification/complete/failed/cancelled`: выполнить явное mapping и согласовать expiry/HTTP 410 с клиентом.
+
+### A3. Авторизация и бюджет
+
+- Поднять настоящую серверную проверку App Attest с challenge/replay protection; наличие iOS token provider или mock не равно production verification. Unsupported-device поведение закрыто: локальные функции доступны, облако не открывается анонимным обходом квот.
+- Авторизовать installation ownership на каждом create/poll/clarify/cancel/delete. Валидный token другой установки не даёт доступ к известному job ID; проверка cross-installation чтения/отмены/удаления обязательна. Привязка owner делается сервером, не доверенным полем payload.
+- Ограничить installation/session concurrency, requests/day, bytes/frame, tokens/response, job lifetime и общий дневной/месячный бюджет.
+- Для Scene сохранить существующие лимиты master plan: 10 accepted jobs/hour и 20/day/installation, без повторного списания за poll/retry одного задания. Camera получает отдельный утверждённый envelope; её запросы не обходят общий бюджет и не наследуют Scene payload allowlist случайно.
+- Резервировать верхнюю оценку стоимости транзакционно до dispatch. По результату сверять actual usage, освобождать остаток; неизвестный cost удерживает резерв до reconciliation.
+- Если нельзя ограничить максимальную стоимость provider request, не обещать строгий внутренний денежный cap; использовать консервативный reserve + provider cap + stop при неизвестном счёте.
+- Kill switches: cloud camera, Scene provider, конкретная model revision; только отключение/снижение возможностей, без удалённой загрузки исполняемого кода/моделей в обход принятой bundle policy.
+- Simulator/debug bypass не попадает в Release. Не хранить provider key на клиенте даже «зашифрованным».
+
+### A4. AI-провайдер и безопасность контента
+
+Polza — текущий исследовательский кандидат, а не автоматически выбранный production-посредник. До выбора проверить API behavior, фактические downstream providers, обработку кадров, retention/training terms, доступность целевых регионов, версии моделей и предельные расходы. Не продолжать после изменения модели под тем же alias без квалификации.
+
+Ограничить output tokens и число repair attempts. Для Scene сохранить M12-009: invalid output/content не запускает provider retry. Только для нового Camera-контракта можно предложить не более одного bounded repair после D1/D3, при известном исходе/стоимости и заранее учтённом бюджете; repair не добавляет новых фактов. По умолчанию и после неудачи — типизированный отказ. Текст на фото, метаданные, названия файлов и provider output — данные, не инструкции для сервера и не разрешение на tools/URL fetch.
+
+В release adapter не использовать подбор модели из шести кандидатов на каждый запрос. Одна qualified конфигурация на функцию; авария приводит к честной недоступности облачного режима, а не тайному перенаправлению снимка другому провайдеру.
+
+### A5. Приватность и эксплуатация
+
+- До отправки показывать состав данных, цель и получателей, включая третьесторонний AI. Camera permission не заменяет согласие на облако. Apple прямо требует раскрывать такую передачу и получать явное разрешение: [App Review Guidelines, 5.1.2](https://developer.apple.com/app-store/review/guidelines/).
+- Рекомендуемая политика: не использовать пользовательские снимки для обучения по умолчанию; убрать ненужные EXIF/GPS; не логировать пиксели, base64, prompt с личным содержимым, faces или auth headers.
+- Конкретные TTL для нашего RAM/storage/logs, provider retention и удаления утвердить в D3. До этого не обещать пользователю «ничего нигде не хранится».
+- Для существующего Scene scope уже действуют требования: content deletion ≤15 минут после terminal state, абсолютный максимум 24 часа, operational metadata ≤30 дней. D3 должен доказать их исполнение, не ослабить под видом нового выбора; сроки Camera фиксируются отдельно с учётом фактических возможностей downstream provider.
+- Хранить минимум технических метаданных: request revision, timings, code/model versions, typed error, usage/cost; retention и доступ ограничены.
+- Проверить TTL/delete после success, fail, cancel, timeout, crash и незавершённого upload. Учесть provider, backups, crash reports и поддержку, а не только рабочую папку.
+- Метрики: availability, p50/p95 latency, schema rejection, timeout, unknown billing, quota rejection, cost/session, deletion failures. Alerts/runbook и один ответственный оператор обязательны.
+- Rollback: совместимые API/schema versions, предыдущий проверенный deploy, восстановление БД из backup, запрет дублирующего provider call после rollback. Canary сначала на staging, затем на разрешённой малой доле пользователей.
+
+### A6. Сервер Scene Generator — тоже обязательная поставка
+
+Не ограничивать server work Camera API. Подключить create/poll/clarify/cancel, ограничения RU/EN текста/объектов, versioned request hash и маркированные объекты. Provider создаёт план, а не исполняемый код. Существующие validator/compiler должны отклонять неизвестные ссылки и опасные/несогласованные действия. Проверить reconnect, cancel при уходе, durable accepted result и сохранение в проект.
+
+Качество Scene оценивается на собственном locked корпусе, не по Camera VLM ranking. Локальный legacy путь не удалять, пока принятая замена не прошла source, runtime, human-data и release gates; наличие старого пути не даёт права тайно менять privacy/качество режима.
+
+При подключении проверить high-level `generateRemotePlan`: новый UUID на каждом повторном вызове не является устойчивым retry key; сворачивание clarification/ошибки в `nil` и локальный fallback не заменяет UI продолжение. Нужны request/job correlation на create и poll, сохранённая идентичность операции, typed auth/quota/version errors, cancellation и возобновление clarification. Не писать второй HTTP client поверх уже существующего.
+
+## 24.6. Часть B — клиент: восприятие, советы и проверка
+
+### B1. Локальная геометрия и несколько предметов
+
+Расширять `SubjectResolver`, `SubjectTracker` и существующие subject/entity contracts. Сохранять выбранную главную цель, добавляя ограниченный набор отдельно отслеживаемых реквизитов. Начальный полный эпизод — два предмета плюс защищаемая цель; лимит активных объектов фиксируется после CPU/memory profile, а не как обещание «распознаёт всё».
+
+Проверять identity при overlap, похожих объектах, occlusion, уходе за край, отражении, смене камеры, zoom, lens switch, scene cut и background/resume. IoU ближайшего bbox недостаточно для идентичности двух одинаковых ламп; при неоднозначности — invalidation/повторный выбор, а не смена ID.
+
+Источники grounding выбирать по измерениям: существующий detector/segmenter, Vision tracking, контур/маска и подтверждение tap пользователем. User tap — допустимый recovery, не замена доказанному automatic recognition во всех тестах. Если текущая модель не разделяет требуемые предметы, отдельный candidate detector проходит data/license/quality/runtime gates.
+
+### B2. Координаты и связывание VLM
+
+Один явный путь: source pixels → oriented image → model input/crop → normalized region → preview transform. Front-camera mirroring, letterbox/aspect fill, rotation и output crop — часть контракта. Нельзя передавать нормализованные XYXY как XYWH или исправлять неизвестный формат эвристикой.
+
+До внедрения provider response выполнить independent bbox/point/mask eval, затем локальное сопоставление с observed entities. Провайдер не подтверждает сам себя: его bbox и словесное название не являются независимым доказательством соответствия предмету.
+
+`CameraCoachDraftV3ProposalIngress.swift` — только изолированный DEBUG subset; убрать debug boundary можно лишь после полного consumer contract, негативных проверок и реального grounding. Python research probe имеет другой response schema — механический JSON bridge запрещён.
+
+### B3. Допуск и выбор действия
+
+Существующие `CameraAdviceSafetyGate`, `CameraBoundedActionPlanner`, `AdviceStabilizer` сохраняют единую власть решения. На входе — observations, а не готовая free-text команда. На выходе — одно из typed WAIT/SELECT/KEEP/ABSTAIN/CORRECT с причиной, объектом, ограниченным действием и verifier predicate.
+
+Каждый CORRECT требует свежий frame, определённую цель, допустимую операцию, поддерживающие evidence, достаточную калиброванную уверенность и отсутствие критического запрета. Полезность оптимизируется среди допустимых действий; высокий aesthetic score не отменяет safety gate.
+
+Раздельно моделировать: сдвиг предмета; наклон/перемещение телефона; изменение зума; экспозицию; действие с доступным светом; ожидание момента. Не использовать одинаковую стрелку для физического camera motion и желаемого смещения объекта на экране.
+
+Безопасность: не просить идти назад рядом с неизвестным краем/дорогой; не предлагать трогать горячий/подключённый свет или чужой реквизит без контекста; не сообщать скрытые свойства сцены как факты. Неуверенность — reasoned abstention, а не успешный KEEP.
+
+### B4. Честное «до/после»
+
+Расширить `CoachingEpisodeCoordinator`, `UserMovementObserver`, `ActionVerifier`. Baseline связывается с target IDs, intent, action ID, frame/time, lens/transform и protected objectives. Сохранить один immutable action episode; менять цель посреди него нельзя.
+
+Отделить три результата: действие выполнено геометрически; ожидаемый визуальный признак улучшился; человеку эстетически нравится результат. Это не синонимы. Меньшая ошибка по оси X сама по себе не доказывает красивый кадр.
+
+Использовать action-specific predicates: появились раздельные контуры; уменьшилось перекрытие; выровнялся достоверный горизонт; восстановились видимые детали; не исчезла защищаемая область. При неподтверждённой идентичности/времени/экспозиционной сравнимости — INCOMPARABLE, не IMPROVED.
+
+### B5. Фото и видео
+
+Фото: live framing, single-still detailed analysis, итоговый aspect ratio, сохранение настоящего фото, разрешения и ошибку записи. Импорт выбранного фото — только через явный выбор, не скрытое сканирование медиатеки.
+
+Видео: устойчивость, скорость/направление движения и момент требуют temporal evidence. Во время записи — ненавязчивые локальные предупреждения без облачной перестановки реквизита, modal sheets и резких новых стрелок. Разбор выбранного короткого фрагмента — отдельный bounded режим после утверждения D1, с лимитом кадров, bytes, duration и consent. Начинать с равномерных keyframes не значит уже понимать всё видео; события между кадрами могут быть пропущены.
+
+Проверить capture/analysis contention, audio interruptions, thermal ECO, background, смену lens и доступность аппаратных возможностей. Отсутствующий capability честно отключает соответствующую команду, не симулирует её.
+
+### B6. Остальное приложение
+
+Довести, не переписывая завершённые owners: Library create/open/rename/delete/recovery; Scene Generator input/clarification/cancel/result; AR surface/anchors/tracking loss/relocalization; Storyboard select/edit/validation/save; recording start/stop/interruption/finalize; playback/share/export; lenses/Pro; iPad/adaptive layouts; RU/EN, permission-denied и storage/network errors.
+
+У каждого маршрута есть реальный happy path и failure recovery. Placeholder/history/debug/benchmark не должен маскироваться под готовую production-функцию. Изменение сохранённых schemas сопровождается backward decode и миграционным evidence; пользовательские данные не очищаются для удобного теста.
+
+## 24.7. Клиент: стиль, интерфейс и анимации
+
+**Не новый редизайн.** Довести SET OS v2.6 в существующем `UI/DesignSystem/`; сохранить «маркер на стекле», типографику, оранжевый tally, монтажный reflow и принятые layout/orientation rules. Красота — не дополнительный слой карточек и эффектов, а ясная и согласованная работа существующего визуального языка.
+
+| Поверхность | Что доработать | Как принимать |
+|---|---|---|
+| Camera live | Иерархия capture/target/advice, читаемый текст на светлом и тёмном фоне, отсутствие перекрытия цели | RU/EN production screenshots на различных реальных кадрах |
+| Выбор предмета | Видимый выбранный ID/область без технического ID в тексте, понятный tap/reselect | Два похожих предмета, группа, потеря tracking |
+| Detailed analysis | Consent → отправка → анализ → результат/отказ/ошибка/отмена | Никаких фиктивных процентов и frozen-looking экрана |
+| Совет | Одна короткая команда + связанная отметка; дополнительное объяснение по запросу | Текст и overlay отражают одно принятое решение |
+| До/после | Видимые состояния «проверяю», «не помогло», «сравнить нельзя», завершение | Нет confetti/checkmark при неизвестном результате |
+| Library/Generator | Пустые/ошибочные/длинные тексты, keyboard, progress/cancel и результат | Реальные данные, не только gallery fixtures |
+| AR/Storyboard/Recording | Отличимость play/record/stop/save, media availability, interruptions | Видео полного production-сценария + physical acceptance |
+| Настройки/приватность | Облачное согласие, отключение, лимиты/недоступность и recovery | Одинаковый смысл в UI, сетевом поведении и privacy declarations |
+
+Анимации берутся из `SETMotion.swift`: существующие spring 0.4/0.85, reflow 0.28 s, marker reveal 0.15 s, reduced-motion crossfade 0.12 s — стартовая действующая палитра, не новые магические числа по экранам. Изменение токена — согласованная правка визуального владельца после сравнения.
+
+Правила motion:
+
+- semantic event ID принадлежит state owner; повторный render/async callback не запускает анимацию заново;
+- новый объект не «перелетает» из старого при identity loss;
+- частый дрожащий bbox не превращается в дрожащую стрелку; фильтрация не должна скрывать потерю identity;
+- отмена/уход/recording interruption прерывают эффект и сохраняют правильное состояние;
+- Reduce Motion — утверждённое спокойное состояние/crossfade, без travel/scale/spring; без запрета пользоваться функцией;
+- VoiceOver, Dynamic Type, контраст и hit targets не жертвуются ради компактности;
+- haptics — редкие meaningful events, не каждый кадр;
+- motion clip проверяет всю последовательность, screenshot — только статичный кадр;
+- frame drops/тепло измеряются на устройстве с активной камерой, не только в gallery.
+
+UI-пакет считается закрытым после source checks, production captures RU/EN, требуемых ориентаций, Dynamic Type/Reduce Motion и визуального просмотра владельцем. Новые Camera states не наследуют старое visual approval автоматически. Финальный стиль — решение пользователя; подготовку сравнений и исправления делает Codex.
+
+## 24.8. Данные: поиск и подготовку делает Codex
+
+**Ответственность Codex:** искать источники, читать лицензии/условия, составлять каталог, писать/переиспользовать adapters, скачивать разрешённое в пределах бюджета, проверять hashes, удалять дубликаты, сортировать по сценариям, создавать silver-предразметку, готовить annotation packets и training bundles. Пользователь не должен вручную искать датасеты и перетаскивать тысячи файлов.
+
+**Что нельзя полностью автоматизировать честно:** подтверждение коммерческих/личностных прав в спорных случаях, независимую человеческую эстетическую оценку и съёмку реального физического действия. Эти пробелы закрываются предоставленными правами, владельцем/юристом, привлечёнными оценщиками или исполнителями съёмки. Codex готовит всё для их короткой предметной работы; VLM не подписывает за них согласие и не становится «вторым человеком».
+
+### Классы данных и допуск
+
+| Класс | Для чего | Чего он не заменяет |
+|---|---|---|
+| Existing AVA/EVA/AADB/Commons research | Warm-start, debug, композиционные признаки и controlled corruptions | Production rights/human-gold/independent release eval |
+| Rights-reviewed object annotations | Boxes/masks/classes/relations для grounding | Советы, подвижность и безопасность перестановки |
+| Собственные/заказанные постановочные сцены | Похожие предметы, разные действия, реальные before/after и motion | Независимую слепую оценку того же материала |
+| Negative/protected-style corpus | KEEP/ABSTAIN, false success, low-key, reflections, unknown objects | Достаточную полезную positive coverage |
+| Human annotated action episodes | Action utility, forbidden actions, verification и калибровка | Автоматически переносимые labels на другой контракт |
+
+Кандидаты поиска: продолжение rights-first Commons; официальные Open Images/COCO-подмножества для objects; дополнительные эстетические/temporal источники только после source/license audit. Это очередь исследования, не объявленный коммерческий allowlist. Open Images отдельно предупреждает, что права конкретных изображений нужно проверять: [официальное описание](https://storage.googleapis.com/openimages/web/factsfigures.html). Его [V7 каталог](https://storage.googleapis.com/openimages/web/factsfigures_v7.html) содержит разные виды object/relationship annotations, но это не Camera action labels. COCO брать из [официального каталога](https://cocodataset.org/), без предположения о единой лицензии всех изображений.
+
+### Приёмка каждого источника
+
+1. Зафиксировать URL, автора/владельца, дату доступа, версию, лицензию текста/annotations/images/weights отдельно, attribution и ограничения.
+2. Проверить разрешённость скачивания, ML training, commercial use и необходимого распространения; downloadability не равна разрешению.
+3. Сохранить source receipt и hash вне raw-media Git. Не загружать неизвестные архивы без ограничений путей/размера/числа файлов.
+4. Проверить битые файлы, decoded dimensions, EXIF/ICC, exact/near duplicates и семейства производных.
+5. Разметить scenario coverage: лица/предметы/группы, два похожих объекта, occlusion, fixed/movable confirmed, reflections, stylized light, orientations, photo/video.
+6. Присвоить отдельные статусы rights, research, annotation quality, split eligibility. Не менять `research_only=true` на release только потому, что обучение завершилось.
+7. Выдать отчёт о пробелах и следующий ограниченный acquisition batch. Остановить скачивание, если данные повторяют имеющееся и не закрывают нужный сценарий.
+
+### Количество и независимость
+
+Нормативные минимумы существующего 1.0 остаются в §9.2: 8 400 training candidates, 1 400 calibration/validation, 1 400 locked stills, 1 400 live sequences, 700 before/after, 350 protected negatives, 210 physical guided sequences, 350×3 blind review. Дополнительно действуют per-action квоты. Это не 15 301 скачанное изображение «уже закрывает данные»; нужны необходимые labels, независимость и права.
+
+Для новых object-action семейств до training freeze добавить квоты по action/identity/lighting/temporal slices, используя §9.2 как нижнюю рамку там, где применимо. Предлагаемый первый **development** пакет — 100–200 разнообразных эпизодов с минимум двумя похожими предметами и отрицательными исходами; он нужен для архитектурных ошибок, не закрывает release quotas. Не тратить human budget на весь корпус, пока инструкция не выдержала существующий 35-case calibration pilot.
+
+Разделять train/dev, calibration и sealed test по объединённым source-shoot/scene/person/location/time/derivative/near-duplicate families. Запретить попадание одного ролика или исходника с его crop в разные splits. Оценщик финального test не участвует в prompt tuning; при открытии test для анализа ошибок он становится development, а финальная оценка требует новой versioned независимой выборки.
+
+### Разметка и контроль
+
+Переиспользовать существующие `datasets/camera-coach/v1` schemas и annotation guide/tool. Добавить entity IDs/regions/masks, style/intent, допустимые альтернативы, запрещённые действия, direction space, visible destination, uncertainty и before/after comparability только по v3 mapping.
+
+Два независимых annotators, adjudicator, скрытая QC и blind comparison — по §9.3. Codex делает предварительную разметку, очередь спорных случаев, отчёты disagreement и повторную упаковку. Учет «VLM + Codex» не считается двумя независимыми human annotators. Личные материалы beta-пользователей не попадают в обучение без отдельного opt-in и правового основания.
+
+## 24.9. Обучение моделей и Colab
+
+### Какие модели нужны
+
+| Компонент | Что учим/проверяем | Решение |
+|---|---|---|
+| Local composition model | Scene/subject agreement/issues/actions/good/risk/abstention/deltas | Довести существующий SETCompositionNet с нужными labels и калибровкой |
+| Object grounding / segmentation | Область и различение нужных предметов | Сначала проверить существующий candidate на целевом корпусе; fine-tune только при измеренном дефиците |
+| Temporal tracking | Сохранение локальной identity | Сначала существующий tracker + matching/uncertainty; не обещать устранить identity swaps обучением composition head |
+| Cloud VLM | Семантика сцены и structured hypotheses | Выбор/qualification внешней модели, не pretraining с нуля |
+| Scene Generator | Structured plan quality RU/EN | Отдельный corpus/eval; fine-tune только если выбранный provider baseline не проходит контракт/стоимость |
+
+### Состояние Stage 1/Stage 2
+
+Не запускать заново сохранённые run ради «свежести». Stage 1 encoder уже есть; Stage 2 fit обучал только `issue_logits`, `action_utility_logits`, `continuous_target_deltas`. Остальные outputs не признаются обученными. Существующий research Core ML export — старт для parity engineering, не release artifact.
+
+Если исходные research assets не проходят production rights review, веса, обученные на них, нельзя молча использовать как production initialization. Нужен допустимый lineage либо новый warm-start на разрешённом корпусе; сохранить research результаты отдельно.
+
+### Полный head-supervision contract
+
+| Output | Требуемые targets/evidence | Запрет |
+|---|---|---|
+| `scene_class_logits` | Согласованные классы, unknown/out-of-domain | Не считать любой незнакомый сюжет обычным классом |
+| `subjectness_roi_agreement_logits` | Выбранная цель, ROI agreement, ambiguity | Не подменять пользовательский выбор saliency |
+| `issue_logits` | Проверенные дефекты + исключения стиля | Не обучать только на испорченных кадрах |
+| `action_utility_logits` | Несколько допустимых действий, forbidden masks, полезность | Не сводить действие к максимальной вероятности без safety |
+| `good_frame_probability` | Human KEEP для данного intent | Нельзя вывести ground truth из отсутствующей silver issue label |
+| `abstention_probability` | Недостаточный сигнал, ambiguity/OOD, границы coverage | Не путать отказ с хорошим кадром |
+| `risk_probability` | Явный risk label/ontology и critical negatives | Ноль пропущенных risk labels не означает safe |
+| `continuous_target_deltas` | Направление/масштаб в согласованном пространстве + masks | Не давать физические сантиметры из image-plane delta |
+| `embedding` | Представление с определённой ролью, проверкой finite/stability | Не выдавать embedding за калиброванную confidence |
+
+Не менять canonical six-input/nine-output tensor contract ради каждого нового кейса. Объектные отношения живут в domain evidence. Если изменение tensor signature всё-таки необходимо, сначала versioned миграция Swift/preprocess/trainer/export/registry/parity; старый checkpoint не переименовывается в новый.
+
+### Последовательность обучения
+
+1. **Dataset admission:** права, hashes, splits, label masks, action coverage и class balance; fail до GPU, если проверка не проходит.
+2. **Baseline:** существующие правила, текущий research candidate и permitted pretrained baseline на dev; установить, какую ошибку должна исправить новая модель.
+3. **Smoke:** несколько minibatches, finite tensors/loss/gradients, нормализация/EXIF/crops, правильность trainable parameters и missing-label masks.
+4. **Production-capable trainer:** расширить существующие training owners для human dataset, sampler, validation, receipt и resume; не считать synthetic `train.py` уже решающим это.
+5. **Controlled fit:** не менее трёх фиксированных seeds по §9.5, сравнение по validation с одинаковыми условиями. Сначала небольшой pilot, затем полный fit; зарегистрировать early-stop и selection rule до результатов.
+6. **Calibration:** отдельный split, thresholds/temperature/isotonic только где обосновано; risk/abstention/KEEP и accepted coverage проверять вместе. Уверенность VLM из текста не является вероятностью.
+7. **Error analysis:** confusion matrices и срезы по сценам/источникам/action/устройствам; wrong-direction, false improved, good-frame regression и OOD отдельно.
+8. **Locked eval:** один выбранный checkpoint/config на запечатанном test, без подбора thresholds по test. Ошибка gate — remediation + новый протокол retest, не снижение порога.
+9. **Export:** из exact checkpoint и calibration receipt в FP16 mlprogram; lineage/contract hashes, все inputs/outputs, проверки dtype/shape/range и preprocessing.
+10. **Parity и iPhone:** PyTorch ↔ Core ML на representative/edge fixtures, argmax/action и numerical tolerances; macOS parity отдельно от device latency, thermal и end-to-end advice behavior.
+11. **Admission:** registry/bundle только после data/model/device gates; предыдущий admitted model сохраняется для безопасного rollback согласно release policy.
+
+### Colab как первоначальное место запуска
+
+Colab выбран предварительно, не как пожизненная инфраструктура. По [официальному FAQ](https://research.google.com/colaboratory/faq.html) GPU/ресурсы не гарантированы и лимиты меняются. Поэтому notebook должен быть тонкой оболочкой над тем же versioned trainer, пригодным для другого GPU host.
+
+Codex готовит code/data bundles, SHA-256, notebook с одним конфигурационным блоком, preflight, progress/receipt/metrics/checkpoints, resume и экспорт. Пользователь при необходимости только проходит Google authentication/Drive mount и запускает разрешённый runtime; пароли/2FA не автоматизируются обходом.
+
+Большие архивы — Drive или выбранное durable storage, не browser `files.upload()`. Проверять hashes и распаковывать безопасно; при возможности обучать с локального runtime disk после проверки, сохраняя checkpoints атомарно в durable storage. Disconnect Drive не лечить повторным началом обучения с нуля.
+
+Новый stage использует отдельный run ID. Resume разрешён только при совпадении code/config/dataset/contract; mismatches fail closed. На `CalledProcessError` анализировать внутренний traceback/`FAIL`, не угадывать OOM. Не повторять бесконечно неработающий шаг и не удалять сохранённый checkpoint.
+
+Перед полным запуском измерить seconds/step, VRAM/RAM, dataset I/O, время epoch и частоту interruption. Перейти на dedicated GPU, если невозможно завершить/restart воспроизводимо либо суммарные потери делают Colab дороже; Codex готовит сравнение на измерениях, пользователь разрешает стоимость. Не покупать GPU и не увеличивать тариф автоматически.
+
+### Артефакты каждого run
+
+Code revision/dirty patch hash, environment/dependencies/CUDA, dataset/split/label/rights hashes, config/seed, trained-head mask, metrics по эпохам, checkpoint hashes, best-selection receipt, calibration, eval report, failures, compute/cost receipt. Результаты и raw media — durable external dataset root; в Git — код, схемы, компактные evidence и указатели. Пользователь не должен вручную переносить encoder между папками.
+
+## 24.10. Качество: что значит «корректно распознаёт и советует»
+
+Общий средний score недостаточен. Проверять всю цепочку: правильный предмет → правильная область → правильная идентичность → допустимая операция → понятное направление → полезный результат → честное подтверждение.
+
+Существующие release gates §9.6 не ослабляются: pass/expected action ≥0.90, forbidden ≤0.02, good-frame preservation ≥0.95, critical forbidden =0, false improved ≤0.02, wrong-direction false success =0; accepted coverage не должна исчезать. Порог/denominator и confidence interval фиксируются до test. Все исходные class/source/human/runtime gates продолжают действовать.
+
+| Новая проверка | Как измерять | До допуска |
+|---|---|---|
+| Grounding | IoU/mask/point на human annotations, отдельно small/duplicate/reflection | Предварительная цель: median IoU ≥0.80; не меньше старого annotation-quality ориентира, но это отдельная model metric |
+| Выбор предмета | Доля точных target assignments на доступных для идентификации случаях + reject coverage | Предварительная цель ≥0.95; критическая перестановка чужого объекта в safety suite =0 |
+| Tracking | ID switches, losses и recovery отдельно; visible-object denominator | Нельзя компенсировать swaps молчаливой сменой цели; порог по полноценному temporal dev фиксируется до locked eval |
+| Связь текста и overlay | Совпадение action/target/direction у принятого решения | 100% contract checks; любой известный mismatch блокирует соответствующее действие |
+| Действие с предметом | Blind safe/executable/helpful и positive coverage | Не ниже существующих human gates; точные новые action slices freeze до test |
+| Temporal verifier | Сопоставимость, false improved, wrong-object success, scene cuts | Критический false success =0 в обязательном safety наборе |
+| Облачный режим | Accepted output, timeout, latency, cost, refusal | SLO freeze после staging pilot; не подставлять local 250 ms budget к сетевому анализу |
+| UI/доступность | Реальные production states, VoiceOver/DT/RM, ошибки | Все обязательные состояния доступны и не противоречат runtime |
+
+Новые численные ориентиры здесь — **предложение к D4**, не уже достигнутые значения и не замена старых gates. Для показателя без утверждённого threshold пакет не может объявить release PASS. Измерять coverage вместе с precision: всегда отказывающая модель не готовый coach.
+
+Performance baseline из §6/текущего master: Vision/geometry p95 ≤150 ms; composition ≤100 ms; planner ≤10 ms; весь accepted analysis sample ≤250 ms; Camera RSS p95 ≤350 MB. Проверять на согласованной матрице устройств, не суммировать p95 компонентов как математическую оценку total p95. Thermal/ECO не должен ломать сохранение, запись и корректность подсказок.
+
+## 24.11. Пакеты исполнения и зависимости
+
+Пакет закрывается пользовательским результатом или необходимым verified infrastructure artifact, а не количеством написанного кода. После каждого пакета обновлять журнал: source state, что работает, что проверено, что не проверено, следующий dependency-valid пакет. Дальние пакеты уточняются по результатам первых; не придумывать заранее production credentials, device IDs, несуществующие команды или полный код ещё не выбранного сервера.
+
+Корни владельцев для коротких имён ниже: Camera contracts/resolver/tracker/planner/verifier — `shafinMultitool/Multitool2Module/Models/CameraAnalysis/`; `AnalysisPipeline.swift` — `shafinMultitool/Multitool2Module/Services/Pipeline/`; Camera view — `shafinMultitool/Multitool2Module/UI/Overlay/`; design/motion — `shafinMultitool/Multitool2Module/UI/DesignSystem/`; Scene network/parser — `shafinMultitool/SceneGeneratorModule/Services/`; существующие Swift suites — `shafinMultitoolTests/`. Перед правкой каждого basename проверить `rg --files`, callers и фактический owner; связанные view models/recorder owners выбирать из текущего source, не переносить в эти каталоги ради плана.
+
+| ID | Содержание и причина изменения | Владелец/файлы | Зависит от | Критерий закрытия |
+|---|---|---|---|---|
+| R00 | Сверить текущие owners, статусы и каждый из 68 кейсов; разрешить scope delta | Этот план, `EXECUTION_STATE.md`, requirements §23, domain N1–N12, backend boundary | Read-only старт | Каждый кейс связан с mode/owner/data/verifier; D1–D4 видимы; существующие CLOSED не переисполнены |
+| R01 | Закрыть executable object/action/frame schema | `CameraAnalysisDomainContracts.swift`, subject contracts, VLM contract; DEBUG ingress как исходный subset | R00 | Producer/consumer одинаково валидируют enums, identity, coordinates, time, refusal; старый wire не принят за новый |
+| R02 | Rights-first data acquisition и coverage manifest | `tools/dataset/`, `datasets/camera-coach/v1/`, existing source catalog | R00 | Hash-valid corpus с правами и явными gaps; ни один silver record не стал human-gold |
+| R03 | Multi-object grounding/identity | `SubjectResolver.swift`, `SubjectTracker.swift`, existing detector/tracking owners | R01 + development data R02 | Две похожие цели различаются; loss/swap снимает совет; узкие тесты + recorded replay |
+| R04 | Action admission для первого эпизода | `CameraAdviceSafetyGate.swift`, `CameraBoundedActionPlanner.swift`, `AdviceStabilizer.swift` | R01,R03 | Один typed совет связан с evidence/target; невозможное действие отклоняется |
+| R05 | Первый полный локальный UI эпизод | `AnalysisPipeline.swift`, `SETCameraCoachProductionView.swift`, presentation owners | R03,R04,R06 | Выбор → выделение → совет → новый кадр → результат в настоящем app route, без cloud |
+| R06 | Расширенный action verifier | `CoachingEpisodeCoordinator.swift`, `UserMovementObserver.swift`, `ActionVerifier.swift` | R01,R04 | Правильный/неправильный объект, ухудшение и incomparable дают разные честные исходы |
+| R07 | Реальный server foundation | Согласованный service repo; existing backend contracts/reference modules | D2, R00 | HTTP+durable jobs+health/config работают локально; service restart не теряет job ownership |
+| R08 | Production auth/quota/cost accounting | Тот же сервис; `scene_request_limits.py` как reference | R07,D3 | Replay/дубли/concurrency/unknown billing безопасны; чужая installation не читает/меняет job; лимит не обходится retry |
+| R09 | Scene provider и job lifecycle | Тот же сервис; `openapi-scene-v1.yaml`, `scene_job_store.py`, `scene_provider_policy.py` | R07,R08 + provider selection | Real staging create/poll/clarify/cancel, cost receipt и валидированный результат |
+| R10 | Camera VLM adapter и privacy boundary | Тот же сервис; VLM s2/domain refs | D1,D3,R01,R07,R08 | Bounded real response; schema errors/refusal/timeout/delete доказаны |
+| R11 | App cloud transport и consent | Existing network/auth patterns, camera composition, presentation | R10,R05,D1 | Явное согласие; нет upload до согласия; stale result отклоняется; offline остаётся usable |
+| R12 | Scene production composition | `SceneGenerationClient.swift`, `SceneParserService.swift`, `SceneBundlePipeline.swift`, Scene view model/compiler | R09 | Реальный текст → сервер → валидированный Scene plan → проект; уход/cancel/retry не смешивают jobs; проверять основной bundle/V9 путь, не только legacy coordinator |
+| R13 | Annotation pilot и freeze splits | Existing annotation tool/guide, dataset schemas | R02,R01,D4 | Два annotators/adjudication, QC и независимый split; права проверены |
+| R14 | Полный supervision/trainer и pilot | `ml/camera_coach/train.py`, data/loss/model/config owners, Colab/package scripts | R13 | Все нужные heads/masks тренируются; smoke и resume корректны, стоимость оценена |
+| R15 | Full fit + calibration + locked eval | Те же ML owners, immutable external runs | R14 + data quotas | ≥3 seeds, выбран один candidate до locked test, metrics проходят gates либо честный NO-GO |
+| R16 | Core ML admission и runtime integration | `convert_coreml.py`, contracts/parity, CoreML wrapper/registry | R15 | Exact model/calibration/contract parity, допустимый lineage, разрешённые device budgets |
+| R17 | Расширение фото-кейсов | Те же evidence/planner/verifier owners, а не новый engine | R06,R11,R16 + соответствующие labels | Все required photo cases имеют positive/negative/uncertain acceptance |
+| R18 | Temporal/video cases | Existing capture/scheduler/tracking/episode owners | R17 + temporal corpus | Motion/scene cuts/recording не создают false success; облачный clip только после его consent/API gate |
+| R19 | Camera visual/motion доводка | `UI/DesignSystem/`, `SETMotion.swift`, Camera production view | R05; завершение после R17,R18 | Production screenshots/clips RU/EN, DT/RM, цель/совет читаемы; owner review |
+| R20 | Library/Generator/AR/Storyboard/media gaps | Existing module/view model/recorder/persistence owners | R12 + актуальные M5–M10 deps | Полный real workflow с restart/interruption/save/export и сохранением проектов |
+| R21 | Общий UI/iPad/accessibility polish | Existing SET OS owners; не второй design system | R19,R20 | Reachable state inventory закрыт, локализация/ориентации/доступность/animations проверены |
+| R22 | Staging ops/security/privacy qualification | Service deploy, backend/privacy docs, existing release scripts | R08–R12,D3 | Restore/kill/retention/load/failure drills, redacted observability, bounded cost |
+| R23 | Физическая квалификация | `docs/implementation/device-tests/`, `scripts/run_device_benchmark.py`, M13 evidence | R16–R22,D5 | Разрешённая iPhone/iPad matrix; camera/AR/audio/storage/thermal и новые Coach episodes проходят |
+| R24 | Signed archive и internal TestFlight | Existing release scripts/config, ASC | R22,R23,D6 | Один source/model/backend комплект, signed archive, processed ASC build, внутренний smoke |
+| R25 | External beta и remediation | Тот же TestFlight build, issue/evidence journal | R24 | Старый beta scope ≥15–20 testers/≥200 meaningful sessions; найденные blockers устранены и проверены |
+| R26 | App Store submission и запуск | ASC metadata/privacy/review packet, operator runbook | R25,D6, все обязательные gates | Owner GO, review-accessible backend, точная сборка отправлена; публикация только после Apple approval |
+
+### Порядок волн
+
+**Волна 1 — видимый результат:** R00–R06. Параллельно R02 и подготовка R07 после выбора инфраструктуры. Выход — показываемый app episode на реальном изображении/камере, не ещё один JSON demo. До quality gates это внутренний pilot, не production обещание.
+
+**Волна 2 — реальная сеть:** R07–R12 и R22 ранние auth/cost/privacy проверки. Выход — staging app с обеими функциями, конкретным сервером и контролируемой стоимостью. Schema validation без running endpoint не закрывает волну.
+
+Уточнение R12 после read-only tracing (2026-09-11): основной Generator вызывает `parseAsyncForGeneration → parseBundleAsync → SceneBundlePipeline`; стандартный `.v9Full` использует event-table и пропускает plan-provider loop. `configureRemoteOffload` сейчас влияет на legacy `SceneParseCoordinator`, а не на этот product path. Поэтому bootstrap injection сам по себе не является интеграцией. Серверный результат должен войти в существующий bundle/document workflow с сохранением chunk/entity/state identities и владельца cancellation/clarification. Не переключать приложение на legacy путь только ради демонстрации работающего endpoint.
+
+**Волна 3 — доказанное качество:** R13–R18, acquisition продолжается по выявленным gaps. Выход — admitted local model + квалифицированные cloud/action/temporal behaviors. Дорогие full runs только после короткого pilot и всех data checks.
+
+**Волна 4 — полное приложение и визуальная доводка:** R19–R22. UI начинается раньше на устойчивых states, но финальный capture должен быть на production behavior, не на fixtures. Не ждать окончания ML для исправления известных UI/media ошибок.
+
+**Волна 5 — устройства и выпуск:** R23–R26. Это не только «залить IPA»: реальные ограничения устройств, privacy, beta и owner/Apple действия остаются обязательны.
+
+Зависимость первого полного cloud episode: D1/D2/D3 → R01/R03 → R07/R08/R10 → R11 → R04/R06 → R19. Производственный допуск добавляет R13–R18 и R23. Эта разница не позволяет выдать staging demo за готовый релиз.
+
+### Первые конкретные действия следующей реализации
+
+1. R00: подтвердить HEAD/status; для 68 CC IDs найти существующий producer/consumer; записать только новые пробелы. Отдельно отметить stale backend doc против уже существующего клиента.
+2. R01: выбрать один two-object episode и закрепить его payload + local mapping + action/verifier semantics в существующих contracts; не переносить Python probe schema напрямую.
+3. R03: исправить ограничение single selected track через существующего identity owner; не заводить cloud-owned tracks.
+4. R04/R06: добавить одну реальную bounded object operation, negative outcomes и protected target; проверить exact affected suites.
+5. R05: подключить этот результат к production Camera route в внутреннем режиме, снять короткую демонстрацию полного цикла; отметить quality и hardware limits.
+6. R02 параллельно: следующий data batch выбирается по failures этого цикла, а не по числу доступных скачиваний.
+
+## 24.12. Сопоставление с исходным tracker
+
+| Старый milestone | Доведение в этом разделе | Что не закрывается автоматически |
+|---|---|---|
+| M0/M1 | R00, сохранение owners/evidence | Исторические закрытия не заменяют проверку текущего dirty state |
+| M2 | R01,R03–R06,R11,R17,R18 | Новый object/video scope не наследует старый source gate |
+| M3 | R02,R13 | Silver acquisition не закрывает human annotation/locked data |
+| M4 | R14–R16 | Stage 2 research export не закрывает production-model gates |
+| M5 | R09,R12,R20 | Reference backend и mock network не закрывают remote product |
+| M6–M9 | R20,R23 | Source/simulator не закрывают camera/AR/media hardware |
+| M10/M11 | R19,R21,R23 | Старые визуальные captures не закрывают новые состояния |
+| M12 | R07–R12,R22 | Contracts не равны deployment/privacy verification |
+| M13 | R23 | Запрещённые/несогласованные devices не принимаются |
+| M14 | R24,R25 | Upload не равен processed/qualified beta |
+| M15 | R26 | Решение Codex не равно owner GO или Apple approval |
+
+Новые scope изменения должны получить явную запись о зависимости/приёмке в основном журнале; нельзя вести второй конфликтующий CLOSED счётчик по R-пакетам.
+
+## 24.13. Что делает Codex, что требуется от владельца
+
+| Решение | Рекомендация | Что готовит/делает Codex | Что действительно нужно от пользователя | Где блокирует |
+|---|---|---|---|---|
+| D1 — расширенный release scope и camera egress | Local live + cloud still по явному запросу; видео bounded review отдельно | Delta старого scope, consent/API/UI и acceptance mapping | Подтвердить включение в релиз и передачу выбранных кадров | Production R10/R11 и claims; локальный R01–R06 не блокирует |
+| D2 — backend project/hosting | Один сервис вне app repo, staging/prod раздельно | Сравнение размещения, deployable/config/runbook | Доступ к cloud/service repo, domain/billing, разрешение deployment | R07 deployment/R22 |
+| D3 — provider, budgets, retention | Один qualified provider/config; запрет обучения на user media по умолчанию | Terms/data-flow review, фактическую экономику, технические лимиты | Утвердить расходы/условия/регионы/политику; дать secrets безопасно | Production AI/retention |
+| D4 — data/human/compute | Поиск автоматизирован; human pilot, затем масштаб; Colab сначала | Acquisition, dedup, annotation packets, trainer, notebooks, eval | Бюджет на оценщиков/GPU либо участие людей; rights approvals | R13–R16 release qualification |
+| D5 — устройства/визуальная приёмка | Разрешённая матрица master plan, без iPhone 17 Pro | Скрипты, сценарии, builds, captures и анализ | Подключить/разрешить конкретные iPhone/iPad, реальные сцены; утвердить стиль | R19/R21 visual GO, R23 |
+| D6 — Apple/публикация | TestFlight до review, ручной финальный GO | Archive/checks, metadata/screenshots/review notes и remediation | Apple Developer/ASC доступ, 2FA/договоры, final name/regions, разрешение upload/submit/release | R24–R26 |
+
+Не нужно вручную управлять каждой эпохой, искать статьи/датасеты или копировать веса между каталогами. Но одного API-ключа недостаточно для физических тестов, независимой человеческой оценки и Apple-аккаунта. Доступы запрашиваются только когда соответствующий пакет готов; не собирать заранее лишние credentials.
+
+Рекомендации в таблице не считать молчаливым согласием. Публичный deployment, paid resource expansion, account operations и release остаются explicit actions. Никаких commit/push/PR/reset без отдельного разрешения.
+
+## 24.14. Экономика, вычисления и пределы автоматизации
+
+Не переносить стоимость одного research image request на непрерывное видео. Текущие измерения: 95.20637306 RUB за 140 разнородных ответов; некоторые expensive models значительно дороже экономичных. Эти суммы не включают production hosting, human annotation, GPU, observability, поддержку и Apple account.
+
+Модель расчёта:
+
+`месяц = фиксированный hosting + DB/storage/logs/egress + camera_sessions × cloud_calls_per_session × measured_cost_per_call + scene_jobs × measured_cost_per_job + human_QA + GPU_training + прочие утверждённые услуги`.
+
+Сценарии нагрузки считать минимум для 100/1 000/10 000 активных пользователей с заданными sessions/user, долей cloud и retry policy. Это сценарии, не прогноз аудитории. Для каждого — median и p95 costs, валютные/платёжные эффекты, soft/hard caps и поведение при исчерпании бюджета. Tariffs перепроверить перед покупкой, не фиксировать выдуманную минимальную месячную сумму.
+
+Обучение расходует отдельный бюджет. Перед full fit Codex предоставляет измеренные epoch time, план seeds, checkpoint footprint и оценку верхней стоимости; fine-tune object model/VLM — только если baseline действительно не закрывает задачу. Не «экспериментировать до нуля» ради расхода лимита: очередной эксперимент должен проверять конкретную гипотезу и иметь stop rule.
+
+Автоматизировать retries только там, где исход предыдущей операции известен и повтор безопасен. Не обходить Colab/provider quotas, CAPTCHA, 2FA или права доступа. Периодически удалять только известные task-created temporary/cache файлы; durable data, checkpoints, receipts, user media и чужой DerivedData сохраняются.
+
+## 24.15. Проверки и команды
+
+Документ не даёт разрешения запускать полный build/test/GPU на каждом шаге. Ниже — воспроизводимые точки входа для соответствующих пакетов; конкретный unit suite выбирается по изменённому owner.
+
+```sh
+# Начало каждого пакета, repository root:
+git rev-parse HEAD
+git status --short
+
+# После source/doc изменений:
+git diff --check
+
+# Быстрая проверка существующего research probe; сеть/платные запросы не нужны:
+python3 -B docs/cameraanalysis/eval/run_polza_probe.py --self-check
+
+# Существующая Scene reference семантика, не доказательство running service:
+python3 -B -m unittest discover -s backend/tests -p 'test_scene_job_semantics.py'
+```
+
+Для Swift сначала прочитать допустимые destinations, не использовать ранее скопированный запрещённый simulator ID:
+
+```sh
+xcodebuild -showdestinations -workspace shafinMultitool.xcworkspace -scheme shafinMultitool
+```
+
+Затем выбрать разрешённый существующий iPhone 17 / 17e / Air simulator и запустить только изменённую suite. Пример формы команды (значения env задаются из read-only inventory, не угадываются):
+
+```sh
+test -n "$SETOS_TEST_DESTINATION"
+test -n "$SETOS_TEST_DERIVED_DATA"
+xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool \
+  -configuration Debug -destination "$SETOS_TEST_DESTINATION" \
+  -derivedDataPath "$SETOS_TEST_DERIVED_DATA" \
+  -only-testing:shafinMultitoolTests/CameraCoachDraftV3ProposalIngressTests test
+```
+
+Для R03/R06 выбирать соответственно существующие `SubjectTrackerTests`, `SubjectResolverTests`, `CameraBoundedActionPlannerTests`, `CoachingEpisodeCoordinatorTests`, `ActionVerifierTests`, но не запускать все автоматически. Новый integration test должен проверять настоящий producer→consumer, не два одинаковых fixtures.
+
+Перед физическим benchmark читать его `--help`, выбрать точное разрешённое устройство, заранее определить expected scenario и сохранить toolchain/model/source receipt. Default benchmark thresholds не подменяют release gates §9/§21. В планировании устройства не подключались и benchmark не выполнялся.
+
+На R24 использовать существующий `scripts/run_release_gates.sh --derived-data-root` с новым явным task-owned root после чтения скрипта; это широкий release пакет, не ежедневный lint. Дополнительно привязать signed archive, dSYM, entitlements/privacy/component inventory, model tree hash и processed ASC build к одной revision. Скрипт локальных gates сам по себе не доказывает signing/TestFlight.
+
+Каждый артефакт содержит: command/exit status, дата, source HEAD+dirty hash, config, platform/device, input/model hashes, result, excluded/unverified scope. Temporary xcresult скопировать в согласованное durable evidence storage либо сохранить summary/hash и срок доступности; существование `/tmp` не обещать следующей сессии.
+
+## 24.16. App Store и операционная готовность
+
+### До TestFlight
+
+- Зафиксировать поддерживаемые iOS/iPadOS/устройства на основании code/API и физической матрицы; не копировать minimum OS из tutorial.
+- Перепроверить текущие submission SDK/toolchain требования на [Apple submission requirements](https://developer.apple.com/news/upcoming-requirements/) и [Upload builds](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds) перед archive: они могут измениться после даты плана.
+- Проверить purpose strings, privacy manifest/required-reason APIs, third-party SDKs и реальные обращения к сети. Manifest имеет отдельные обязательные поля; это не замена Privacy Policy и consent: [Apple Privacy manifest files](https://developer.apple.com/documentation/bundleresources/privacy-manifest-files).
+- Проверить лицензии моделей/fonts/assets/frameworks, attribution, export compliance и provenance; research package не должен случайно войти в Release resources.
+- Проверить app name, bundle ID, signing/capabilities, App Attest environment, support/privacy URLs, age rating, страны и metadata. Не вводить подписки/credits/account sync как скрытую часть этого плана.
+- Если впоследствии добавляются аккаунты/платные цифровые функции, сначала отдельное согласование scope и актуальных правил; не предполагать автоматически, что внешний платёж или удаление аккаунта уже решены.
+
+### TestFlight
+
+Внутренний smoke: запуск с нуля, denied permissions, local Camera, согласованный cloud Camera, Scene generation, AR, запись/playback/export, offline/timeout, quotas, restart и сохранённый проект. После этого external beta по существующей программе §20.5. Проверять реальную доступность backend для reviewer и целевых регионов, не fake review-only route.
+
+Issue triage: privacy/data loss/critical unsafe advice/auth bypass — P0 и остановка; неверная identity/direction/false improvement/crash основного пути — release blocker; косметика без нарушения UX — по приоритету и visual approval. После fix проверяется изменённый путь и затронутые зависимости; новая сборка связывается с новым receipt.
+
+### Submission и после одобрения
+
+Исполнять точные task rows M14/M15, не старые перекрёстные номера external-action таблиц: M14-009 validate → 010 upload/process → 011 exact-binary manifest → 012 internal TestFlight → 013 external setup → 014 Beta Review → 015 beta → 016 analysis → 017 remediation. Затем M15-006 review-ready backend → 007 final smoke → 008 immutable RC manifest → 009 blockers → 010 independent two-person review → 011 owner GO/NO-GO → 012 submission, с проверкой всех остальных зависимостей M15. Опубликованная сборка и server config должны соответствовать квалифицированному комплекту.
+
+Review packet: что делает AI, какие данные уходят и после какого действия, offline ограничения, как проверить основные сценарии, реальные screenshots/previews, тестовый доступ если требуется, контакты поддержки. Не обещать в metadata «идеальные кадры» или полную автономию, которую eval не доказал.
+
+Финальное разрешение владельца на submit/release обязательно. Apple approval — внешнее решение, не гарантируется кодом или этим документом. После запуска: бюджет/error/latency/privacy alerts, приём обращений, crash triage, отключение проблемной cloud capability, поддержка предыдущего клиента/API и план исправляющего выпуска. Публикация не завершает эксплуатацию сервера.
+
+## 24.17. Риски, остановки и восстановление
+
+| Риск | Признак | Действие |
+|---|---|---|
+| Неправильный объект при правдоподобном тексте | Identity/grounding mismatch | Снять action, повторный выбор/наблюдение; улучшать grounding, не украшать prompt |
+| Высокая точность за счёт постоянного отказа | Coverage ниже gate | Не объявлять PASS, расширить данные/модель без снижения safety |
+| Данные не имеют нужных прав | Неполный license/consent lineage | Quarantine; новый разрешённый corpus/warm-start, не silent promotion |
+| Нет независимой human оценки | Только silver/VLM labels | Research status; подготовить human packet и запросить ресурс |
+| Colab interruption/Drive disconnect | Resume/IO failure | Сохранить run, проверить root cause, возобновить по hash; при измеренном дефиците сменить compute после approval |
+| Provider меняет alias/retention/регион | Не совпадает qualified config | Cloud NO-GO/kill switch до новой qualification |
+| Неизвестная стоимость запроса | Timeout/нет usage | Удержать резерв, reconciliation, без automatic paid retry |
+| Два владельца одного решения | UI и server отдельно ранжируют совет | Вернуть выбор local planner; не добавлять третий arbitration layer |
+| Старый doc противоречит коду | Backend doc говорит «client не реализован», код есть | Исправить status readback, не переписывать готовый клиент |
+| Устройство/аккаунт недоступны | Нет разрешённого physical/ASC evidence | Завершить доступную подготовку, назвать точный внешний blocker; не ставить gate PASS |
+| UI красиво только на fixture | Реальные кадры/ошибки нечитаемы | Production capture и owner review, исправить существующие primitives |
+| Разрастание реализации | Новый framework/owner без consumer | Переиспользовать owner, выделить только доказанную границу; не scaffolding «на будущее» |
+
+Rollback применяется к task-owned изменениям, версии backend/model/config; пользовательские проекты не откатываются разрушительно. Удаление старого model/provider/legacy path — только после замены, reachability/provenance audit и явного разрешения на материальное удаление. Несовместимую модель/ответ отклонять, а не угадывать версию.
+
+## 24.18. Готовность к исполнению и Definition of Done
+
+**Intent lock:** полный usable SET OS с корректным Camera Coach, сервером, стильным интерфейсом и qualified release; не сокращённый MVP. **Scope fence:** работа по текущему продукту, без подписок, облачной медиатеки, нового design system и pretraining большого VLM. **Baseline lock:** этот master + domain/visual/backend owners; новые cloud decisions D1–D3 pending до явного согласования.
+
+**Execution route:** сначала coordinator-owned R00/R01, затем независимые client/backend/data пакеты могут выполняться параллельно с явными file owners. Luna implementation допустима для bounded tasks по запросу пользователя; независимый review — по риску и действующей visual policy. Два агента не пишут общий контракт одновременно. Документы остаются поддержкой исполнения, не самостоятельной заменой готового сценария.
+
+**Readiness:** локальные подготовительные пакеты имеют понятные входы. Полный production execution условен до D1–D6 в соответствующих точках. Это не причина ждать с R01–R06, но и не разрешение тихо развернуть облако или опубликовать приложение.
+
+**Календарь:** не обещать дату App Store до первых сквозных пакетов, human acquisition pilot и compute measurement. После волн 1–2 пересчитать прогноз по фактическому throughput и внешним lead times. Code work, annotation, hardware и Apple review учитываются отдельно; параллельность не отменяет зависимости.
+
+Финальная готовность требует одновременно:
+
+- [ ] Все owner-approved обязательные функции работают в настоящих маршрутах; отсутствуют скрытые placeholders.
+- [ ] Camera распознаёт/связывает предметы и выдаёт допустимые советы с нужной coverage; никакой known critical identity/direction/false-success ошибки.
+- [ ] Все требуемые головы модели обучены/проверены либо outputs имеют явно допустимую нерешательную роль; calibration/data/rights/locked evaluation закрыты.
+- [ ] Core ML, Swift preprocessing и bundle registry согласованы; exact candidate проходит физические budgets.
+- [ ] Server Camera/Scene, auth, quotas, billing, cancellation, retention/delete и rollback реально проверены.
+- [ ] Фото/видео, Library/Generator/AR/Storyboard/recording/export и восстановление проектов проходят device сценарии.
+- [ ] UI и motion новых состояний соответствуют SET OS, доступны RU/EN/DT/RM/VoiceOver и получили visual approval.
+- [ ] Privacy declarations, consent, provider terms и сетевое поведение согласованы.
+- [ ] TestFlight относится к точной signed сборке и соответствует существующим beta gates; блокирующие ошибки закрыты.
+- [ ] Владелец дал GO; backend доступен review; metadata правдива; Apple приняла релиз для публикации.
+
+**Следующий deliverable после принятия плана:** первый полный предметный эпизод внутри приложения плюс отчёт о точных оставшихся data/quality gaps. Не ещё один standalone benchmark без consumer и не повторное обучение Stage 2 без новых targets.

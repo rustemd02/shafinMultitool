@@ -22,6 +22,10 @@ for rival in [r'\.red\b', r'\.pink\b', r'\.purple\b', r'\.yellow\b(?!.*WarmWhite
 for m in re.finditer(r'FilmGrain|FilmBorder|FilmSprocket|Letterbox', text):
     violations.append(f"fullscreen film surface near: {text[max(0,m.start()-80):m.start()][:80]!r}")
 print(f"MOTIF BUDGET: {len(files)} files scanned")
+if not files:
+    print("MOTIF BUDGET FAIL: 0 production files were scanned — an empty scan proves nothing "
+          "about the accent budget")
+    sys.exit(1)
 if violations:
     print("FAIL:")
     for v in violations[:10]: print('  ', v)

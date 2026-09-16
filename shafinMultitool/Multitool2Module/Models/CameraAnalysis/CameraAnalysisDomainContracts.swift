@@ -91,6 +91,15 @@ enum ActionVerificationIncomparableReason: String, Codable, CaseIterable, Sendab
     case metricUnavailable = "metric_unavailable"
     case nonFiniteMetric = "non_finite_metric"
     case safetyRegression = "safety_regression"
+    // C04.2/N7 additions. They are separate from `unsupportedAction` so a
+    // consumer can distinguish an unknown operation from a declared scope that
+    // could not be verified.
+    case targetMissing = "target_missing"
+    case expectedAbsenceUnverified = "expected_absence_unverified"
+    case matchedMediaMappingMissing = "matched_media_mapping_missing"
+    case contextChanged = "context_changed"
+    case intentChanged = "intent_changed"
+    case protectedEvidenceMissing = "protected_evidence_missing"
 }
 
 /// Safety changes supplied by the feature owner or derived by the verifier.
@@ -103,6 +112,127 @@ enum ActionVerificationSafetyRegression: String, Codable, CaseIterable, Sendable
     case exposureContradiction = "exposure_contradiction"
     case focusStateInvalid = "focus_state_invalid"
     case lifecycleChanged = "lifecycle_changed"
+}
+
+/// C04.2/N7 comparability axis. `sameCapture` is the only live path; a live
+/// episode whose capture context changed is cancelled, not re-compared.
+/// `matchedMedia` is review-only and requires an explicit mapping reference.
+enum ActionVerificationComparability: String, Codable, CaseIterable, Sendable, Equatable {
+    case sameCapture = "same_capture"
+    case matchedMedia = "matched_media"
+}
+
+/// C04.2/N7 `allowedChanges`. A verifier may only classify a pair when the
+/// change class it is qualified to measure was explicitly declared. An empty
+/// list preserves the legacy path where the existing provenance guards remain
+/// the only comparability gate; it is never a bypass of those guards.
+enum ActionVerificationAllowedChange: String, Codable, CaseIterable, Sendable, Equatable {
+    case targetPosition = "target_position"
+    case targetRotation = "target_rotation"
+    case cameraPose = "camera_pose"
+    case zoom
+    case exposureBias = "exposure_bias"
+    case lightState = "light_state"
+    case focus
+    case captureParameter = "capture_parameter"
+}
+
+/// C04.2/N7 stable reason codes. `verified`/`noEffect`/`regression` accompany a
+/// comparable outcome; every other value explains a fail-closed incomparable
+/// result. This is a diagnostics contract, not presentation copy.
+enum ActionVerificationReasonCode: String, Codable, CaseIterable, Sendable, Equatable {
+    case verified
+    case noEffect = "no_effect"
+    case regression
+    case missingEvidence = "missing_evidence"
+    case identityChanged = "identity_changed"
+    case sceneChanged = "scene_changed"
+    case contextChanged = "context_changed"
+    case metricUnqualified = "metric_unqualified"
+    case unsupportedVerifier = "unsupported_verifier"
+}
+
+/// Why a protected ref regressed while the commanded target changed.
+enum ActionVerificationProtectedRegressionReason: String, Codable, CaseIterable, Sendable, Equatable {
+    case protectedEntityLost = "protected_entity_lost"
+    case protectedEntityNotObserved = "protected_entity_not_observed"
+    case protectedEntityIdentityChanged = "protected_entity_identity_changed"
+}
+
+/// One protected-ref regression retained in the result. A non-empty list maps
+/// to `worse`, never to `improved` (N7 step 3).
+struct ActionVerificationProtectedRegression: Sendable, Equatable {
+    let entityRef: String
+    let reason: ActionVerificationProtectedRegressionReason
+
+    init(entityRef: String, reason: ActionVerificationProtectedRegressionReason) {
+        self.entityRef = entityRef.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.reason = reason
+    }
+}
+
+/// C04.2/N7 per-entity evidence for one `expectedAbsenceRefs` entry. A missing
+/// detector box is never this evidence: each flag must be supplied by an owner.
+/// All flags are required for a confirmed removal; any missing flag keeps the
+/// result `incomparable`.
+struct ActionVerificationAbsenceEvidence: Sendable, Equatable {
+    let entityRef: String
+    /// The frozen baseline track was observed present before the exit.
+    let observedPresentBefore: Bool
+    /// The entity was observed leaving the commanded region, not merely
+    /// undetected on one frame.
+    let observedExitFromRegion: Bool
+    /// An explicit, independent confirmation that the commanded region is now
+    /// free. A vanished bbox is never this confirmation.
+    let regionConfirmedFreeAfter: Bool
+    /// True only when a genuine association loss has an explanation (for
+    /// example, reacquired identity elsewhere). Unexplained loss fails closed.
+    let associationLossExplained: Bool
+
+    init(entityRef: String,
+         observedPresentBefore: Bool,
+         observedExitFromRegion: Bool,
+         regionConfirmedFreeAfter: Bool,
+         associationLossExplained: Bool) {
+        self.entityRef = entityRef.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.observedPresentBefore = observedPresentBefore
+        self.observedExitFromRegion = observedExitFromRegion
+        self.regionConfirmedFreeAfter = regionConfirmedFreeAfter
+        self.associationLossExplained = associationLossExplained
+    }
+}
+
+/// C04.2/N7 verification scope frozen with the action baseline. Refs are
+/// normalized (trimmed, de-duplicated, order-preserved). The advisory
+/// `targetRefs`/`protectedRefs` come from the accepted action, not from the
+/// verifier.
+struct ActionVerificationScope: Sendable, Equatable {
+    let targetRefs: [String]
+    let protectedRefs: [String]
+    let expectedAbsenceRefs: [String]
+    let comparability: ActionVerificationComparability
+    let allowedChanges: [ActionVerificationAllowedChange]
+
+    static let none = ActionVerificationScope()
+
+    init(targetRefs: [String] = [],
+         protectedRefs: [String] = [],
+         expectedAbsenceRefs: [String] = [],
+         comparability: ActionVerificationComparability = .sameCapture,
+         allowedChanges: [ActionVerificationAllowedChange] = []) {
+        self.targetRefs = Self.normalized(targetRefs)
+        self.protectedRefs = Self.normalized(protectedRefs)
+        self.expectedAbsenceRefs = Self.normalized(expectedAbsenceRefs)
+        self.comparability = comparability
+        self.allowedChanges = allowedChanges
+    }
+
+    private static func normalized(_ refs: [String]) -> [String] {
+        var seen = Set<String>()
+        return refs
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
 }
 
 /// Explicit technical exposure predicate carried by a verification fixture or
@@ -230,6 +360,19 @@ struct ActionVerificationInput: Sendable, Equatable {
     /// Required only for subject-bound families; frame-global actions keep it
     /// nil and do not invent a subject sentinel.
     let subjectIdentity: SubjectTrackIdentity?
+    /// C04.2/N7: the commanded target, protected refs, expected absences,
+    /// comparability and allowed changes frozen with the action baseline. Empty
+    /// scope keeps the legacy behaviour; it never weakens the existing guards.
+    let scope: ActionVerificationScope
+    /// C04.2/N7: per-entity evidence for `scope.expectedAbsenceRefs`.
+    let absenceEvidence: [ActionVerificationAbsenceEvidence]
+    /// Required (non-empty) only for `.matchedMedia`; identifies the explicit
+    /// mapping that makes the two selected media comparable.
+    let matchedMediaMappingRef: String?
+    /// Optional intent/output revisions. When both sides are known and differ,
+    /// the pair is not comparable (N7 step 2).
+    let beforeIntentRevision: Int?
+    let afterIntentRevision: Int?
     let safetyRegressions: [ActionVerificationSafetyRegression]
 
     init(token: CoachingEpisodeToken,
@@ -243,6 +386,11 @@ struct ActionVerificationInput: Sendable, Equatable {
          beforeExposureState: ActionVerificationExposureState? = nil,
          afterExposureState: ActionVerificationExposureState? = nil,
          subjectIdentity: SubjectTrackIdentity? = nil,
+         scope: ActionVerificationScope = .none,
+         absenceEvidence: [ActionVerificationAbsenceEvidence] = [],
+         matchedMediaMappingRef: String? = nil,
+         beforeIntentRevision: Int? = nil,
+         afterIntentRevision: Int? = nil,
          safetyRegressions: [ActionVerificationSafetyRegression] = []) {
         self.token = token
         self.actionID = actionID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -255,20 +403,88 @@ struct ActionVerificationInput: Sendable, Equatable {
         self.beforeExposureState = beforeExposureState
         self.afterExposureState = afterExposureState
         self.subjectIdentity = subjectIdentity
+        self.scope = scope
+        self.absenceEvidence = absenceEvidence
+        let trimmedMappingRef = matchedMediaMappingRef?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        self.matchedMediaMappingRef = (trimmedMappingRef?.isEmpty == false) ? trimmedMappingRef : nil
+        self.beforeIntentRevision = beforeIntentRevision
+        self.afterIntentRevision = afterIntentRevision
         self.safetyRegressions = safetyRegressions
     }
 }
 
 /// Complete immutable result. Deltas are retained even when a safety
 /// regression blocks the positive classification, when they were measurable.
+///
+/// C04.2/N7: `decision` keeps the historical outcome vocabulary (including
+/// `fixed` for an established objective predicate); `reasonCode` states why,
+/// and `goalSatisfied` answers "was the criterion reached" independently of a
+/// partial improvement. For an incomparable pair `goalSatisfied` is `nil`.
 struct ActionVerificationResult: Sendable, Equatable {
     let token: CoachingEpisodeToken
     let actionID: String
     let beforeFrameID: String
     let afterFrameID: String
     let decision: ActionVerificationDecision
+    let reasonCode: ActionVerificationReasonCode
+    let goalSatisfied: Bool?
     let deltas: [ActionVerificationMetricDelta]
+    /// C04.2/N7 step 3: a non-empty list means a protected ref regressed while
+    /// the commanded target changed. That maps to `worse`, never `improved`.
+    let protectedRegressions: [ActionVerificationProtectedRegression]
     let safetyRegressions: [ActionVerificationSafetyRegression]
+
+    /// C04.2/N7 outcome projection. `fixed` stays `fixed` (an objective
+    /// predicate passed); callers that only need the four-state vocabulary use
+    /// this and treat `fixed` as a satisfied goal.
+    var outcome: ActionVerificationOutcome? {
+        if case .comparable(let outcome) = decision { return outcome }
+        return nil
+    }
+
+    /// Compatibility initializer. Existing fixtures that only supplied the
+    /// historical fields still compile; `reasonCode` is then derived from the
+    /// decision and `goalSatisfied` stays `nil` for an incomparable pair.
+    init(token: CoachingEpisodeToken,
+         actionID: String,
+         beforeFrameID: String,
+         afterFrameID: String,
+         decision: ActionVerificationDecision,
+         reasonCode: ActionVerificationReasonCode? = nil,
+         goalSatisfied: Bool? = nil,
+         deltas: [ActionVerificationMetricDelta] = [],
+         protectedRegressions: [ActionVerificationProtectedRegression] = [],
+         safetyRegressions: [ActionVerificationSafetyRegression] = []) {
+        self.token = token
+        self.actionID = actionID
+        self.beforeFrameID = beforeFrameID
+        self.afterFrameID = afterFrameID
+        self.decision = decision
+        self.reasonCode = reasonCode ?? Self.defaultReasonCode(for: decision)
+        self.goalSatisfied = goalSatisfied
+        self.deltas = deltas
+        self.protectedRegressions = protectedRegressions
+        self.safetyRegressions = safetyRegressions
+    }
+
+    private static func defaultReasonCode(
+        for decision: ActionVerificationDecision
+    ) -> ActionVerificationReasonCode {
+        switch decision {
+        case .comparable(let outcome):
+            switch outcome {
+            case .fixed, .improved:
+                return .verified
+            case .unchanged:
+                return .noEffect
+            case .worse:
+                return .regression
+            }
+        case .incomparable:
+            return .missingEvidence
+        }
+    }
 }
 
 struct NormalizedRect: Codable, Equatable, Sendable {
@@ -4156,9 +4372,13 @@ enum CameraCoordinateSpaceV2: String, Codable, CaseIterable, Sendable {
     /// BOTTOM-left, axes x-right / y-UP (Apple Vision convention). Rotation
     /// and mirroring already applied by the Vision request orientation.
     case vision
-    /// Model input tensor space. Normalized, origin TOP-left, y-down, square
-    /// ASPECT-FILL of the sensor image (center crop; sensor edges outside the
-    /// crop are unreachable). Not invertible without the stored crop offset.
+    /// Model input tensor space. Normalized, origin TOP-left, y-down. The
+    /// resize geometry is NOT fixed: the frozen SETCompositionNet-v1 recipe
+    /// uses independent scale to the target size, while other consumers may
+    /// use an aspect-fill centre crop. The actual transform is carried per
+    /// tensor by `CameraTensorTransform`/`CameraTensorTransformContract`
+    /// (N11); this space must never be assumed to be aspect-fill. Not
+    /// invertible without the recorded transform.
     case modelInput
     /// Preview layer space. Normalized, origin TOP-left, y-down, ASPECT-FILL
     /// of the sensor image inside the visible preview bounds (center crop,
@@ -4234,6 +4454,48 @@ struct CameraSpacePointV2: Codable, Equatable, Sendable {
     }
 }
 
+extension NormalizedRect {
+    /// Converts only between the two normalized spaces that share framing and
+    /// differ solely by Vision's vertical origin. Other spaces need their
+    /// stored orientation/crop metadata and therefore fail closed here.
+    func converted(from sourceSpace: CameraCoordinateSpaceV2,
+                   to destinationSpace: CameraCoordinateSpaceV2) -> NormalizedRect? {
+        guard x.isFinite,
+              y.isFinite,
+              width.isFinite,
+              height.isFinite,
+              x >= 0,
+              y >= 0,
+              width > 0,
+              height > 0,
+              x + width <= 1,
+              y + height <= 1,
+              sourceSpace == .vision || sourceSpace == .subjectTarget,
+              destinationSpace == .vision || destinationSpace == .subjectTarget else {
+            return nil
+        }
+        guard sourceSpace != destinationSpace else { return self }
+
+        let topLeft = CameraSpacePointV2(
+            space: sourceSpace,
+            x: x,
+            y: y + height
+        ).flippedVertically
+        let bottomRight = CameraSpacePointV2(
+            space: sourceSpace,
+            x: x + width,
+            y: y
+        ).flippedVertically
+        let converted = NormalizedRect(
+            x: topLeft.x,
+            y: topLeft.y,
+            width: bottomRight.x - topLeft.x,
+            height: bottomRight.y - topLeft.y
+        )
+        return converted.isDegenerate ? nil : converted
+    }
+}
+
 /// Center-crop aspect-fill mapping between two pixel sizes, expressed on
 /// normalized unit-square coordinates. Origin top-left, y-down on both sides;
 /// rotation/mirroring are the M2-003 adapter's responsibility, not this map's.
@@ -4294,6 +4556,22 @@ struct AspectFillTransform: Equatable, Sendable {
                 clampedUnit(pixelY / destinationPixelHeight))
     }
 
+    /// Source-normalized point → destination-normalized point, but only when
+    /// the source point is actually visible in the crop window. Unlike
+    /// `destinationPoint`, an invisible (cropped-away) target returns nil and is
+    /// never clamped onto the unit-square edge, so a caller cannot present a
+    /// manufactured on-screen target for a point that is outside the output.
+    func visibleDestinationPoint(fromSourceNormalized x: Double, y: Double) -> (x: Double, y: Double)? {
+        guard !isDegenerate else { return nil }
+        guard x.isFinite, y.isFinite, (0...1).contains(x), (0...1).contains(y) else { return nil }
+        let pixelX = x * sourcePixelWidth * fillScale - cropOffsetXPixels
+        let pixelY = y * sourcePixelHeight * fillScale - cropOffsetYPixels
+        let destinationX = pixelX / destinationPixelWidth
+        let destinationY = pixelY / destinationPixelHeight
+        guard (0...1).contains(destinationX), (0...1).contains(destinationY) else { return nil }
+        return (destinationX, destinationY)
+    }
+
     /// Destination-normalized point → source-normalized point. Nil when the
     /// point lies outside the centered crop window (not invertible there).
     func sourceNormalized(fromDestinationX x: Double, y: Double) -> (x: Double, y: Double)? {
@@ -4309,6 +4587,224 @@ struct AspectFillTransform: Equatable, Sendable {
     private func clampedUnit(_ value: Double) -> Double {
         guard value.isFinite else { return 0.0 }
         return min(1.0, max(0.0, value))
+    }
+}
+
+// MARK: - M2-005 Tensor preprocessing transform provenance (N11)
+
+/// The ImageIO orientation applied exactly once to a tensor recipe. Declared
+/// here so the recipe can be recorded/coded as data instead of being inferred
+/// from a bounding-box displacement or a display rotation.
+enum CameraTensorOrientationV1: String, Codable, CaseIterable, Sendable, Equatable {
+    case up
+    case upMirrored
+    case down
+    case downMirrored
+    case leftMirrored
+    case right
+    case rightMirrored
+    case left
+
+    /// True when the orientation exchanges the source width/height axes.
+    var swapsAxes: Bool {
+        switch self {
+        case .leftMirrored, .right, .rightMirrored, .left:
+            return true
+        case .up, .upMirrored, .down, .downMirrored:
+            return false
+        }
+    }
+
+    var isMirrored: Bool {
+        switch self {
+        case .upMirrored, .downMirrored, .leftMirrored, .rightMirrored:
+            return true
+        case .up, .down, .left, .right:
+            return false
+        }
+    }
+}
+
+/// The resize geometry actually applied when one model tensor was built. These
+/// geometries are not interchangeable: the frozen SETCompositionNet-v1 recipe
+/// scales x and y independently, while preview/model-input framing is an
+/// aspect-fill centre crop. A consumer must use the transform recorded for the
+/// tensor it is mapping, never a "convenient" transform borrowed from preview.
+enum CameraTensorResizeGeometry: String, Codable, CaseIterable, Sendable, Equatable {
+    /// `setcompositionnet.preprocessing.v1`: x and y scale independently to
+    /// the target size, so normalized coordinates are preserved (no crop).
+    case independentScaleToTarget = "independent_scale_to_target"
+    /// Aspect-fill centre crop: the shorter source axis is cropped away, so
+    /// normalized coordinates are not preserved and edge points are invisible.
+    case aspectFillCenterCrop = "aspect_fill_center_crop"
+}
+
+/// Actual preprocessing transform recorded for one tensor (N11). The transform
+/// is provenance: a match cannot be claimed by substituting the preview's
+/// aspect-fill matrix for an ML tensor (or the reverse). Orientation, crop and
+/// scale are stored separately, so a phone rotation, an output-crop change and
+/// a target point transfer cannot be derived from one another.
+struct CameraTensorTransform: Equatable, Sendable {
+    let tensorID: String
+    let space: CameraCoordinateSpaceV2
+    let resizeGeometry: CameraTensorResizeGeometry
+    /// Orientation applied exactly once by the preprocessing recipe.
+    let orientation: CameraTensorOrientationV1
+    let sourcePixelWidth: Double
+    let sourcePixelHeight: Double
+    let destinationPixelWidth: Double
+    let destinationPixelHeight: Double
+    /// Independent scale ratios; both zero for the aspect-fill geometry.
+    let scaleX: Double
+    let scaleY: Double
+    /// Center-crop window; nil for the independent-scale geometry.
+    let aspectFill: AspectFillTransform?
+
+    /// Fails closed (nil) for an empty tensor id or degenerate/non-finite
+    /// sizes: an invalid recipe is never carried as a plausible transform.
+    init?(tensorID: String,
+          space: CameraCoordinateSpaceV2 = .modelInput,
+          resizeGeometry: CameraTensorResizeGeometry,
+          orientation: CameraTensorOrientationV1,
+          sourcePixelSize: CGSize,
+          destinationPixelSize: CGSize) {
+        let trimmedID = tensorID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sourceWidth = Double(sourcePixelSize.width)
+        let sourceHeight = Double(sourcePixelSize.height)
+        let destinationWidth = Double(destinationPixelSize.width)
+        let destinationHeight = Double(destinationPixelSize.height)
+        guard !trimmedID.isEmpty,
+              sourceWidth.isFinite, sourceHeight.isFinite,
+              destinationWidth.isFinite, destinationHeight.isFinite,
+              sourceWidth > 0, sourceHeight > 0,
+              destinationWidth > 0, destinationHeight > 0 else {
+            return nil
+        }
+
+        self.tensorID = trimmedID
+        self.space = space
+        self.resizeGeometry = resizeGeometry
+        self.orientation = orientation
+        self.sourcePixelWidth = sourceWidth
+        self.sourcePixelHeight = sourceHeight
+        self.destinationPixelWidth = destinationWidth
+        self.destinationPixelHeight = destinationHeight
+        switch resizeGeometry {
+        case .independentScaleToTarget:
+            self.scaleX = destinationWidth / sourceWidth
+            self.scaleY = destinationHeight / sourceHeight
+            self.aspectFill = nil
+        case .aspectFillCenterCrop:
+            self.scaleX = 0
+            self.scaleY = 0
+            self.aspectFill = AspectFillTransform(
+                sourceSize: sourcePixelSize,
+                destinationSize: destinationPixelSize
+            )
+        }
+    }
+
+    var isValid: Bool {
+        !tensorID.isEmpty
+            && sourcePixelWidth > 0 && sourcePixelHeight > 0
+            && destinationPixelWidth > 0 && destinationPixelHeight > 0
+    }
+
+    /// Oriented source-normalized point → destination-normalized tensor point.
+    /// Nil means the point is not visible in this tensor's window (rather than
+    /// being clamped to an edge).
+    func destinationPoint(fromSourceNormalized x: Double, y: Double) -> (x: Double, y: Double)? {
+        guard isValid, x.isFinite, y.isFinite, (0...1).contains(x), (0...1).contains(y) else {
+            return nil
+        }
+        switch resizeGeometry {
+        case .independentScaleToTarget:
+            return (x, y)
+        case .aspectFillCenterCrop:
+            guard let aspectFill else { return nil }
+            return aspectFill.visibleDestinationPoint(fromSourceNormalized: x, y: y)
+        }
+    }
+
+    /// Destination-normalized tensor point → oriented source-normalized point.
+    func sourceNormalized(fromDestinationX x: Double, y: Double) -> (x: Double, y: Double)? {
+        guard isValid, x.isFinite, y.isFinite, (0...1).contains(x), (0...1).contains(y) else {
+            return nil
+        }
+        switch resizeGeometry {
+        case .independentScaleToTarget:
+            return (x, y)
+        case .aspectFillCenterCrop:
+            guard let aspectFill else { return nil }
+            return aspectFill.sourceNormalized(fromDestinationX: x, y: y)
+        }
+    }
+}
+
+/// N11 contract: binds each frozen ML tensor to the resize geometry its recipe
+/// actually uses and rejects a substituted transform. The frozen recipe
+/// `setcompositionnet.preprocessing.v1` is independent scale, so an aspect-fill
+/// preview transform can never satisfy a tensor recipe.
+enum CameraTensorTransformContract {
+    static let setCompositionNetFullFrameTensorID = "setcompositionnet.v1.full_frame_rgb"
+    static let setCompositionNetSubjectCropTensorID = "setcompositionnet.v1.subject_crop_rgb"
+
+    static let setCompositionNetTensorIDs: [String] = [
+        setCompositionNetFullFrameTensorID,
+        setCompositionNetSubjectCropTensorID
+    ]
+
+    /// Frozen geometry for a known tensor id; nil for an unknown tensor, which
+    /// must not be admitted with a guessed recipe.
+    static func requiredResizeGeometry(forTensorID tensorID: String) -> CameraTensorResizeGeometry? {
+        switch tensorID {
+        case setCompositionNetFullFrameTensorID, setCompositionNetSubjectCropTensorID:
+            return .independentScaleToTarget
+        default:
+            return nil
+        }
+    }
+
+    /// Validates one recorded transform. A mismatch, an unknown tensor or a
+    /// degenerate geometry is reported instead of silently accepted.
+    static func validate(_ transform: CameraTensorTransform) -> [String] {
+        guard let required = requiredResizeGeometry(forTensorID: transform.tensorID) else {
+            return ["unknown tensor id \(transform.tensorID): no frozen preprocessing recipe"]
+        }
+        var errors: [String] = []
+        guard transform.isValid else {
+            errors.append("tensor \(transform.tensorID) transform geometry is degenerate")
+            return errors
+        }
+        if transform.resizeGeometry != required {
+            errors.append(
+                "tensor \(transform.tensorID) requires \(required.rawValue); "
+                    + "\(transform.resizeGeometry.rawValue) is not interchangeable"
+            )
+        }
+        if transform.space != .modelInput {
+            errors.append("tensor \(transform.tensorID) must be recorded in the modelInput space")
+        }
+        return errors
+    }
+
+    /// Builds the actual frozen recipe transform for one SETCompositionNet
+    /// tensor. Returns nil for an unknown id or degenerate sizes.
+    static func recipe(
+        forTensorID tensorID: String,
+        orientation: CameraTensorOrientationV1,
+        sourcePixelSize: CGSize,
+        destinationPixelSize: CGSize
+    ) -> CameraTensorTransform? {
+        guard let geometry = requiredResizeGeometry(forTensorID: tensorID) else { return nil }
+        return CameraTensorTransform(
+            tensorID: tensorID,
+            space: .modelInput,
+            resizeGeometry: geometry,
+            orientation: orientation,
+            sourcePixelSize: sourcePixelSize,
+            destinationPixelSize: destinationPixelSize
+        )
     }
 }
 
@@ -4341,23 +4837,40 @@ extension SemanticDirection {
     /// center, projected onto the ray from the subject center through the
     /// subject frame edge. Both text and marker use this one computed target,
     /// so they can never disagree about direction.
-    func subjectTargetPoint(from subjectFrame: NormalizedRect) -> (x: Double, y: Double) {
+    func subjectTargetPoint(
+        from subjectFrame: NormalizedRect,
+        sourceSpace: CameraCoordinateSpaceV2
+    ) -> (x: Double, y: Double)? {
+        guard let subjectFrame = subjectFrame.converted(
+            from: sourceSpace,
+            to: .subjectTarget
+        ) else {
+            return nil
+        }
         let centerX = subjectFrame.x + subjectFrame.width / 2
         let centerY = subjectFrame.y + subjectFrame.height / 2
+        let point: (x: Double, y: Double)
         switch self {
         case .left:
-            return (0, centerY)
+            point = (0, centerY)
         case .right:
-            return (1, centerY)
+            point = (1, centerY)
         case .up:
-            return (centerX, 0)
+            point = (centerX, 0)
         case .down:
-            return (centerX, 1)
+            point = (centerX, 1)
         case .forward, .back, .none:
             // Depth/neutral directions have no in-plane target; the subject
             // center keeps marker anchoring honest.
-            return (centerX, centerY)
+            point = (centerX, centerY)
         }
+        guard sourceSpace == .vision else { return point }
+        let converted = CameraSpacePointV2(
+            space: .subjectTarget,
+            x: point.x,
+            y: point.y
+        ).flippedVertically
+        return (converted.x, converted.y)
     }
 
     /// The compact destination region for a subject-displacement marker. The
@@ -4366,7 +4879,14 @@ extension SemanticDirection {
     /// subject rectangle. A subject already touching that edge has no honest
     /// destination geometry and therefore returns nil.
     func subjectTargetRegion(from subjectFrame: NormalizedRect,
+                             sourceSpace: CameraCoordinateSpaceV2,
                              maximumExtent: Double = 0.12) -> NormalizedRect? {
+        guard let subjectFrame = subjectFrame.converted(
+            from: sourceSpace,
+            to: .subjectTarget
+        ) else {
+            return nil
+        }
         guard !subjectFrame.isDegenerate,
               subjectFrame.x >= 0,
               subjectFrame.y >= 0,
@@ -4389,7 +4909,8 @@ extension SemanticDirection {
             let width = min(extent, freeWidth * 0.80)
             let x = self == .left ? 0 : 1.0 - width
             let y = min(1.0 - crossExtent, max(0, centerY - crossExtent * 0.5))
-            return NormalizedRect(x: x, y: y, width: width, height: crossExtent)
+            let target = NormalizedRect(x: x, y: y, width: width, height: crossExtent)
+            return target.converted(from: .subjectTarget, to: sourceSpace)
         case .up, .down:
             let freeHeight: Double = self == .up
                 ? subjectFrame.y
@@ -4398,7 +4919,8 @@ extension SemanticDirection {
             let height = min(extent, freeHeight * 0.80)
             let x = min(1.0 - crossExtent, max(0, centerX - crossExtent * 0.5))
             let y = self == .up ? 0 : 1.0 - height
-            return NormalizedRect(x: x, y: y, width: crossExtent, height: height)
+            let target = NormalizedRect(x: x, y: y, width: crossExtent, height: height)
+            return target.converted(from: .subjectTarget, to: sourceSpace)
         case .forward, .back, .none:
             return nil
         }
@@ -4424,8 +4946,14 @@ extension SemanticActionType {
         }
     }
 
-    func subjectTargetRegion(from subjectFrame: NormalizedRect) -> NormalizedRect? {
-        subjectDisplacementDirection?.subjectTargetRegion(from: subjectFrame)
+    func subjectTargetRegion(
+        from subjectFrame: NormalizedRect,
+        sourceSpace: CameraCoordinateSpaceV2
+    ) -> NormalizedRect? {
+        subjectDisplacementDirection?.subjectTargetRegion(
+            from: subjectFrame,
+            sourceSpace: sourceSpace
+        )
     }
 }
 
@@ -4446,8 +4974,14 @@ extension ActionTypeV1 {
         subjectDisplacementSemanticAction?.subjectDisplacementDirection
     }
 
-    func subjectTargetRegion(from subjectFrame: NormalizedRect) -> NormalizedRect? {
-        subjectDisplacementSemanticAction?.subjectTargetRegion(from: subjectFrame)
+    func subjectTargetRegion(
+        from subjectFrame: NormalizedRect,
+        sourceSpace: CameraCoordinateSpaceV2
+    ) -> NormalizedRect? {
+        subjectDisplacementSemanticAction?.subjectTargetRegion(
+            from: subjectFrame,
+            sourceSpace: sourceSpace
+        )
     }
 }
 

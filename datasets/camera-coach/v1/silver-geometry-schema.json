@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/datasets/camera-coach/v1/silver-geometry-schema.json",
+  "title": "Camera Coach research-only silver Apple Vision geometry record",
+  "description": "One offline, machine-generated geometry proposal. It is not human gold, a Camera Coach action label, or a release claim. JSONL records are sorted by source.source_id and source.source_record_id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "analysis_status",
+    "coordinate_space",
+    "exif_orientation",
+    "geometry_authority",
+    "horizon",
+    "human_gold",
+    "image",
+    "research_only",
+    "release_admissible",
+    "schema_id",
+    "schema_version",
+    "saliency",
+    "selection_rule",
+    "selection_status",
+    "selected_subject",
+    "source",
+    "subject_candidates"
+  ],
+  "properties": {
+    "analysis_status": {
+      "enum": ["complete", "vision_unavailable"]
+    },
+    "coordinate_space": {
+      "description": "Vision boxes use the EXIF-oriented display image; raw-file consumers must perform the declared Pillow preprocessing before using them.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "axes",
+        "box_format",
+        "dimensions",
+        "horizon_angle_contract",
+        "horizon_pillow_rotation",
+        "id",
+        "origin",
+        "pillow_transform",
+        "raw_pixel_preprocessing"
+      ],
+      "properties": {
+        "axes": {"const": "x_right_y_up"},
+        "box_format": {"const": "normalized_xywh"},
+        "dimensions": {"const": "oriented_image"},
+        "horizon_angle_contract": {
+          "const": "observed Vision tilt, not an uprighting correction; positive means the horizon falls toward +x in the oriented display (clockwise in x-right/y-down), equivalently a negative line angle in x-right/y-up"
+        },
+        "horizon_pillow_rotation": {
+          "const": "after ImageOps.exif_transpose exactly once, call PIL Image.rotate(angle=pillow_uprighting_rotation_degrees); Pillow positive angles are counter-clockwise visually, and this levels the observed tilt"
+        },
+        "id": {"const": "vision_oriented_normalized"},
+        "origin": {"const": "bottom_left"},
+        "pillow_transform": {
+          "const": "after ImageOps.exif_transpose exactly once: x'=x; y'=1-y-height; width'=width; height'=height; no second EXIF transform"
+        },
+        "raw_pixel_preprocessing": {
+          "const": "ImageIO/CGImage remains in encoded storage orientation; raw Pillow pixels require ImageOps.exif_transpose exactly once before geometry transforms"
+        }
+      }
+    },
+    "exif_orientation": {
+      "description": "ImageIO/CGImage is not physically rotated. The tag is passed to Vision exactly once; this is distinct from the one required raw-Pillow transpose.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applied_by_decoder",
+        "exif_present",
+        "name",
+        "passed_to_vision",
+        "passed_to_vision_exactly_once",
+        "source",
+        "tag"
+      ],
+      "properties": {
+        "applied_by_decoder": {"const": false},
+        "exif_present": {"type": "boolean"},
+        "name": {
+          "enum": [
+            "up",
+            "up_mirrored",
+            "down",
+            "down_mirrored",
+            "left_mirrored",
+            "right",
+            "right_mirrored",
+            "left"
+          ]
+        },
+        "passed_to_vision": {"const": true},
+        "passed_to_vision_exactly_once": {"const": true},
+        "source": {
+          "enum": ["kCGImagePropertyOrientation", "default_when_EXIF_missing"]
+        },
+        "tag": {"type": "integer", "minimum": 1, "maximum": 8}
+      }
+    },
+    "geometry_authority": {"const": "silver_apple_vision"},
+    "horizon": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["confidence", "observed_angle_degrees", "pillow_uprighting_rotation_degrees"],
+      "properties": {
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "observed_angle_degrees": {
+          "description": "Raw VNHorizonObservation.angle converted from radians to degrees. Positive means the horizon falls toward +x in the oriented display (clockwise in x-right/y-down); this is observed tilt, not a correction.",
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "pillow_uprighting_rotation_degrees": {
+          "description": "Pass this same numeric value to Pillow Image.rotate after one ImageOps.exif_transpose; Pillow positive angles rotate counter-clockwise visually and level the observed tilt.",
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      }
+    },
+    "human_gold": {"const": false},
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decoded_dimensions", "format", "oriented_dimensions"],
+      "properties": {
+        "decoded_dimensions": {"$ref": "#/$defs/dimensions"},
+        "format": {
+          "enum": ["avif", "bmp", "gif", "heic", "heif", "jpeg", "jp2", "png", "tiff", "webp"]
+        },
+        "oriented_dimensions": {"$ref": "#/$defs/dimensions"}
+      }
+    },
+    "research_only": {"const": true},
+    "release_admissible": {"const": false},
+    "schema_id": {"const": "camera-silver-geometry-v1"},
+    "schema_version": {"const": "1.0.0"},
+    "saliency": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["center", "confidence", "region"],
+      "properties": {
+        "center": {"$ref": "#/$defs/point"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "region": {"$ref": "#/$defs/rect"}
+      }
+    },
+    "selection_rule": {
+      "enum": [
+        "no_candidates",
+        "single_candidate",
+        "merged_person_face",
+        "single_candidate_low_confidence",
+        "unique_saliency_endorsement",
+        "saliency_low_detection_confidence",
+        "clear_confidence_winner",
+        "low_detection_confidence",
+        "confidence_tie_or_conflict"
+      ]
+    },
+    "selection_status": {
+      "enum": ["selected", "ambiguous", "none"]
+    },
+    "selected_subject": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "confidence",
+        "height",
+        "kind",
+        "source_candidate_indices",
+        "width",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "height": {"$ref": "#/$defs/unitLength"},
+        "kind": {"enum": ["face", "person"]},
+        "source_candidate_indices": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 0}
+        },
+        "width": {"$ref": "#/$defs/unitLength"},
+        "x": {"$ref": "#/$defs/unitStart"},
+        "y": {"$ref": "#/$defs/unitStart"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relative_path", "sha256", "source_id", "source_record_id"],
+      "properties": {
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*(^|/)\\.{1,2}(/|$)).+$"
+        },
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "source_id": {"type": "string", "minLength": 1},
+        "source_record_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "subject_candidates": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/candidate"}
+    }
+  },
+  "$defs": {
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["confidence", "height", "kind", "width", "x", "y"],
+      "properties": {
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "height": {"$ref": "#/$defs/unitLength"},
+        "kind": {"enum": ["face", "person"]},
+        "width": {"$ref": "#/$defs/unitLength"},
+        "x": {"$ref": "#/$defs/unitStart"},
+        "y": {"$ref": "#/$defs/unitStart"}
+      }
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["height", "width"],
+      "properties": {
+        "height": {"type": "integer", "minimum": 1},
+        "width": {"type": "integer", "minimum": 1}
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": {"$ref": "#/$defs/unitStart"},
+        "y": {"$ref": "#/$defs/unitStart"}
+      }
+    },
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["height", "width", "x", "y"],
+      "properties": {
+        "height": {"$ref": "#/$defs/unitLength"},
+        "width": {"$ref": "#/$defs/unitLength"},
+        "x": {"$ref": "#/$defs/unitStart"},
+        "y": {"$ref": "#/$defs/unitStart"}
+      }
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "unitLength": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+    "unitStart": {"type": "number", "minimum": 0, "exclusiveMaximum": 1}
+  }
+}

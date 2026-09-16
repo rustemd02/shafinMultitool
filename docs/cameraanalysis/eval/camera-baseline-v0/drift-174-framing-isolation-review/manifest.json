@@ -1,0 +1,16 @@
+{
+  "artifacts": [
+    {
+      "bytes": 22300,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-framing-isolation-review/framing-isolation-review.json",
+      "sha256": "60f897c98fea232f789fd3d41480c8cab04d999481945cd4bb51f956e668cf73"
+    }
+  ],
+  "captured_at": "2026-09-12T23:13:39+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Review and negative decision only; no release measurement.",
+  "lane_id": "camera-label-drift-174-framing-isolation-review",
+  "purpose": "Review the framing label expectations against measured geometry and settle the isolation-suppressor question on a held-out split.",
+  "schema_version": 1,
+  "source_change": "none: no Swift source changed, so the last control run (phase A 18/17/1, phase B 177/142/35) covers the current source hash 9391c81bd8ba08ec4c72b8e4587f65246456ebea5bd1f020b58cbe7db77f400a.",
+  "status": "review_and_negative_decision_research_only"
+}

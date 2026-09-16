@@ -94,3 +94,26 @@ def test_find_first_across_roots_falls_back_to_attachments_when_archive_is_incom
     resolved = MODULE.find_first_across_roots([extracted_dir, attachments_dir], "scene_summary.json")
 
     assert resolved == attachments_dir / "scene_summary.json"
+
+
+def test_find_first_across_roots_prefers_the_extracted_copy_when_both_exist(tmp_path: Path) -> None:
+    """Restoring the fallback must not overturn precedence: extracted still wins."""
+    extracted_dir = tmp_path / "extracted"
+    attachments_dir = tmp_path / "attachments"
+    extracted_dir.mkdir()
+    attachments_dir.mkdir()
+    (extracted_dir / "scene_summary.json").write_text('{"executionMode": "extracted"}', encoding="utf-8")
+    (attachments_dir / "scene_summary.json").write_text('{"executionMode": "attachments"}', encoding="utf-8")
+
+    resolved = MODULE.find_first_across_roots([extracted_dir, attachments_dir], "scene_summary.json")
+
+    assert resolved == extracted_dir / "scene_summary.json"
+
+
+def test_find_first_across_roots_returns_none_when_no_root_has_the_file(tmp_path: Path) -> None:
+    first = tmp_path / "a"
+    second = tmp_path / "b"
+    first.mkdir()
+    second.mkdir()
+
+    assert MODULE.find_first_across_roots([first, second], "scene_summary.json") is None

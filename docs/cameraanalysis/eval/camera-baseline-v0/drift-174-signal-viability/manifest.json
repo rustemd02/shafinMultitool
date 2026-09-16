@@ -1,0 +1,16 @@
+{
+  "artifacts": [
+    {
+      "bytes": 7720,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-signal-viability/signal-viability.json",
+      "sha256": "ddee81b1e79688d2b48aa8418f9c2c67fc637f4f7fc82110866a80679e9f0bef"
+    }
+  ],
+  "captured_at": "2026-09-12T23:10:19+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Negative-result analysis only; no release measurement.",
+  "lane_id": "camera-label-drift-174-signal-viability",
+  "purpose": "Evaluate the two proposed detection signals against the committed lane before building them, and record the negative result.",
+  "schema_version": 1,
+  "source_change": "none: no Swift source changed, so the last control run (phase A 18/17/1, phase B 177/142/35) covers the current source hash 9391c81bd8ba08ec4c72b8e4587f65246456ebea5bd1f020b58cbe7db77f400a.",
+  "status": "negative_result_evidence_research_only"
+}

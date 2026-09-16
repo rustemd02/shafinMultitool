@@ -4,6 +4,32 @@ source: /Users/unterlantas/Downloads/ДИССЕР.md
 last_synced: 2026-05-29
 last_updated: 2026-06-05
 chapter: 4_camera_analysis
+needs_update_reason: >-
+  2026-09-13 Q05 sync added camera contract evidence that is not yet reflected in this
+  chapter and must not be overstated in prose: EV-CA-V3-001/CL-CA-031 (fail-closed v3
+  validator, 61-case behavioral parity), EV-CA-REGISTRY-001/CL-CA-030 (20-operation and
+  68-case contract with recorded source gaps, not_a_stable_contract), EV-CA-COORD-001/CL-CA-032
+  (N11 CameraTensorTransform and ObjectTargetBinding proven by 97 tests but NOT wired into
+  MetalPreprocessor/CoreMLNeuralEvidenceProvider/AnalysisPipeline), EV-CA-VERIFY-001/CL-CA-033
+  (changeCameraAngle false criterion removed; action now uncertain/unsupported_action) and
+  EV-CA-ML-002/CL-CA-034 (v2 intent contract + masked trainer; no admitted-data training) and
+  EV-CA-ML-003/CL-CA-036 (M00b real Swift CaptureIntent + intent_features input side with a
+  shared-fixture Swift/Python parity suite; still no exported v2 Core ML model, so the app
+  cannot run the v2 network). Do not write "coordinates fixed in runtime", "target stable in the app"
+  or "model trained/ready".
+  2026-09-13 Q05 round 3 adds release-level evidence to the same caution: EV-REL-NEURAL-001/
+  CL-REL-NEURAL-001 (the production neural model is ABSENT from the built Release bundle —
+  isModelAvailable == false; do not write "the app uses a neural composition model"),
+  EV-CA-SETCONTRACT-001/CL-CA-051 (frozen SETCompositionNet has no production call site or consumer;
+  runtime provider tensors 256/160 vs contract 320/192; C02 slice C blocked_contract) and
+  EV-CA-ML-005/CL-CA-052 (v2 export path validated as tooling only; release_admissible=false,
+  blocked_on=M03/M04).
+  2026-09-13 Q05 round 4: EV-REL-POLICY-001/CL-REL-POLICY-001 give the camera acceptance thresholds
+  a versioned executable policy bound behaviorally to the gate instrument (both directions), and
+  EV-REL-DEFGAP-001/CL-REL-DEFGAP-001 record that ten §5.1 rows — including horizon/light precision,
+  accepted coverage, abstention correctness, verification accuracy and the zero safety rows — have a
+  threshold and no operational definition in the repository. Do not present those rows as passeable
+  or as measured.
 ---
 
 # **4\. Механизмы анализа изображения и формирования рекомендаций** {#4.-механизмы-анализа-изображения-и-формирования-рекомендаций}

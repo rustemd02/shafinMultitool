@@ -407,13 +407,15 @@ extension CameraScreenInteractor: CameraScreenInteractorProtocol {
     func getSelectedRowNumberForPickerView(tag: Int) -> Int {
         let settingsValues = DBService.shared.fetchSettingsButtonValues()
         if tag == 1 {
+            // A stored value outside the table (or an empty table) defaults
+            // the picker to the first row instead of force-unwrapping nil.
             return cameraService.getIsoValues().firstIndex { iso in
                 settingsValues.iso == iso
-            }!
+            } ?? 0
         } else if tag == 2 {
             return cameraService.getWBValues().firstIndex { wb in
                 settingsValues.wb == wb
-            }!
+            } ?? 0
         }
         return 0
     }

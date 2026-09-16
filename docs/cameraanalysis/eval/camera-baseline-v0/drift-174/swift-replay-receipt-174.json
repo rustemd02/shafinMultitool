@@ -1,0 +1,41 @@
+{
+  "build": {
+    "configuration": "Debug",
+    "simulator": "iPhone 17e",
+    "simulator_id": "1F680A42-CEB3-43E8-9CED-52F874962A62",
+    "simulator_os_build": "23F77",
+    "simulator_sdk": "iPhoneSimulator26.5 (23F81a)",
+    "xcode": "26.6 (17F113)"
+  },
+  "captured_at": "2026-09-12T21:52:33+03:00",
+  "command_template": "python3 docs/cameraanalysis/eval/run_swift_semantic_replay.py --config docs/cameraanalysis/eval/camera-baseline-v0/replay-config-174-drift.json --destination 'platform=iOS Simulator,id=<ALLOWED_SIMULATOR_ID>' --derived-data-path <EXTERNAL_DERIVED_DATA> --result-bundle-path <EXTERNAL_RESULT_BUNDLE> --output-path <EXTERNAL_OUTPUT>",
+  "config": {
+    "materialized_config_sha256": "b52d93b2b030d76e87853ae6df08698ee45892a99ce9587524cf88756c35dd96",
+    "portable_path": "docs/cameraanalysis/eval/camera-baseline-v0/replay-config-174-drift.json",
+    "portable_sha256": "909812fc1bce00d43a902202dfc225c56d179cd49b2aa07b33cfc8f04905bc0d",
+    "runner_path": "docs/cameraanalysis/eval/run_swift_semantic_replay.py",
+    "runner_sha256": "456118a8462beea66d8d681fea8a1b0ec36a84edc1110b565e3afe900f4067bd",
+    "selection": "The runner materializes the committed config, sets SEMANTIC_EVAL_CONFIG, and writes the Swift test's canonical transient config candidate before xcodebuild."
+  },
+  "dirty_note": "The replay ran against the working tree, not commit 0733df2 alone. Pipeline source is pinned by sha256 below.",
+  "dirty_worktree": true,
+  "portable_evidence_note": "The xcresult bundle stayed in the session temp directory and is intentionally not committed; the exported rows and their sha256 are the portable evidence.",
+  "receipt_id": "m4-001-swift-replay-174-drift-r1",
+  "schema_version": 1,
+  "source_commit": "0733df2cb83c8e3687c31251e11e5d0747052602",
+  "source_pins": {
+    "labels_path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/camera_full_labels.jsonl",
+    "labels_sha256": "c1dba72a21551b70cc8edc4bbe9f3484c95776b24b84e8fe5d659f3a4cb0eefc",
+    "pipeline_path": "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift",
+    "pipeline_sha256": "53346f8403c6ba5a59633d3b061b95596df619d945b46cde6fe23f7abc23f13b"
+  },
+  "status": "passed",
+  "test": {
+    "duration_seconds": 100.541,
+    "identifier": "shafinMultitoolTests/SemanticEvalStillImageBatchReplayTests/testExportSemanticEvalCandidateOutputsFromStillImages",
+    "output_records": 174,
+    "output_rows": 348,
+    "output_sha256": "34074f33f491c89bffd40bca2e39d518bbbfcbafeefabd4953f1a5fd5700df4d",
+    "result": "Passed"
+  }
+}

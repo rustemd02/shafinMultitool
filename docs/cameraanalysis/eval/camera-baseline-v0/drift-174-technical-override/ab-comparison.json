@@ -1,0 +1,226 @@
+{
+  "accepted_tradeoff": "None measured on this lane: metrics improve or stay equal in every category, no good-labelled row changes, and the control run fixes two tests without introducing a new failure. Cumulative effect of the two alignment changes on this lane: pass_rate 0.379310 -> 0.534483, expected_action_hit_rate 0.465517 -> 0.689655, good_frame_preservation_rate 0.518519 -> 0.839506, forbidden_action_violation_rate 0.114943 -> 0.137931, good-frame overcorrections 39 -> 13.",
+  "artifacts": {
+    "baseline_rows": {
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/m4-001-fullruntime-174-drift-r1.jsonl",
+      "sha256": "34074f33f491c89bffd40bca2e39d518bbbfcbafeefabd4953f1a5fd5700df4d"
+    },
+    "edge_neutral_rows": {
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/m4-001-fullruntime-174-drift-r1-edge-neutral.jsonl",
+      "sha256": "787b4045712d7368fce5a8992cc9924fffeea04293d5fd60b6aef04cab536e94"
+    },
+    "technical_override_rows": {
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/m4-001-fullruntime-174-drift-r1-technical-override.jsonl",
+      "sha256": "8c0f936f773ca307d9211f524f77e904f5d4344087eb048baf708fa128684582"
+    }
+  },
+  "attribution": {
+    "finding": "Detection works; the presentation ignored it. Of the 58 non-good false-keep/silent frames on the edge-calibrated lane, 55 already carry a detected technical future action (exposure/focus/stabilisation) and 56 are labelled verdict=good by the critique. Attribution by label defect class: underexposure 17 frames -> 0 critique issues fired (exposure_bias median -1.077), motion_blur 15 -> 0 issues, defocus 11 -> 0 issues, overexposure 9 -> 1 frame with an issue, clutter 2 -> 0 issues.",
+    "mechanism": "makePauseCritiquePresentation set goodVerdictSuppressesCorrections = (critique.verdict == .good), which unconditionally suppressed every correction and every semantic tip for a good verdict, even when the technical probe had already measured a dominant defect on that frame. The export contract has the opposite rule (a dominant technical action drops keep), so presentation and contract disagreed.",
+    "question": "why do non-good object frames return keep_current_setup or silence although the frame is defective?"
+  },
+  "captured_at": "2026-09-12T22:38:16+03:00",
+  "change": {
+    "after": "goodVerdictSuppressesCorrections = critique.verdict == .good && dominantTechnicalQualityIssue(from: technicalQualitySignal) == nil",
+    "path": "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift",
+    "reuse": "dominantTechnicalQualityIssue is the existing accessor already used by the technical live-hint path; no new threshold was introduced.",
+    "sha256": "329fee25c11b1c8fd05eedebdda5958849dc7db6d54da04191509fed93bea916"
+  },
+  "comparison_id": "m4-001-fullruntime-174-drift-r1-technical-override-ab",
+  "control_run": {
+    "fixed_vs_edge_neutral": [
+      "testStillImageReplayMapsSmallUnderlitLightObjectToFrontFill",
+      "testStillImageReplayMapsUnknownBlurToSimplifyBackground"
+    ],
+    "newly_failing_vs_edge_neutral": [],
+    "phase_a": {
+      "edge_neutral": "18 total / 17 passed / 1 failed",
+      "technical_override": "18 total / 17 passed / 1 failed"
+    },
+    "phase_b": {
+      "baseline": "177 / 138 passed / 39 failed",
+      "edge_neutral": "177 / 140 passed / 37 failed",
+      "technical_override": "177 / 142 passed / 35 failed"
+    },
+    "recipe": "scripts/run_camera_certification.sh",
+    "simulator": "iPhone 17e 1F680A42-CEB3-43E8-9CED-52F874962A62 (iOS 26.5)",
+    "still_failing_note": "testStillImageReplaySuppressesFalseKeepForBadTechnicalFrames still fails: it covers motion-like false-positive objects, a different path from the dominant technical probe."
+  },
+  "mechanism_invariants": {
+    "changed_rows_on_good_labelled_frames": 0,
+    "good_frames_that_newly_receive_corrective_advice": 0,
+    "live_and_pause_rows_with_changed_actions_vs_edge_neutral": 12,
+    "pause_transitions": [
+      {
+        "count": 4,
+        "from": [],
+        "to": [
+          "simplify_background"
+        ]
+      },
+      {
+        "count": 1,
+        "from": [],
+        "to": [
+          "change_camera_angle",
+          "remove_distracting_object",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ]
+      },
+      {
+        "count": 1,
+        "from": [
+          "keep_current_setup"
+        ],
+        "to": [
+          "add_front_fill_light"
+        ]
+      },
+      {
+        "count": 1,
+        "from": [],
+        "to": [
+          "change_camera_angle",
+          "remove_background_hotspot"
+        ]
+      },
+      {
+        "count": 1,
+        "from": [],
+        "to": [
+          "remove_distracting_object",
+          "shift_frame_left",
+          "wait_for_background_clearance"
+        ]
+      },
+      {
+        "count": 1,
+        "from": [
+          "keep_current_setup"
+        ],
+        "to": [
+          "add_front_fill_light",
+          "rotate_subject_toward_light"
+        ]
+      },
+      {
+        "count": 1,
+        "from": [
+          "keep_current_setup"
+        ],
+        "to": []
+      },
+      {
+        "count": 1,
+        "from": [
+          "keep_current_setup"
+        ],
+        "to": [
+          "remove_distracting_object",
+          "shift_frame_right",
+          "step_back"
+        ]
+      },
+      {
+        "count": 1,
+        "from": [],
+        "to": [
+          "add_front_fill_light",
+          "change_camera_angle",
+          "remove_background_hotspot"
+        ]
+      }
+    ],
+    "reading": "Every changed row carries a dominant measured technical defect and none of them is a good-labelled frame, so good-frame preservation and positive confirmation are numerically unchanged."
+  },
+  "still_replay_metrics": {
+    "baseline": {
+      "confidence_band_accuracy": 0.66092,
+      "demo_priority_pass_rate": 0.222222,
+      "expected_action_hit_rate": 0.465517,
+      "failure_counts": {
+        "confidence_band_mismatch": 59,
+        "forbidden_action_violation": 20,
+        "good_frame_overcorrection": 39,
+        "missing_expected_action": 93,
+        "missing_future_action": 14,
+        "missing_positive_confirmation": 42,
+        "semantic_overreach_on_technical_failure": 2
+      },
+      "forbidden_action_violation_rate": 0.114943,
+      "future_action_hit_rate": 0.802817,
+      "good_frame_preservation_rate": 0.518519,
+      "pass_rate": 0.37931,
+      "positive_confirmation_rate": 0.481481,
+      "record_count": 174,
+      "technical_failure_gate_rate": 0.9
+    },
+    "delta_vs_baseline": {
+      "confidence_band_accuracy": 0.063218,
+      "demo_priority_pass_rate": 0.111111,
+      "expected_action_hit_rate": 0.224138,
+      "forbidden_action_violation_rate": 0.022988,
+      "future_action_hit_rate": 0.084507,
+      "good_frame_preservation_rate": 0.320987,
+      "pass_rate": 0.155173,
+      "positive_confirmation_rate": 0.320988,
+      "record_count": 0,
+      "technical_failure_gate_rate": 0.0
+    },
+    "delta_vs_edge_neutral": {
+      "confidence_band_accuracy": 0.005747,
+      "demo_priority_pass_rate": 0.018518,
+      "expected_action_hit_rate": 0.04023,
+      "forbidden_action_violation_rate": -0.017241,
+      "future_action_hit_rate": 0.0,
+      "good_frame_preservation_rate": 0.0,
+      "pass_rate": 0.028736,
+      "positive_confirmation_rate": 0.0,
+      "record_count": 0,
+      "technical_failure_gate_rate": 0.0
+    },
+    "edge_neutral": {
+      "confidence_band_accuracy": 0.718391,
+      "demo_priority_pass_rate": 0.314815,
+      "expected_action_hit_rate": 0.649425,
+      "failure_counts": {
+        "confidence_band_mismatch": 49,
+        "forbidden_action_violation": 27,
+        "good_frame_overcorrection": 13,
+        "missing_expected_action": 61,
+        "missing_future_action": 8,
+        "missing_positive_confirmation": 16,
+        "semantic_overreach_on_technical_failure": 2
+      },
+      "forbidden_action_violation_rate": 0.155172,
+      "future_action_hit_rate": 0.887324,
+      "good_frame_preservation_rate": 0.839506,
+      "pass_rate": 0.505747,
+      "positive_confirmation_rate": 0.802469,
+      "record_count": 174,
+      "technical_failure_gate_rate": 0.9
+    },
+    "technical_override": {
+      "confidence_band_accuracy": 0.724138,
+      "demo_priority_pass_rate": 0.333333,
+      "expected_action_hit_rate": 0.689655,
+      "failure_counts": {
+        "confidence_band_mismatch": 48,
+        "forbidden_action_violation": 24,
+        "good_frame_overcorrection": 13,
+        "missing_expected_action": 54,
+        "missing_future_action": 8,
+        "missing_positive_confirmation": 16,
+        "semantic_overreach_on_technical_failure": 2
+      },
+      "forbidden_action_violation_rate": 0.137931,
+      "future_action_hit_rate": 0.887324,
+      "good_frame_preservation_rate": 0.839506,
+      "pass_rate": 0.534483,
+      "positive_confirmation_rate": 0.802469,
+      "record_count": 174,
+      "technical_failure_gate_rate": 0.9
+    }
+  }
+}

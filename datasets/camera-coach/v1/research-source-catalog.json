@@ -1,0 +1,568 @@
+{
+  "schema_id": "camera-research-source-catalog-v1",
+  "catalog_version": "1.0.0",
+  "purpose": "Research-source registry for the Camera Coach dataset intake. The catalog is metadata only; raw media and downloaded archives stay outside Git.",
+  "default_admission": "quarantine",
+  "human_gold_policy": {
+    "status": "not_present",
+    "rule": "Source MOS, aesthetic votes, captions, model predictions, and curator guesses are not Camera Coach human gold. Release train, calibration, and holdout records require the two-annotator action review and adjudication flow in capture-protocol.md.",
+    "allowed_bootstrap": [
+      "unlabeled_pretraining",
+      "silver_teacher_labels",
+      "hard-negative_candidate_mining"
+    ]
+  },
+  "rights_policy": {
+    "raw_data_location": "outside_git",
+    "metadata_location": "repository_allowed",
+    "default_redistribution": "do_not_redistribute_raw_media_or_derivatives",
+    "release_rule": "A research source is never release-cleared by this catalog. Resolve the per-asset rights and consent records before any train, calibration, or holdout admission."
+  },
+  "sources": [
+    {
+      "source_id": "open_images_validation_objects",
+      "title": "Open Images validation — bounded multi-object candidates",
+      "source_kind": "object_localization_reference",
+      "purpose": ["same-class object grounding", "hard-negative candidate mining"],
+      "access": {
+        "landing_url": "https://storage.googleapis.com/openimages/web/download_v7.html",
+        "mode": "metadata_only_discovery",
+        "ingest_command": "source_specific_adapter_required"
+      },
+      "rights": {
+        "tier": "research_only_per_asset_verification_required",
+        "status": "metadata_declares_cc_by_2_0_not_independently_verified",
+        "redistribution": "do_not_redistribute_raw_media_or_derivatives",
+        "required_receipts": ["original_landing_page", "per_asset_license_and_attribution", "asset_hash", "consent_review_if_applicable"]
+      },
+      "labels": {
+        "provided": ["object_class", "normalized_bounding_box"],
+        "camera_coach_human_gold": false,
+        "label_use": "localization_reference_only_not_action_or_temporal_identity_truth"
+      },
+      "admission": {
+        "allowed": ["research_reference", "hard-negative_candidate_mining"],
+        "blocked": ["release_split", "Camera Coach human gold", "physical_action_labels", "temporal_tracking_truth"],
+        "quarantine_reason": "Still-image boxes do not establish object identity across frames, safe movement, improved composition, or per-asset clearance."
+      },
+      "local_pilot": {
+        "date": "2026-09-11",
+        "root": "external:/Users/unterlantas/Library/Application Support/SETOS/Datasets/camera-coach/research/open-images-lamp-pilot-20260911.4PMfRR",
+        "records": 1,
+        "image_id": "3bbc38b3beafe343",
+        "image_sha256": "d2539de32ac6c466a46790ddbaaf5f03f1f65ddd5459af9381bdf711f21d8ec6",
+        "inventory_sha256": "9db555948ba55d2c9a76d42c6d60ddf5524404d5f73315b50ff605f2a70374c3",
+        "verification": "camera_source_intake.py verify-local passed; 3264x2448 JPEG, EXIF orientation 1; source-observation.json records author/license, not release clearance",
+        "diagnostic_receipt": "detr-probe-receipt.json",
+        "signals_export_receipt": "detr-signals-export-receipt.json",
+        "research_only": true,
+        "human_gold": false,
+        "release_admissible": false
+      },
+      "discovery": {
+        "date": "2026-09-11",
+        "sources": [
+          {"url": "https://storage.googleapis.com/openimages/v7/oidv7-class-descriptions-boxable.csv", "bytes": 12064, "sha256": "1839e0e7e84130ae281f7f67413768601b031581c0c42e7fc17527b8e2a99aa9"},
+          {"url": "https://storage.googleapis.com/openimages/v5/validation-annotations-bbox.csv", "bytes": 25105048, "sha256": "d8bbd59410af14835d7733165a7bb8a3f0213981b22dd5077b0b9f7878991ff2"},
+          {"url": "https://storage.googleapis.com/openimages/2018_04/validation/validation-images-with-rotation.csv", "bytes": 15245485, "sha256": "ed93a0e121fe345effdfc7359b848dbc64a1ff6778c8c73563157cb500b33a17"}
+        ],
+        "filter": "Confidence=1; IsGroupOf=IsDepiction=IsInside=0; finite positive normalized XYXY; target class only. Occlusion/truncation are not excluded; this is candidate mining, not final admission.",
+        "eligible_boxes_by_class": {"Table": 931, "Coffee cup": 188, "Bottle": 385, "Candle": 75, "Chair": 721, "Book": 221, "Vase": 91, "Light bulb": 46, "Lamp": 73},
+        "images_with_multiple_same_class_boxes": {"Table": 158, "Coffee cup": 20, "Bottle": 66, "Candle": 12, "Chair": 123, "Book": 33, "Vase": 17, "Light bulb": 8, "Lamp": 8},
+        "unique_candidate_images": 1210,
+        "multi_lamp_candidate_source_pages": {
+          "88269e4e82af0450": "https://www.flickr.com/photos/haahr/5942602388",
+          "fff3ce694bc02a09": "https://www.flickr.com/photos/br1dotcom/3226089149",
+          "7b4e6ecafed7bb6a": "https://www.flickr.com/photos/yakinik/6069139961",
+          "924d4695abfca81a": "https://www.flickr.com/photos/jseita/15962569326",
+          "743dbcab02a9971e": "https://www.flickr.com/photos/this_could_be_my_house/2801538657",
+          "3bbc38b3beafe343": "https://www.flickr.com/photos/57634952@N00/2213960208",
+          "c11ae79e8ebe5a1e": "https://www.flickr.com/photos/vialbost/17431140924",
+          "c9203457ab97042a": "https://www.flickr.com/photos/gingerchrismc/7361030350"
+        },
+        "per_asset_review": "incomplete; web reader failed for three pages; subsequent direct HTTPS read confirmed the image-specific CC BY 2.0 declaration for 3bbc38b3beafe343 only. No pixels, consent review or release clearance.",
+        "followup_source_page_reviews": [
+          {
+            "date": "2026-09-11",
+            "image_id": "88269e4e82af0450",
+            "url": "https://www.flickr.com/photos/haahr/5942602388",
+            "status": "image_specific_license_declaration_observed",
+            "title": "Lights on Pont Alexandre III",
+            "author": "Paul Haahr",
+            "declared_license": "https://creativecommons.org/licenses/by/2.0/",
+            "declaration_scope": "ImageObject inside JSON-LD @graph; matching photo-license-info element also observed",
+            "observed_html_bytes": 522716,
+            "observed_html_sha256": "decf2c846f55482e575d4cc240791c94a570676c6597bd719eb8b9e56b5715ef",
+            "asset_bytes_verified": false,
+            "research_only": true,
+            "human_gold": false,
+            "release_admissible": false,
+            "note": "Page metadata only. No pixels downloaded, object/action labels verified, or consent/release clearance inferred. Historical discovery counters above are unchanged."
+          },
+          {
+            "date": "2026-09-11",
+            "image_id": "fff3ce694bc02a09",
+            "url": "https://www.flickr.com/photos/br1dotcom/3226089149",
+            "status": "source_page_unavailable_http_404",
+            "asset_bytes_verified": false,
+            "research_only": true,
+            "human_gold": false,
+            "release_admissible": false,
+            "note": "Do not substitute catalog-wide CC BY metadata for missing per-asset source evidence."
+          },
+          {
+            "date": "2026-09-11",
+            "image_id": "7b4e6ecafed7bb6a",
+            "url": "https://www.flickr.com/photos/yakinik/6069139961",
+            "status": "image_specific_license_declaration_observed",
+            "author": "Nik Yaki",
+            "declared_license": "https://creativecommons.org/licenses/by/2.0/",
+            "declaration_scope": "ImageObject in page JSON-LD",
+            "observed_html_bytes": 520761,
+            "observed_html_sha256": "213776907369bf103fc9adcafbba81543f8587a99e63dbe8d93858abf61bdcf2",
+            "asset_bytes_verified": false,
+            "research_only": true,
+            "human_gold": false,
+            "release_admissible": false
+          },
+          {
+            "date": "2026-09-11",
+            "image_id": "924d4695abfca81a",
+            "url": "https://www.flickr.com/photos/jseita/15962569326",
+            "status": "image_specific_license_declaration_observed",
+            "author": "Jun Seita",
+            "declared_license": "https://creativecommons.org/licenses/by/2.0/",
+            "declaration_scope": "ImageObject in page JSON-LD",
+            "observed_html_bytes": 521917,
+            "observed_html_sha256": "7a214ce70f1ef577343e8a2a94bdaef831a8ce7a317af34a03e7ced1485f088f",
+            "asset_bytes_verified": false,
+            "research_only": true,
+            "human_gold": false,
+            "release_admissible": false
+          },
+          {
+            "date": "2026-09-11",
+            "image_id": "743dbcab02a9971e",
+            "url": "https://www.flickr.com/photos/this_could_be_my_house/2801538657",
+            "status": "image_specific_license_declaration_observed",
+            "author": "Tim Crowe",
+            "declared_license": "https://creativecommons.org/licenses/by/2.0/",
+            "declaration_scope": "ImageObject in page JSON-LD",
+            "observed_html_bytes": 518012,
+            "observed_html_sha256": "6caa6b450af5f694d6c3b40c38051b87607c2adab7fe3111d72558385281e296",
+            "asset_bytes_verified": false,
+            "research_only": true,
+            "human_gold": false,
+            "release_admissible": false
+          },
+          {
+            "date": "2026-09-11",
+            "image_id": "c11ae79e8ebe5a1e",
+            "url": "https://www.flickr.com/photos/vialbost/17431140924",
+            "status": "image_specific_license_declaration_observed",
+            "author": "Frédérique Voisin-Demery",
+            "declared_license": "https://creativecommons.org/licenses/by/2.0/",
+            "declaration_scope": "ImageObject in page JSON-LD",
+            "observed_html_bytes": 524344,
+            "observed_html_sha256": "cf60f45256154128209c01fe37e1ef50a1fa402a0cc93ab5c31d791a395327a9",
+            "asset_bytes_verified": false,
+            "research_only": true,
+            "human_gold": false,
+            "release_admissible": false
+          },
+          {
+            "date": "2026-09-11",
+            "image_id": "c9203457ab97042a",
+            "url": "https://www.flickr.com/photos/gingerchrismc/7361030350",
+            "status": "image_specific_license_declaration_observed",
+            "author": "gingerchrismc",
+            "declared_license": "https://creativecommons.org/licenses/by/2.0/",
+            "declaration_scope": "ImageObject in page JSON-LD",
+            "observed_html_bytes": 522416,
+            "observed_html_sha256": "95576cc8e41e271988aaa1d53a52817f8b3fd33e0946ac61a27169bfb6d57e4e",
+            "asset_bytes_verified": false,
+            "research_only": true,
+            "human_gold": false,
+            "release_admissible": false
+          }
+        ],
+        "observed_source_page": {
+          "image_id": "3bbc38b3beafe343",
+          "date": "2026-09-11",
+          "url": "https://www.flickr.com/photos/57634952@N00/2213960208",
+          "observed_html_bytes": 522675,
+          "observed_html_sha256": "e68b353e93e1dad592e61d077b2d12b1564a5677e9110819a608b50ab1933bef",
+          "declared_license": "https://creativecommons.org/licenses/by/2.0/",
+          "declaration_scope": "photo ImageObject JSON-LD and photo-license-info, not a site-wide license",
+          "asset_bytes_verified": false
+        },
+        "declared_license_counts": {"https://creativecommons.org/licenses/by/2.0/": 1210},
+        "pixels_downloaded": 0,
+        "research_only": true,
+        "human_gold": false,
+        "release_admissible": false
+      }
+    },
+    {
+      "source_id": "ava_hf_mirror",
+      "title": "AVA aesthetics subset — Hugging Face mirror",
+      "source_kind": "aesthetic_quality_reference",
+      "purpose": [
+        "weakly supervised visual-quality pretraining",
+        "calibration experiments",
+        "negative/positive candidate mining"
+      ],
+      "access": {
+        "landing_url": "https://huggingface.co/datasets/trojblue/AVA-aesthetics-10pct-min50-10bins",
+        "machine_access_url": "https://datasets-server.huggingface.co/rows?dataset=trojblue%2FAVA-aesthetics-10pct-min50-10bins&config=default&split=validation",
+        "mode": "explicit_manifest_or_bounded_api",
+        "existing_cache_hint": "external:/Users/unterlantas/Library/Application Support/SETOS/Datasets/camera-coach/research/ava/legacy-silver-4000",
+        "ingest_command": "tools/dataset/camera_source_intake.py verify-local"
+      },
+      "rights": {
+        "tier": "research_only_unresolved",
+        "status": "underlying_photo_rights_not_resolved_by_mirror",
+        "redistribution": "do_not_redistribute_raw_media_or_derivatives",
+        "required_receipts": [
+          "dataset_terms_snapshot",
+          "per_asset_rights_if_released"
+        ]
+      },
+      "labels": {
+        "provided": ["mean_score", "vote_count"],
+        "camera_coach_human_gold": false,
+        "label_use": "silver_only"
+      },
+      "admission": {
+        "allowed": ["unlabeled_pretraining", "silver_teacher_labels"],
+        "blocked": ["release_split", "Camera Coach human gold"],
+        "quarantine_reason": "Aesthetic MOS does not encode action-specific composition labels."
+      }
+    },
+    {
+      "source_id": "eva_official",
+      "title": "EVA image-aesthetic preference dataset",
+      "source_kind": "aesthetic_quality_reference",
+      "purpose": [
+        "aesthetic-quality pretraining",
+        "human-preference calibration reference"
+      ],
+      "access": {
+        "landing_url": "https://github.com/kang-gnak/eva-dataset",
+        "mode": "repository_and_declared_release_assets",
+        "ingest_command": "tools/dataset/fetch_eva.py fetch --data-root <external-root>"
+      },
+      "rights": {
+        "tier": "research_only_declared_license_verify_assets",
+        "status": "repository_declares_cc0_but_each_asset_and_archive_must_be_verified",
+        "redistribution": "only_after_license_receipt_and_asset_provenance_check",
+        "required_receipts": [
+          "repository_license_snapshot",
+          "asset_manifest_hash",
+          "per_asset_provenance"
+        ]
+      },
+      "labels": {
+        "provided": ["human_preference_votes"],
+        "silver_projection_command": "tools/dataset/build_eva_silver.py --data-root <external-root>",
+        "camera_coach_human_gold": false,
+        "label_use": "silver_or_quality_reference_only"
+      },
+      "admission": {
+        "allowed": ["unlabeled_pretraining", "silver_teacher_labels"],
+        "blocked": ["Camera Coach human gold"],
+        "quarantine_reason": "Preference votes are not action-specific framing annotations."
+      }
+    },
+    {
+      "source_id": "live_challenge_db",
+      "title": "LIVE In the Wild Image Quality Challenge Database",
+      "source_kind": "mobile_capture_quality_reference",
+      "purpose": [
+        "technical-quality hard negatives",
+        "blur/noise/exposure robustness reference",
+        "mobile-image calibration"
+      ],
+      "access": {
+        "landing_url": "https://live.ece.utexas.edu/research/ChallengeDB/index.html",
+        "mode": "research_download_with_manual_terms_check",
+        "ingest_command": "source_specific_adapter_required"
+      },
+      "rights": {
+        "tier": "research_only_public_domain_or_free_research_claim_verify_assets",
+        "status": "landing_page_claims_public_domain_or_free_research_use; preserve_a_receipt_and_verify_current_terms",
+        "redistribution": "do_not_redistribute_until_current_terms_are_recorded",
+        "required_receipts": [
+          "landing_page_terms_snapshot",
+          "asset_manifest_hash"
+        ]
+      },
+      "labels": {
+        "provided": ["human_MOS", "rating_dispersion"],
+        "camera_coach_human_gold": false,
+        "label_use": "technical_quality_reference_only"
+      },
+      "admission": {
+        "allowed": ["hard-negative_candidate_mining", "silver_teacher_labels"],
+        "blocked": ["Camera Coach action labels", "release split without per-asset receipt"],
+        "quarantine_reason": "MOS identifies perceived quality, not a safe corrective camera action."
+      }
+    },
+    {
+      "source_id": "spaq_official",
+      "title": "SPAQ smartphone photo aesthetic-quality dataset",
+      "source_kind": "smartphone_quality_reference",
+      "purpose": [
+        "device-diverse quality pretraining",
+        "brightness/color/contrast/noise/sharpness auxiliary tasks"
+      ],
+      "access": {
+        "landing_url": "https://github.com/h4nwei/SPAQ",
+        "mode": "repository_or_author_release_assets",
+        "ingest_command": "source_specific_adapter_required"
+      },
+      "rights": {
+        "tier": "research_only_rights_review",
+        "status": "dataset_access_is_available_but_current_asset_redistribution_terms_are_not_assumed",
+        "redistribution": "do_not_redistribute_raw_media_or_derivatives",
+        "required_receipts": [
+          "repository_and_dataset_terms_snapshot",
+          "asset_manifest_hash",
+          "per_asset_license_if_released"
+        ]
+      },
+      "labels": {
+        "provided": ["MOS", "brightness", "colorfulness", "contrast", "noise", "sharpness", "scene"],
+        "camera_coach_human_gold": false,
+        "label_use": "auxiliary_quality_reference_only"
+      },
+      "admission": {
+        "allowed": ["unlabeled_pretraining", "silver_teacher_labels"],
+        "blocked": ["Camera Coach human gold", "release split before rights review"],
+        "quarantine_reason": "Quality dimensions do not establish framing-action ground truth."
+      }
+    },
+    {
+      "source_id": "koniq_official",
+      "title": "KonIQ-10k in-the-wild image-quality database",
+      "source_kind": "image_quality_reference",
+      "purpose": [
+        "in-the-wild quality pretraining",
+        "MOS calibration and uncertainty analysis"
+      ],
+      "access": {
+        "landing_url": "https://database.mmsp-kn.de/koniq-10k-database.html",
+        "mode": "research_download_with_manual_terms_check",
+        "ingest_command": "source_specific_adapter_required"
+      },
+      "rights": {
+        "tier": "research_only_rights_review",
+        "status": "download_page_is_not_a_release_license; verify_asset_terms_before_any_distribution",
+        "redistribution": "do_not_redistribute_raw_media_or_derivatives",
+        "required_receipts": [
+          "dataset_page_terms_snapshot",
+          "asset_manifest_hash",
+          "per_asset_license_if_released"
+        ]
+      },
+      "labels": {
+        "provided": ["MOS", "quality_indicators"],
+        "camera_coach_human_gold": false,
+        "label_use": "quality_reference_only"
+      },
+      "admission": {
+        "allowed": ["unlabeled_pretraining", "silver_teacher_labels"],
+        "blocked": ["Camera Coach human gold", "release split before rights review"],
+        "quarantine_reason": "Generic image-quality MOS is not a corrective composition label."
+      }
+    },
+    {
+      "source_id": "wikimedia_commons_api",
+      "title": "Wikimedia Commons per-file media and license metadata",
+      "source_kind": "public_domain_or_open_cinematic_reference",
+      "purpose": [
+        "rights-first public-domain/open-license cinematic references",
+        "historical and scene-composition diversity"
+      ],
+      "access": {
+        "landing_url": "https://commons.wikimedia.org/w/api.php",
+        "metadata_documentation_url": "https://www.mediawiki.org/wiki/API:Imageinfo",
+        "machine_access": "imageinfo with extmetadata",
+        "mode": "api_query_then_per_file_download",
+        "spec_path": "datasets/camera-coach/v1/sources/wikimedia-commons-v1.json",
+        "ingest_command": "tools/dataset/fetch_commons.py fetch --spec datasets/camera-coach/v1/sources/wikimedia-commons-v1.json --data-root <external-root> --limit N [--metadata-only]",
+        "verify_command": "tools/dataset/fetch_commons.py verify-local --spec datasets/camera-coach/v1/sources/wikimedia-commons-v1.json --data-root <external-root>",
+        "ingest_status": "implemented_fixed_categories_rights_first; direct_capacity_partial_exit2; pilot_requires_category_supply"
+      },
+      "rights": {
+        "tier": "research_only_per_file_clearance",
+        "status": "license_and_author_metadata_must_be_read_from_each_file; category_membership_is_not_a_license",
+        "redistribution": "only_public_domain_or_compatible_open_license_assets_with_receipts",
+        "required_receipts": [
+          "api_response_hash",
+          "per_file_license",
+          "author_and_source_url",
+          "download_hash"
+        ]
+      },
+      "labels": {
+        "provided": ["per_file_metadata"],
+        "camera_coach_human_gold": false,
+        "label_use": "unlabeled_source_only"
+      },
+      "admission": {
+        "allowed": ["unlabeled_pretraining", "silver_teacher_labels", "release_split_after_clearance"],
+        "blocked": ["implicit_license_from_category_or_search_result"],
+        "quarantine_reason": "Missing or ambiguous per-file rights metadata."
+      }
+    },
+    {
+      "source_id": "loc_free_to_use",
+      "title": "Library of Congress Free to Use and Reuse / public-domain film references",
+      "source_kind": "public_domain_cinematic_reference",
+      "purpose": [
+        "rights-first public-domain film frames",
+        "period and composition diversity"
+      ],
+      "access": {
+        "landing_url": "https://www.loc.gov/free-to-use/",
+        "film_collection_url": "https://www.loc.gov/collections/national-film-registry/",
+        "mode": "catalog_query_then_per_item_download",
+        "ingest_command": "source_specific_adapter_required"
+      },
+      "rights": {
+        "tier": "research_only_per_item_clearance",
+        "status": "free_to_use_is_a_discovery_collection; confirm_rights_statement_on_each_item",
+        "redistribution": "only_items_with_explicit_public_domain_or_compatible_license_receipts",
+        "required_receipts": [
+          "item_rights_statement",
+          "item_url",
+          "download_hash",
+          "retrieval_timestamp"
+        ]
+      },
+      "labels": {
+        "provided": ["catalog_metadata"],
+        "camera_coach_human_gold": false,
+        "label_use": "unlabeled_source_only"
+      },
+      "admission": {
+        "allowed": ["unlabeled_pretraining", "silver_teacher_labels", "release_split_after_clearance"],
+        "blocked": ["assumed_public_domain_without_item_receipt"],
+        "quarantine_reason": "Collection-level branding does not replace item-level rights verification."
+      }
+    },
+    {
+      "source_id": "aadb_official",
+      "title": "AADB official aesthetic and composition attribute reference",
+      "source_kind": "aesthetic_attribute_reference",
+      "purpose": [
+        "research-only aesthetic/composition pretraining",
+        "auxiliary attribute calibration and uncertainty analysis"
+      ],
+      "access": {
+        "landing_url": "https://github.com/aimerykong/deepImageAestheticsAnalysis",
+        "repository": "https://github.com/aimerykong/deepImageAestheticsAnalysis",
+        "commit": "a962a1d8c313cdbec97e51381187ffbaac469b28",
+        "spec_path": "datasets/camera-coach/v1/sources/aadb-v1.json",
+        "mode": "official_GitHub_metadata_and_official_Google_Drive_archives",
+        "ingest_command": "python3 tools/dataset/fetch_aadb.py --output-root <external-aadb-root> --fetch",
+        "bootstrap_command": "python3 tools/dataset/fetch_aadb.py --output-root <external-aadb-root> --bootstrap-pins <external-proposed-pin.json>",
+        "verify_command": "python3 tools/dataset/fetch_aadb.py --output-root <external-aadb-root> --verify-local",
+        "compact_ingest_command": "python3 tools/dataset/fetch_aadb.py --output-root <external-aadb-root> --compact --fetch --warp256-archive <external-datasetImages_warp256.zip>",
+        "compact_verify_command": "python3 tools/dataset/fetch_aadb.py --output-root <external-aadb-root> --compact --verify-local",
+        "ingest_status": "implemented_fail_closed_archive_hash_gate; no bulk fetch performed in adapter review"
+      },
+      "rights": {
+        "tier": "research_only_rights_review",
+        "status": "official repository provenance does not clear underlying image or derived-model redistribution; label archive access and terms require review",
+        "raw_redistribution": "not_cleared",
+        "derived_model_redistribution": "not_cleared",
+        "required_receipts": [
+          "pinned_repository_commit",
+          "full_official_archive_size_and_sha256",
+          "terms_and_underlying_media_rights_review"
+        ]
+      },
+        "labels": {
+        "provided": [
+          "overall_aesthetic_score",
+          "interesting_content",
+          "object_emphasis",
+          "lighting",
+          "color_harmony",
+          "vivid_color",
+          "shallow_DoF",
+          "motion_blur",
+          "rule_of_thirds",
+          "balancing_element",
+          "repetition",
+          "symmetry"
+        ],
+          "camera_coach_human_gold": false,
+          "label_use": "auxiliary_aesthetic_attributes_only",
+          "preserves_original_rater_or_uncertainty_fields": true,
+          "compact_mode": "warp256 overall_aesthetic_score only; 11 attributes require the separately pinned label archive; linked source-content SHA duplicates are deduplicated before intake with train-before-test winners, and admitted count may be below 9458"
+      },
+      "boundary": {
+        "research_only": true,
+        "human_gold": false,
+        "release_admissible": false,
+        "model_redistribution_cleared": false,
+        "label_boundary": "auxiliary_aesthetic_attributes_only",
+        "never_maps_to": [
+          "issue",
+          "action",
+          "KEEP",
+          "good-frame",
+          "risk",
+          "abstention",
+          "locked holdout",
+          "release evidence"
+        ]
+      },
+      "admission": {
+        "allowed": ["unlabeled_pretraining", "silver_teacher_labels", "research_reference"],
+        "blocked": ["Camera Coach human gold", "action labels", "release split", "release evidence"],
+        "quarantine_reason": "AADB is an aesthetic/composition reference; its scores and attributes do not establish Camera Coach corrective-action ground truth or release rights."
+      }
+    },
+    {
+      "source_id": "apple_tv_press_existing",
+      "title": "Existing Apple TV Press trailer-poster still candidates",
+      "source_kind": "cinematic_composition_reference",
+      "purpose": [
+        "cinematic composition positive candidates",
+        "camera-coach visual-language reference"
+      ],
+      "access": {
+        "landing_url": "https://www.apple.com/tv-pr/",
+        "local_manifest": "docs/cameraanalysis/dataset/inbox/apple_tv_press_trailer_sources_108_157.jsonl",
+        "local_manifest_role": "provenance_reference_metadata_only",
+        "verification_rule": "materialize_media_into_external_raw_root_then_use_verify-local",
+        "mode": "source_specific_adapter_required",
+        "ingest_command": "source_specific_adapter_required"
+      },
+      "rights": {
+        "tier": "research_only_promotional_rights_unresolved",
+        "status": "official_press_origin_does_not_grant_training_or_redistribution_rights",
+        "redistribution": "do_not_redistribute_raw_media_or_derivatives",
+        "required_receipts": [
+          "source_page_snapshot",
+          "asset_hash",
+          "written_permission_or_per_asset_license_if_released"
+        ]
+      },
+      "labels": {
+        "provided": ["unlabeled_candidate_metadata"],
+        "camera_coach_human_gold": false,
+        "label_use": "candidate_only_until_review"
+      },
+      "admission": {
+        "allowed": ["research_reference", "silver_teacher_labels"],
+        "blocked": ["release_split", "Camera Coach human gold"],
+        "quarantine_reason": "Promotional stills are not rights-cleared training data and are not action labels."
+      }
+    }
+  ]
+}

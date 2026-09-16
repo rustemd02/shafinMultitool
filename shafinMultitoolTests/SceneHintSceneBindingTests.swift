@@ -113,4 +113,47 @@ final class SceneHintSceneBindingTests: XCTestCase {
             SceneHintSceneBinding.resolve(script: dangling, requestedBeatID: "beat_1", postureStable: true)
         )
     }
+
+    /// M6-010 publication path: the workspace publishes the binding from the
+    /// real persisted plan (not just the pure resolver), suppresses it while
+    /// tracking is unstable, and re-resolves the exact same entity identity
+    /// after recovery. This is the regression guard for the reviewer finding
+    /// that the published binding could go stale relative to the plan.
+    func testWorkspacePublishesBindingAndSurvivesPostureRecovery() async throws {
+        let projectName = "m6-010-binding-\(UUID().uuidString)"
+        var project = UnifiedSceneProject(name: projectName)
+        project.parsedScript = script()
+
+        let viewModel = SceneGeneratorViewModel(
+            projectName: projectName,
+            isNewProject: false,
+            persistedProject: project
+        )
+        viewModel.testingWorldMapCaptureOverride = { .success(nil) }
+        addTeardownBlock { @MainActor in
+            _ = await viewModel.teardownAndWait()
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DBService.shared.deleteUnifiedSceneProject(named: projectName) { _ in
+                    continuation.resume()
+                }
+            }
+        }
+
+        // Init recomputes from the persisted plan: first beat's real IDs.
+        let initial = try XCTUnwrap(viewModel.sceneHintBinding)
+        XCTAssertEqual(initial.beatID, "beat_1")
+        XCTAssertEqual(initial.actionID, "action_1")
+        XCTAssertEqual(initial.actorID, "actor_1")
+        XCTAssertEqual(initial.actorName, "МАРА")
+        XCTAssertEqual(initial.targetID, "object_marked_deadbeef")
+
+        // Unstable tracking suppresses honestly instead of showing a stale bind.
+        viewModel.updateSurfaceTrackingPosture(isLimited: true, reason: .insufficientFeatures)
+        XCTAssertNil(viewModel.sceneHintBinding)
+
+        // Recovery re-resolves the identical plan identity.
+        viewModel.updateSurfaceTrackingPosture(isLimited: false)
+        let recovered = try XCTUnwrap(viewModel.sceneHintBinding)
+        XCTAssertEqual(recovered, initial)
+    }
 }

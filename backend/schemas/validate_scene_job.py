@@ -102,8 +102,18 @@ def main() -> int:
         (canonical, Resource.from_contents(contract)),
     ])
     validator = jsonschema.Draft202012Validator(schema, registry=registry)
+    positives = sorted(args.fixtures.glob("job-valid-*.json"))
+    negatives = sorted(args.fixtures.glob("job-invalid-*.json"))
+    # A fixtures directory that holds neither kind validates nothing while printing
+    # the same PASS as a full run, so the counts are a precondition, not a summary.
+    if not positives or not negatives:
+        print("FAIL: fixtures are missing")
+        print(f"  {args.fixtures}: {len(positives)} positive, {len(negatives)} negative")
+        print("  a run needs at least one of each: positives prove the schema accepts a "
+              "well-formed envelope, negatives prove it rejects a malformed one")
+        return 1
     failures: list[str] = []
-    for path in sorted(args.fixtures.glob("job-valid-*.json")):
+    for path in positives:
         doc = load_json(path)
         schema_errors = list(validator.iter_errors(doc))
         sem_errors = semantic_check(doc) if isinstance(doc, dict) else ["not an object"]
@@ -113,7 +123,7 @@ def main() -> int:
                 failures.append(f"  schema: {e.message[:160]}")
             for e in sem_errors[:4]:
                 failures.append(f"  semantic: {e}")
-    for path in sorted(args.fixtures.glob("job-invalid-*.json")):
+    for path in negatives:
         doc = load_json(path)
         schema_errors = list(validator.iter_errors(doc))
         sem_errors = semantic_check(doc) if isinstance(doc, dict) else ["not an object"]
@@ -124,9 +134,7 @@ def main() -> int:
         for f in failures:
             print(f)
         return 1
-    positives = len(list(args.fixtures.glob("job-valid-*.json")))
-    negatives = len(list(args.fixtures.glob("job-invalid-*.json")))
-    print(f"PASS: {positives} positive + {negatives} negative job fixtures")
+    print(f"PASS: {len(positives)} positive + {len(negatives)} negative job fixtures")
     return 0
 
 

@@ -37,20 +37,35 @@ enum VisualSemanticEvidenceProviderFactory {
     }
 }
 
+/// Typed provider failures so the coordinator can keep the local live path
+/// running and never resend data as a fallback.
+enum VisualSemanticEvidenceProviderError: Error, Equatable, Sendable {
+    case offline
+    case unavailable
+    case refused(reason: String)
+    case invalidResponse
+}
+
 enum VisualEvidenceCoordinatorResult: Sendable {
     case skipped(reason: String, diagnostics: VLMEvidenceDiagnostics)
     case accepted(validation: VLMEvidenceValidationResult, diagnostics: VLMEvidenceDiagnostics)
     case rejected(violations: [VLMEvidenceViolation], diagnostics: VLMEvidenceDiagnostics)
+    case refused(reason: String, diagnostics: VLMEvidenceDiagnostics)
+    case unavailable(reason: String, diagnostics: VLMEvidenceDiagnostics)
     case failed(reason: String, diagnostics: VLMEvidenceDiagnostics)
 }
 
 actor VisualSemanticEvidenceCoordinator {
     private let provider: VisualSemanticEvidenceProvider?
     private let timeoutMs: Int
+    private let isConsentGranted: @Sendable () -> Bool
 
-    init(provider: VisualSemanticEvidenceProvider?, timeoutMs: Int = 900) {
+    init(provider: VisualSemanticEvidenceProvider?,
+         timeoutMs: Int = 900,
+         isConsentGranted: @escaping @Sendable () -> Bool = { true }) {
         self.provider = provider
         self.timeoutMs = min(1_500, max(100, timeoutMs))
+        self.isConsentGranted = isConsentGranted
     }
 
     func fetchEvidence(request: VLMVisualEvidenceRequest) async -> VisualEvidenceCoordinatorResult {
@@ -95,6 +110,30 @@ actor VisualSemanticEvidenceCoordinator {
             )
         }
 
+        // Detailed cloud analysis is only allowed on an explicit user request.
+        // A remote-capable provider is never contacted for an ambient quality
+        // gate, and no image is sent silently.
+        if provider.capabilities.supportsRemote, request.trigger != .explicitUserRequest {
+            return .skipped(
+                reason: "explicit_request_required",
+                diagnostics: makeDiagnostics(
+                    privacyTier: request.privacyTier,
+                    fallbackReason: "explicit_request_required"
+                )
+            )
+        }
+
+        // Revoked consent stops visual egress before any data leaves.
+        if request.privacyTier == .redactedVisual, !isConsentGranted() {
+            return .skipped(
+                reason: "consent_revoked",
+                diagnostics: makeDiagnostics(
+                    privacyTier: request.privacyTier,
+                    fallbackReason: "consent_revoked"
+                )
+            )
+        }
+
         let startedAt = Date()
         let callResult = await callProviderWithTimeout(provider: provider, request: request)
         let latencyMs = max(0, Int(Date().timeIntervalSince(startedAt) * 1000.0))
@@ -118,6 +157,33 @@ actor VisualSemanticEvidenceCoordinator {
                     fallbackReason: "timeout"
                 )
             )
+        case .offline:
+            return .failed(
+                reason: "offline",
+                diagnostics: makeDiagnostics(
+                    privacyTier: request.privacyTier,
+                    latencyMs: latencyMs,
+                    fallbackReason: "offline"
+                )
+            )
+        case .providerRefused(let reason):
+            return .refused(
+                reason: reason,
+                diagnostics: makeDiagnostics(
+                    privacyTier: request.privacyTier,
+                    latencyMs: latencyMs,
+                    fallbackReason: reason
+                )
+            )
+        case .providerUnavailable(let reason):
+            return .unavailable(
+                reason: reason,
+                diagnostics: makeDiagnostics(
+                    privacyTier: request.privacyTier,
+                    latencyMs: latencyMs,
+                    fallbackReason: reason
+                )
+            )
         case .failed:
             return .failed(
                 reason: "runtime_error",
@@ -128,6 +194,31 @@ actor VisualSemanticEvidenceCoordinator {
                 )
             )
         case .success(let response):
+            // A provider refusal/unavailability is a typed terminal state. The
+            // coordinator does not retry and does not send more data.
+            switch response.status {
+            case .refused:
+                return .refused(
+                    reason: response.diagnostics.fallbackReason ?? "provider_refused",
+                    diagnostics: mergedDiagnostics(
+                        base: response.diagnostics,
+                        latencyMs: latencyMs,
+                        fallbackReason: response.diagnostics.fallbackReason ?? "provider_refused"
+                    )
+                )
+            case .unavailable:
+                return .unavailable(
+                    reason: response.diagnostics.fallbackReason ?? "provider_unavailable",
+                    diagnostics: mergedDiagnostics(
+                        base: response.diagnostics,
+                        latencyMs: latencyMs,
+                        fallbackReason: response.diagnostics.fallbackReason ?? "provider_unavailable"
+                    )
+                )
+            case .completed:
+                break
+            }
+
             let validation = response.validate(against: request)
             let diagnostics = mergedDiagnostics(
                 base: response.diagnostics,
@@ -147,6 +238,9 @@ actor VisualSemanticEvidenceCoordinator {
         case failed
         case cancelled
         case timedOut
+        case offline
+        case providerRefused(reason: String)
+        case providerUnavailable(reason: String)
     }
 
     private func callProviderWithTimeout(provider: VisualSemanticEvidenceProvider,
@@ -162,6 +256,13 @@ actor VisualSemanticEvidenceCoordinator {
                 do {
                     let response = try await provider.fetchVisualEvidence(request: request)
                     return .success(response)
+                } catch let error as VisualSemanticEvidenceProviderError {
+                    switch error {
+                    case .offline: return .offline
+                    case .unavailable: return .providerUnavailable(reason: "provider_unavailable")
+                    case .refused(let reason): return .providerRefused(reason: reason)
+                    case .invalidResponse: return .failed
+                    }
                 } catch {
                     return .failed
                 }
@@ -210,10 +311,6 @@ actor VisualSemanticEvidenceCoordinator {
     }
 }
 
-private enum RemoteVLMVisualEvidenceProviderError: Error {
-    case invalidResponse
-}
-
 actor RemoteVLMVisualEvidenceProvider: VisualSemanticEvidenceProvider {
     let providerId = "remote_vlm_visual_evidence_v1"
     let capabilities = VisualSemanticEvidenceCapabilities(
@@ -257,12 +354,38 @@ actor RemoteVLMVisualEvidenceProvider: VisualSemanticEvidenceProvider {
         }
         urlRequest.httpBody = try encoder.encode(request)
 
-        let (data, response) = try await session.data(for: urlRequest)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200..<300).contains(httpResponse.statusCode) else {
-            throw RemoteVLMVisualEvidenceProviderError.invalidResponse
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: urlRequest)
+        } catch let urlError as URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost,
+                 .cannotFindHost, .dataNotAllowed, .internationalRoamingOff:
+                throw VisualSemanticEvidenceProviderError.offline
+            default:
+                throw VisualSemanticEvidenceProviderError.unavailable
+            }
+        } catch {
+            throw VisualSemanticEvidenceProviderError.unavailable
         }
-        return try decoder.decode(VLMVisualEvidenceResponse.self, from: data)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw VisualSemanticEvidenceProviderError.invalidResponse
+        }
+        switch httpResponse.statusCode {
+        case 200..<300:
+            break
+        case 429, 500...599:
+            throw VisualSemanticEvidenceProviderError.unavailable
+        default:
+            throw VisualSemanticEvidenceProviderError.refused(reason: "http_\(httpResponse.statusCode)")
+        }
+        do {
+            return try decoder.decode(VLMVisualEvidenceResponse.self, from: data)
+        } catch {
+            throw VisualSemanticEvidenceProviderError.invalidResponse
+        }
     }
 }
 
@@ -276,15 +399,22 @@ actor MockVLMVisualEvidenceProvider: VisualSemanticEvidenceProvider {
 
     private let fixedResponse: VLMVisualEvidenceResponse?
     private let sleepMs: Int
+    private let thrownError: VisualSemanticEvidenceProviderError?
 
-    init(fixedResponse: VLMVisualEvidenceResponse? = nil, sleepMs: Int = 0) {
+    init(fixedResponse: VLMVisualEvidenceResponse? = nil,
+         sleepMs: Int = 0,
+         thrownError: VisualSemanticEvidenceProviderError? = nil) {
         self.fixedResponse = fixedResponse
         self.sleepMs = max(0, sleepMs)
+        self.thrownError = thrownError
     }
 
     func fetchVisualEvidence(request: VLMVisualEvidenceRequest) async throws -> VLMVisualEvidenceResponse {
         if sleepMs > 0 {
             try await Task.sleep(nanoseconds: UInt64(sleepMs) * 1_000_000)
+        }
+        if let thrownError {
+            throw thrownError
         }
 
         if let fixedResponse {

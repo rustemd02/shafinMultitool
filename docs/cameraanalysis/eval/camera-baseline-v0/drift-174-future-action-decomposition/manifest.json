@@ -1,0 +1,17 @@
+{
+  "artifacts": [
+    {
+      "bytes": 4896,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-future-action-decomposition/future-action-decomposition.json",
+      "sha256": "d20c75b7366993266becb28c4548e9bd86da2b1a35e6b64897355b048279e826"
+    }
+  ],
+  "captured_at": "2026-09-13T03:10:00+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Failure decomposition and negative decision only; no release measurement.",
+  "lane_id": "camera-label-drift-174-future-action-decomposition",
+  "purpose": "Attribute the 8 missing_future_action failures to signal-limited detection versus label contradiction and decide whether any class admits a deterministic fix.",
+  "schema_version": 1,
+  "source_rows": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/scored/case_results.jsonl (pinned by its own manifest)",
+  "source_change": "none: no Swift source changed, so the last control run (phase A 18/17/1, phase B 177/142/35) covers the current source.",
+  "status": "failure_decomposition_negative_decision_research_only"
+}

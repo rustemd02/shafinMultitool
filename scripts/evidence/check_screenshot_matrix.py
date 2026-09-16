@@ -13,6 +13,10 @@ for path in Path('shafinMultitoolUITests').glob('*.swift'):
         names += re.findall(r'attachment\.name\s*=\s*"([^"]+)"', line)
         names += re.findall(r'named:\s*"([^"]+)"', line)
 print(f"SCREENSHOT MATRIX: {len(names)} named attachments")
+if not names:
+    print("SCREENSHOT MATRIX FAIL: 0 named attachments were found — nothing was checked for "
+          "orientation, locale or duplication")
+    sys.exit(1)
 issues = []
 seen = set()
 for name in names:

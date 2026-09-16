@@ -117,6 +117,21 @@ struct CameraPreviewRegionMapper {
         guard !converted.isNull, !converted.isEmpty else { return nil }
         return converted
     }
+
+    /// CC-O02: inverse of the region mapping for a single tap point. The
+    /// probe rect keeps the same converter seam (orientation, mirroring and
+    /// aspect-fill stay owned by the preview layer); the scene point undoes
+    /// the upper-left metadata y-flip.
+    static func scenePoint(
+        forLayerPoint point: CGPoint,
+        using converter: (CGRect) -> CGRect
+    ) -> CGPoint? {
+        let probe = CGRect(x: point.x - 0.5, y: point.y - 0.5, width: 1, height: 1)
+        let converted = converter(probe)
+        guard !converted.isNull, !converted.isEmpty,
+              converted.midX.isFinite, converted.midY.isFinite else { return nil }
+        return CGPoint(x: converted.midX, y: 1.0 - converted.midY)
+    }
 }
 
 final class CameraPreviewTransformStore: ObservableObject {
@@ -143,6 +158,7 @@ struct CameraPreview: UIViewRepresentable {
     var subjectRegions: [NormalizedRect] = []
     var correctiveTargetRegion: NormalizedRect?
     var transformStore: CameraPreviewTransformStore?
+    var onSceneTap: ((Double, Double) -> Void)?
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
@@ -152,6 +168,8 @@ struct CameraPreview: UIViewRepresentable {
         view.subjectRegions = subjectRegions
         view.correctiveTargetRegion = correctiveTargetRegion
         view.transformStore = transformStore
+        view.onSceneTap = onSceneTap
+        view.setUpSceneTapRecognitionIfNeeded()
         return view
     }
 
@@ -171,6 +189,7 @@ struct CameraPreview: UIViewRepresentable {
         uiView.subjectRegions = subjectRegions
         uiView.correctiveTargetRegion = correctiveTargetRegion
         uiView.transformStore = transformStore
+        uiView.onSceneTap = onSceneTap
         uiView.updateOrientation()
         uiView.updateMappedRegions()
     }
@@ -181,6 +200,12 @@ final class PreviewView: UIView {
 
     weak var cameraManager: CameraManager?
     weak var transformStore: CameraPreviewTransformStore?
+    /// CC-O02: invoked with the scene-space point of a single tap on the live
+    /// preview. The layer owns the inverse conversion, so orientation,
+    /// mirroring and aspect-fill are handled by the same seam as region
+    /// mapping. Coordinates are upper-left normalized scene space.
+    var onSceneTap: ((Double, Double) -> Void)?
+    private var sceneTapRecognizer: UITapGestureRecognizer?
     var subjectRegions: [NormalizedRect] = [] {
         didSet { setNeedsLayout() }
     }
@@ -208,6 +233,32 @@ final class PreviewView: UIView {
         lastOrientation = nil
         hasPublishedPreviewGeometry = false
         lastPublishedPreviewGeometry = nil
+    }
+
+    /// Installs the single-tap recognizer once. A double tap also reaches
+    /// the DEBUG debug-mode toggle above this view: both fire, and the tap
+    /// only names a target for the gate's freshness window.
+    func setUpSceneTapRecognitionIfNeeded() {
+        guard sceneTapRecognizer == nil else { return }
+        let recognizer = UITapGestureRecognizer(
+            target: self,
+            action: #selector(handleSceneTapGesture(_:))
+        )
+        recognizer.cancelsTouchesInView = false
+        addGestureRecognizer(recognizer)
+        sceneTapRecognizer = recognizer
+    }
+
+    @objc private func handleSceneTapGesture(_ recognizer: UITapGestureRecognizer) {
+        guard let onSceneTap else { return }
+        let point = recognizer.location(in: self)
+        guard let scene = CameraPreviewRegionMapper.scenePoint(
+            forLayerPoint: point,
+            using: { [weak self] probe in
+                self?.videoPreviewLayer.metadataOutputRectConverted(fromLayerRect: probe) ?? .null
+            }
+        ) else { return }
+        onSceneTap(Double(scene.x), Double(scene.y))
     }
 
     var videoPreviewLayer: AVCaptureVideoPreviewLayer {

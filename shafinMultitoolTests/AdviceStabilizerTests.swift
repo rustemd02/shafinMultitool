@@ -29,16 +29,29 @@ final class AdviceStabilizerTests: XCTestCase {
 
     private func decision(_ kind: CameraCoachDecisionV2,
                           action: String? = nil,
-                          frame: Int = 0) -> CameraPlannerDecision {
+                          frame: Int = 0,
+                          targetIdentity: SubjectTrackIdentity? = nil) -> CameraPlannerDecision {
         CameraPlannerDecision(
             decision: kind,
             actionID: action,
             frameID: "f\(frame)",
             calibratedProbability: 0.9,
             targetPoint: action != nil ? (0.5, 0.5) : nil,
-            blockReason: nil
+            blockReason: nil,
+            targetIdentity: targetIdentity
         )
     }
+
+    private let targetA = SubjectTrackIdentity(
+        trackID: "target-a",
+        firstSeenFrameID: "f-a",
+        generation: 7
+    )
+    private let targetB = SubjectTrackIdentity(
+        trackID: "target-b",
+        firstSeenFrameID: "f-b",
+        generation: 7
+    )
 
     private func stabilizer(clock: @escaping () -> Date,
                             cooldown: TimeInterval = 3.0,
@@ -77,6 +90,62 @@ final class AdviceStabilizerTests: XCTestCase {
         XCTAssertEqual(refreshed?.actionID, "a")
         XCTAssertEqual(refreshed?.frameID, "f99")
         XCTAssertEqual(stabilizer.currentAdvice?.frameID, "f99")
+    }
+
+    func testSameTargetIdentityRefreshesCurrentFrameProvenance() {
+        let clock = ScriptedClock()
+        var stabilizer = stabilizer(clock: { clock.tick() })
+
+        for frame in 0..<3 {
+            _ = stabilizer.observe(decision(
+                .correct,
+                action: "a",
+                frame: frame,
+                targetIdentity: targetA
+            ))
+        }
+
+        let refreshed = stabilizer.observe(decision(
+            .correct,
+            action: "a",
+            frame: 99,
+            targetIdentity: targetA
+        ))
+        XCTAssertEqual(refreshed?.frameID, "f99")
+        XCTAssertEqual(refreshed?.targetIdentity, targetA)
+    }
+
+    func testPendingTargetChangeResetsHysteresis() {
+        let clock = ScriptedClock()
+        var stabilizer = stabilizer(clock: { clock.tick() })
+
+        _ = stabilizer.observe(decision(.correct, action: "a", frame: 0, targetIdentity: targetA))
+        _ = stabilizer.observe(decision(.correct, action: "a", frame: 1, targetIdentity: targetA))
+        XCTAssertNil(stabilizer.currentAdvice)
+
+        _ = stabilizer.observe(decision(.correct, action: "a", frame: 2, targetIdentity: targetB))
+        _ = stabilizer.observe(decision(.correct, action: "a", frame: 3, targetIdentity: targetB))
+        XCTAssertNil(stabilizer.currentAdvice)
+        let published = stabilizer.observe(decision(.correct, action: "a", frame: 4, targetIdentity: targetB))
+        XCTAssertEqual(published?.targetIdentity, targetB)
+    }
+
+    func testPublishedTargetChangeRemovesOldAdviceImmediatelyAndRequiresFreshDwell() {
+        let clock = ScriptedClock()
+        var stabilizer = stabilizer(clock: { clock.tick() }, cooldown: 60.0)
+
+        for frame in 0..<3 {
+            _ = stabilizer.observe(decision(.correct, action: "a", frame: frame, targetIdentity: targetA))
+        }
+        XCTAssertEqual(stabilizer.currentAdvice?.targetIdentity, targetA)
+
+        XCTAssertNil(stabilizer.observe(decision(.correct, action: "a", frame: 3, targetIdentity: targetB)))
+        XCTAssertNil(stabilizer.currentAdvice)
+        XCTAssertNil(stabilizer.observe(decision(.correct, action: "a", frame: 4, targetIdentity: targetB)))
+        XCTAssertEqual(
+            stabilizer.observe(decision(.correct, action: "a", frame: 5, targetIdentity: targetB))?.targetIdentity,
+            targetB
+        )
     }
 
     func testNonCorrectionDecisionPublishesImmediately() {
@@ -190,6 +259,23 @@ final class AdviceStabilizerTests: XCTestCase {
         XCTAssertEqual(stabilizer.currentAdvice?.actionID, "b")
     }
 
+    func testInvalidationClearsPendingTargetState() {
+        let clock = ScriptedClock()
+        var stabilizer = stabilizer(clock: { clock.tick() }, cooldown: 60.0)
+
+        _ = stabilizer.observe(decision(.correct, action: "a", frame: 0, targetIdentity: targetA))
+        _ = stabilizer.observe(decision(.correct, action: "a", frame: 1, targetIdentity: targetA))
+        _ = stabilizer.invalidate(frameID: "fCut", reason: "scene_cut")
+
+        _ = stabilizer.observe(decision(.correct, action: "a", frame: 2, targetIdentity: targetA))
+        _ = stabilizer.observe(decision(.correct, action: "a", frame: 3, targetIdentity: targetA))
+        XCTAssertNil(stabilizer.currentAdvice)
+        XCTAssertEqual(
+            stabilizer.observe(decision(.correct, action: "a", frame: 4, targetIdentity: targetA))?.targetIdentity,
+            targetA
+        )
+    }
+
     // MARK: - Scene-change sequence (end to end)
 
     func testSceneChangeSequenceMatchesSpec() {
@@ -219,5 +305,97 @@ final class AdviceStabilizerTests: XCTestCase {
         // Scene cut: immediate removal.
         _ = stabilizer.invalidate(frameID: "fCut", reason: "scene_cut")
         XCTAssertNil(stabilizer.currentAdvice)
+    }
+
+    // MARK: - C05 user dismissal (cancel is not a quality verdict)
+
+    func testDismissedAdviceIsNotImmediatelyReturned() {
+        let clock = ScriptedClock()
+        var now = { clock.tick() }
+        var stabilizer = stabilizer(clock: { now() }, cooldown: 3.0, hysteresis: 3)
+
+        for _ in 0..<3 {
+            _ = stabilizer.observe(decision(.correct, action: "a", frame: 0))
+            _ = now()
+        }
+        XCTAssertEqual(stabilizer.currentAdvice?.actionID, "a")
+
+        // User declines the advice: it is removed and suppressed.
+        _ = stabilizer.dismiss(actionID: "a", targetIdentity: nil)
+        XCTAssertNil(stabilizer.currentAdvice)
+        XCTAssertTrue(stabilizer.isDismissed)
+
+        // Even with sustained identical evidence, the same unfit advice does
+        // not come straight back.
+        for frame in 3..<8 {
+            XCTAssertNil(
+                stabilizer.observe(decision(.correct, action: "a", frame: frame)),
+                "dismissed advice must not be returned without a new analysis"
+            )
+            _ = now()
+        }
+        XCTAssertNil(stabilizer.currentAdvice)
+    }
+
+    func testMateriallyDifferentAdviceIsAllowedAfterDismissal() {
+        let clock = ScriptedClock()
+        var now = { clock.tick() }
+        var stabilizer = stabilizer(clock: { now() }, cooldown: 3.0, hysteresis: 3)
+
+        for _ in 0..<3 {
+            _ = stabilizer.observe(decision(.correct, action: "a", frame: 0))
+            _ = now()
+        }
+        _ = stabilizer.dismiss(actionID: "a", targetIdentity: nil)
+
+        var published: StabilizedAdvice?
+        for frame in 3..<6 {
+            published = stabilizer.observe(decision(.correct, action: "b", frame: frame))
+            _ = now()
+        }
+        XCTAssertEqual(published?.actionID, "b")
+        XCTAssertFalse(stabilizer.isDismissed)
+    }
+
+    func testInvalidateClearsDismissalForNewAnalysis() {
+        let clock = ScriptedClock()
+        var now = { clock.tick() }
+        var stabilizer = stabilizer(clock: { now() }, cooldown: 3.0, hysteresis: 3)
+
+        for _ in 0..<3 {
+            _ = stabilizer.observe(decision(.correct, action: "a", frame: 0))
+            _ = now()
+        }
+        _ = stabilizer.dismiss(actionID: "a", targetIdentity: nil)
+        XCTAssertTrue(stabilizer.isDismissed)
+
+        _ = stabilizer.invalidate(frameID: "sceneCut", reason: "scene_cut")
+        XCTAssertFalse(stabilizer.isDismissed)
+
+        var published: StabilizedAdvice?
+        for frame in 3..<6 {
+            published = stabilizer.observe(decision(.correct, action: "a", frame: frame))
+            _ = now()
+        }
+        XCTAssertEqual(published?.actionID, "a", "a new analysis may legitimately re-propose the action")
+    }
+
+    func testDismissalIsScopedToTargetNotTheWholeSession() {
+        let clock = ScriptedClock()
+        var now = { clock.tick() }
+        var stabilizer = stabilizer(clock: { now() }, cooldown: 3.0, hysteresis: 3)
+
+        for _ in 0..<3 {
+            _ = stabilizer.observe(decision(.correct, action: "a", frame: 0, targetIdentity: targetA))
+            _ = now()
+        }
+        _ = stabilizer.dismiss(actionID: "a", targetIdentity: targetA)
+
+        var published: StabilizedAdvice?
+        for frame in 3..<6 {
+            published = stabilizer.observe(decision(.correct, action: "a", frame: frame, targetIdentity: targetB))
+            _ = now()
+        }
+        XCTAssertEqual(published?.targetIdentity, targetB)
     }
 }

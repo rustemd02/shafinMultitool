@@ -1,42 +1,27 @@
 #!/usr/bin/env python3
-"""Request limits/redaction reference validator (M12-004).
-
-Fail-closed reference implementation of the backend request gate: the
-accepted Scene payload is limited to UTF-8 screenplay text (<=64 KiB),
-locale, marked-object identifiers/names, constraints, and
-client/build/schema metadata. Camera frames, audio, contacts, device
-advertising IDs, and arbitrary file uploads are rejected.
-
-The Swift client builder (SceneCreateJobRequestBuilder, same task) is
-constrained by construction to this allowlist; this module is the
-auditable reference the backend must enforce identically.
-"""
+"""Fail-closed admission for the Scene create-job request."""
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
+import re
 from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 
 MAX_TEXT_BYTES = 64 * 1024
-MAX_TEXT_CHARS = 4000
-MAX_MARKED_OBJECTS = 32
-MAX_SCENES = 8
-ALLOWED_LOCALES = {"ru", "en"}
-ALLOWED_TOP_FIELDS = frozenset({
-    "request_id", "client_build", "schema_version", "locale",
-    "script_text", "marked_objects", "constraints", "previous_job_id",
-    "request_hash", "schema_version_backend", "model_version",
-    "prompt_version", "provider_name", "provider_version",
-})
-ALLOWED_MARKED_FIELDS = frozenset({"canonical_id", "name"})
-ALLOWED_CONSTRAINT_FIELDS = frozenset({"maximum_scenes"})
-FORBIDDEN_FIELD_HINTS = (
-    "frame", "pixel", "image", "photo", "video", "audio", "voice",
-    "contact", "addressbook", "idfa", "advertising", "file", "upload",
-    "blob", "base64", "gps", "location_history",
-)
+OPENAPI_SCHEMA_PATH = Path(__file__).with_name("openapi-scene-v1.yaml")
+
+_INVALID_PAYLOAD = "payload contains invalid JSON values"
+_SCHEMA_UNAVAILABLE = "request schema unavailable"
+_SCHEMA_MISMATCH = "payload does not match request schema"
+_TEXT_TOO_LARGE = f"script_text exceeds {MAX_TEXT_BYTES} UTF-8 bytes"
+_HASH_MISMATCH = "request_hash does not match canonical payload"
+_ANSWER_EMPTY = "answer carries neither selected_option_id nor free_text"
 
 
 @dataclass(frozen=True)
@@ -45,64 +30,174 @@ class RequestValidation:
     reasons: tuple[str, ...] = field(default_factory=tuple)
 
 
-def _forbidden_hint(name: str) -> bool:
-    lowered = name.lower()
-    return any(h in lowered for h in FORBIDDEN_FIELD_HINTS)
+@lru_cache(maxsize=4)
+def _load_validator(schema_path: str, component_name: str = "CreateJobRequest") -> Any:
+    """Load a frozen request schema component into a local Draft 2020-12 root."""
+    import jsonschema
+    import yaml
+    from referencing import Registry, Resource
+
+    document = yaml.safe_load(Path(schema_path).read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        raise ValueError("invalid OpenAPI document")
+    components = document.get("components")
+    if not isinstance(components, dict):
+        raise ValueError("missing components")
+    schemas = components.get("schemas")
+    if not isinstance(schemas, dict):
+        raise ValueError("missing schemas")
+    request_schema = schemas.get(component_name)
+    if not isinstance(request_schema, dict):
+        raise ValueError("missing request schema")
+
+    # Validate the actual request component and every local component before
+    # wrapping them. The OpenAPI document is not itself JSON Schema.
+    for schema in schemas.values():
+        if not isinstance(schema, dict):
+            raise ValueError("invalid component schema")
+        jsonschema.Draft202012Validator.check_schema(schema)
+
+    # Keep the actual request component and its local
+    # #/components/schemas references in a small Draft 2020-12 root.
+    root = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://set-os.local/schemas/scene-request-admission.json",
+        "$ref": f"#/components/schemas/{component_name}",
+        "components": {"schemas": schemas},
+    }
+    jsonschema.Draft202012Validator.check_schema(root)
+    registry = Registry().with_resource(root["$id"], Resource.from_contents(root))
+    resolver = registry.resolver(root["$id"])
+    pending = [root]
+    seen: set[int] = set()
+    while pending:
+        node = pending.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        if isinstance(node, dict):
+            if "$ref" in node:
+                resolver.lookup(node["$ref"])
+            pending.extend(node.values())
+        elif isinstance(node, list):
+            pending.extend(node)
+    return jsonschema.Draft202012Validator(
+        root,
+        format_checker=jsonschema.FormatChecker(),
+        registry=registry,
+    )
+
+
+def _validator() -> Any | None:
+    try:
+        return _load_validator(str(Path(OPENAPI_SCHEMA_PATH)))
+    except Exception:
+        return None
+
+
+def _clarification_validator() -> Any | None:
+    try:
+        return _load_validator(
+            str(Path(OPENAPI_SCHEMA_PATH)), component_name="ClarificationAnswer"
+        )
+    except Exception:
+        return None
+
+
+def _is_json_value(value: Any, active: set[int] | None = None) -> bool:
+    """Reject Python values that cannot be represented by JSON safely."""
+    if value is None or type(value) is bool:
+        return True
+    if type(value) is int:
+        return True
+    if type(value) is float:
+        return math.isfinite(value)
+    if type(value) is str:
+        return not any(0xD800 <= ord(char) <= 0xDFFF for char in value)
+    if type(value) not in (list, dict):
+        return False
+
+    active = set() if active is None else active
+    identity = id(value)
+    if identity in active:
+        return False
+    active.add(identity)
+    try:
+        if type(value) is list:
+            return all(_is_json_value(item, active) for item in value)
+        return all(
+            type(key) is str
+            and _is_json_value(key, active)
+            and _is_json_value(item, active)
+            for key, item in value.items()
+        )
+    finally:
+        active.remove(identity)
 
 
 def validate_scene_request(payload: Any) -> RequestValidation:
     """Validate a decoded create-job request body. Never raises."""
-    if not isinstance(payload, dict):
-        return RequestValidation(False, ("payload must be an object",))
-    unknown = sorted(set(payload) - ALLOWED_TOP_FIELDS)
-    if unknown:
-        flagged = [f for f in unknown if _forbidden_hint(f)]
-        if flagged:
-            return RequestValidation(
-                False, (f"forbidden media/personal-data fields: {','.join(sorted(flagged))}",)
-            )
-        return RequestValidation(False, (f"unknown fields: {','.join(unknown)}",))
-    for key in payload:
-        if _forbidden_hint(key):
-            return RequestValidation(False, (f"forbidden field: {key}",))
-    text = payload.get("script_text")
-    if not isinstance(text, str) or not text:
-        return RequestValidation(False, ("script_text must be non-empty text",))
-    if len(text) > MAX_TEXT_CHARS:
-        return RequestValidation(False, (f"script_text exceeds {MAX_TEXT_CHARS} chars",))
-    if len(text.encode("utf-8")) > MAX_TEXT_BYTES:
-        return RequestValidation(False, (f"script_text exceeds {MAX_TEXT_BYTES} UTF-8 bytes",))
-    if payload.get("locale") not in ALLOWED_LOCALES:
-        return RequestValidation(False, ("locale must be ru or en",))
-    marked = payload.get("marked_objects", [])
-    if not isinstance(marked, list) or len(marked) > MAX_MARKED_OBJECTS:
-        return RequestValidation(False, (f"marked_objects must be a list ≤{MAX_MARKED_OBJECTS}",))
-    for entry in marked:
-        if not isinstance(entry, dict):
-            return RequestValidation(False, ("marked_objects entries must be objects",))
-        unknown_m = sorted(set(entry) - ALLOWED_MARKED_FIELDS)
-        if unknown_m:
-            return RequestValidation(False, (f"marked_objects unknown fields: {','.join(unknown_m)}",))
-        cid = entry.get("canonical_id")
-        if not isinstance(cid, str) or not cid or len(cid) > 128:
-            return RequestValidation(False, ("marked_objects canonical_id must be non-empty ≤128",))
-    constraints = payload.get("constraints", {})
-    if not isinstance(constraints, dict):
-        return RequestValidation(False, ("constraints must be an object",))
-    unknown_c = sorted(set(constraints) - ALLOWED_CONSTRAINT_FIELDS)
-    if unknown_c:
-        return RequestValidation(False, (f"constraints unknown fields: {','.join(unknown_c)}",))
-    max_scenes = constraints.get("maximum_scenes", 1)
-    if not isinstance(max_scenes, int) or not 1 <= max_scenes <= MAX_SCENES:
-        return RequestValidation(False, (f"maximum_scenes must be 1…{MAX_SCENES}",))
-    req_hash = payload.get("request_hash", "")
-    if not isinstance(req_hash, str) or len(req_hash) != 64 or any(
-        c not in "0123456789abcdef" for c in req_hash
-    ):
-        return RequestValidation(False, ("request_hash must be lowercase hex sha256",))
-    return RequestValidation(True, ())
+    try:
+        if not isinstance(payload, dict) or not _is_json_value(payload):
+            return RequestValidation(False, (_INVALID_PAYLOAD,))
+
+        validator = _validator()
+        if validator is None:
+            return RequestValidation(False, (_SCHEMA_UNAVAILABLE,))
+        if not validator.is_valid(payload):
+            return RequestValidation(False, (_SCHEMA_MISMATCH,))
+
+        previous_job_id = payload.get("previous_job_id")
+        if previous_job_id is not None:
+            pattern = validator.schema["components"]["schemas"]["JobId"]["pattern"]
+            if re.fullmatch(pattern, previous_job_id) is None:
+                return RequestValidation(False, (_SCHEMA_MISMATCH,))
+
+        script_text = payload["script_text"]
+        if len(script_text.encode("utf-8")) > MAX_TEXT_BYTES:
+            return RequestValidation(False, (_TEXT_TOO_LARGE,))
+
+        digest = hashlib.sha256(
+            canonical_request_json(payload).encode("utf-8")
+        ).hexdigest()
+        if digest != payload["request_hash"]:
+            return RequestValidation(False, (_HASH_MISMATCH,))
+        return RequestValidation(True)
+    except Exception:
+        return RequestValidation(False, (_INVALID_PAYLOAD,))
 
 
 def canonical_request_json(payload: dict) -> str:
-    """Canonical JSON used for request-hash computation (sorted keys, UTF-8)."""
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    """Canonical JSON with only the top-level request hash removed."""
+    projection = dict(payload)
+    projection.pop("request_hash", None)
+    return json.dumps(projection, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def validate_clarification_answer(payload: Any) -> RequestValidation:
+    """Validate a decoded clarification-answer body. Never raises.
+
+    The answer re-queues a job and its free_text/selected_option_id feed the
+    provider retry, so admission mirrors the create-job fail-closed posture:
+    schema-conformance against the frozen ClarificationAnswer component plus
+    one semantic rule the JSON schema cannot express — an answer that carries
+    neither a selected option nor free text would re-run the job with no new
+    information and loop the clarification epoch.
+    """
+    try:
+        if not isinstance(payload, dict) or not _is_json_value(payload):
+            return RequestValidation(False, (_INVALID_PAYLOAD,))
+
+        validator = _clarification_validator()
+        if validator is None:
+            return RequestValidation(False, (_SCHEMA_UNAVAILABLE,))
+        if not validator.is_valid(payload):
+            return RequestValidation(False, (_SCHEMA_MISMATCH,))
+
+        has_option = isinstance(payload.get("selected_option_id"), str)
+        has_free_text = isinstance(payload.get("free_text"), str)
+        if not has_option and not has_free_text:
+            return RequestValidation(False, (_ANSWER_EMPTY,))
+        return RequestValidation(True)
+    except Exception:
+        return RequestValidation(False, (_INVALID_PAYLOAD,))

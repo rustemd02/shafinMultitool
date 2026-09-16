@@ -1,0 +1,188 @@
+{
+  "claim_scope": "Repository-derived status only. No App Store Connect access, nothing submitted, and no claim that any gate is closed by this audit.",
+  "gates": [
+    {
+      "evidence": [
+        "Release BUILD SUCCEEDED, 0 ошибок (unsigned, generic/platform=iOS)",
+        "все production-члены компилируются в Release (исправлено в EV-REL-001)"
+      ],
+      "gate": "Стабильная законченная сборка без заглушек и скрытых зависимостей",
+      "missing": [
+        "35 expectation-тестов still-replay падают",
+        "физические camera-потоки не проверены на устройстве"
+      ],
+      "n": 1,
+      "owner": false,
+      "status": "partial"
+    },
+    {
+      "evidence": [
+        "xcodebuild Xcode 26.6",
+        "SDK ios 26.5"
+      ],
+      "gate": "Сборка актуальным требуемым Apple SDK",
+      "missing": [],
+      "n": 2,
+      "owner": false,
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        "shafinMultitool/PrivacyInfo.xcprivacy (S07 2026-09-13): UserDefaults CA92.1, SystemBootTime 35F9.1, FileTimestamp C617.1, DiskSpace E174.1",
+        "all four categories are really used: UserDefaults in 10 files, ProcessInfo.systemUptime in CameraViewModel, stat/attributesOfItem in RecordingArtifactStore/DBService/SETLibraryProductionView, volumeAvailableCapacityForImportantUsage in RecordingArtifactStore",
+        "an earlier claim that no file-timestamp or disk-space API was used was wrong and is corrected in AppPrivacyAnswers.json",
+        "scripts/validate_privacy_manifest.sh enforces exactly these four category/reason pairs and rejects wrong reasons",
+        "Pods/SnapKit/Sources/PrivacyInfo.xcprivacy ships empty tracking/collected/reason lists"
+      ],
+      "gate": "Корректный PrivacyInfo.xcprivacy и аудит Required Reason APIs/сторонних SDK",
+      "missing": [],
+      "n": 3,
+      "owner": false,
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        "usage-строки локализованы (InfoPlist.xcstrings, en+ru) и подтверждены в Release-бандле",
+        "SystemPermissionClient и ScenePhotosExportService реализуют запрос доступа (add-only для Photos)",
+        "поведение при отказе покрыто тестами"
+      ],
+      "gate": "Полный permission flow для камеры, микрофона, Speech и Photos",
+      "missing": [
+        "проверка отказов и повторного запроса на физическом устройстве"
+      ],
+      "n": 4,
+      "owner": true,
+      "status": "partial"
+    },
+    {
+      "evidence": [
+        "draft policy + support content prepared at docs/implementation/release/PrivacySupportPage.draft.md (EN/RU), derived from data-flows.md"
+      ],
+      "gate": "Privacy Policy URL и политика внутри приложения",
+      "missing": [
+        "hosted policy URL отсутствует",
+        "в приложении нет About/Settings-экрана, поэтому in-app страница ещё не подключена (нужен UI-владелец)"
+      ],
+      "n": 5,
+      "owner": true,
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "docs/implementation/release/AppPrivacyAnswers.json — ответы выведены из кода и манифеста, каждая строка со ссылкой на доказательство"
+      ],
+      "gate": "Точные App Privacy answers",
+      "missing": [
+        "подтверждение владельцем и ввод в App Store Connect"
+      ],
+      "n": 6,
+      "owner": true,
+      "status": "draft_delivered"
+    },
+    {
+      "evidence": [
+        "DETR: Apache 2.0 указана в спецификации модели; NIMA: upstream URL и лицензия в спецификации отсутствуют (зафиксировано в манифесте baseline)"
+      ],
+      "gate": "Юридическая проверка моделей, датасетов, изображений и bundled assets",
+      "missing": [
+        "провенанс и лицензия NIMA",
+        "проверка bundled assets и датасетов"
+      ],
+      "n": 7,
+      "owner": true,
+      "status": "open"
+    },
+    {
+      "evidence": [
+        "монетизация отложена до beta evidence по продуктовому плану (раздел 12)"
+      ],
+      "gate": "StoreKit 2, restore, entitlement, проверка подписки",
+      "missing": [
+        "выбор модели, реализация, restore"
+      ],
+      "n": 8,
+      "owner": true,
+      "status": "not_started"
+    },
+    {
+      "evidence": [
+        "bundle id com.vigvamcev-media.shafinMultitool, версия 1.0 (1), iOS 17.0",
+        "иконка 1024 universal, CFBundleIconName=AppIcon, в бандле отрендерены размеры",
+        "ITSAppUsesNonExemptEncryption=false подтверждён в собранном plist"
+      ],
+      "gate": "Валидные App Icon, display name, Bundle ID, версия и release-конфигурация",
+      "missing": [],
+      "n": 9,
+      "owner": false,
+      "status": "satisfied"
+    },
+    {
+      "evidence": [
+        "target shafinMultitoolUITests существует",
+        "сертификационный рецепт scripts/run_camera_certification.sh покрывает 195 тестов"
+      ],
+      "gate": "Настоящий UI-test target, CI-gate, clean Archive и Validate",
+      "missing": [
+        "clean Archive и Validate требуют distribution-identity",
+        "CI-gate как обязательный чек не настроен"
+      ],
+      "n": 10,
+      "owner": true,
+      "status": "partial"
+    },
+    {
+      "evidence": [],
+      "gate": "Проверка на физических устройствах (первый запуск, отказы, offline, запись, нагрев, память, background)",
+      "missing": [
+        "физическое устройство недоступно; симулятором не подменяется"
+      ],
+      "n": 11,
+      "owner": true,
+      "status": "blocked"
+    },
+    {
+      "evidence": [
+        "docs/implementation/release/AppStoreMetadata.draft.json (ru/en, поля с пометкой owner_decision там, где продуктовый план требует решения после beta)",
+        "docs/implementation/release/ReviewNotes.draft.md"
+      ],
+      "gate": "App Store metadata, screenshots, Support URL, review notes, demo-инструкция",
+      "missing": [
+        "Support URL и marketing URL",
+        "скриншоты после финализации потоков",
+        "имена/название и цена — решение владельца после beta"
+      ],
+      "n": 12,
+      "owner": true,
+      "status": "partial_draft_delivered"
+    },
+    {
+      "evidence": [
+        "IAP не реализован (гейт 8)"
+      ],
+      "gate": "Договоры, банковские и налоговые сведения для IAP",
+      "missing": [
+        "заполнить при включении монетизации"
+      ],
+      "n": 13,
+      "owner": true,
+      "status": "not_applicable_yet"
+    }
+  ],
+  "owner_decision_2026_09_12": {
+    "app_store_connect_record": "not now",
+    "distribution_certificate_and_profile": "later",
+    "metadata_and_screenshots": "deferred",
+    "submission": "explicit GO required"
+  },
+  "report_id": "appstore-submission-gates-2026-09-12",
+  "source_of_gates": "docs/app-store-product-plan.md раздел 13 (13 обязательных ворот перед отправкой)",
+  "status_note": "The agent-side prerequisites (ExportOptions.plist, export-compliance declaration, localized usage descriptions, Release build) are done; the remaining gates wait on the owner decisions above.",
+  "summary": {
+    "blocked_or_open": 3,
+    "not_started_or_na": 2,
+    "owner_gated": 9,
+    "partial_or_draft": 5,
+    "satisfied": 3
+  },
+  "utc": "2026-09-12T20:56:11+00:00"
+}

@@ -1,5 +1,7 @@
 import CoreGraphics
+import Foundation
 import ImageIO
+import UIKit
 
 enum SETSpacing {
     static let x1: CGFloat = 4
@@ -61,6 +63,31 @@ enum SETComponentMetric {
     static let tallyPulseMinimumOpacity: Double = 0.42
 }
 
+/// Text rendered by the live Camera Coach command band. The metric owner
+/// measures this exact content so the visible band and its geometry consumers
+/// reserve the same height for localized wrapping.
+struct SETCameraCoachRailContent: Equatable, Sendable {
+    let observation: String
+    let actionInstruction: String?
+    let explanation: String?
+    let whyLabel: String?
+    let continueLabel: String?
+
+    init(
+        observation: String,
+        actionInstruction: String? = nil,
+        explanation: String? = nil,
+        whyLabel: String? = nil,
+        continueLabel: String? = nil
+    ) {
+        self.observation = observation
+        self.actionInstruction = actionInstruction
+        self.explanation = explanation
+        self.whyLabel = whyLabel
+        self.continueLabel = continueLabel
+    }
+}
+
 /// Geometry shared by the production Camera Coach monitor. Keeping these
 /// values with the other SET tokens prevents the live surface from growing
 /// unexplained layout literals while still resolving from the actual canvas.
@@ -120,7 +147,8 @@ enum SETCameraCoachMetric {
     static func liveRailHeight(
         canvasSize: CGSize,
         isAccessibilityType: Bool,
-        isExpanded: Bool
+        isExpanded: Bool,
+        content: SETCameraCoachRailContent? = nil
     ) -> CGFloat {
         let isLandscape = canvasSize.width > canvasSize.height
         let stableHeight: CGFloat = if isLandscape {
@@ -129,14 +157,21 @@ enum SETCameraCoachMetric {
             isAccessibilityType ? liveRailPortraitAccessibilityHeight : liveRailPortraitHeight
         }
 
-        guard isExpanded else { return stableHeight }
-
         let expandedHeight: CGFloat = if isLandscape {
             liveRailExpandedLandscapeHeight
         } else {
             liveRailExpandedPortraitHeight
         }
-        return max(stableHeight, expandedHeight)
+        let profileHeight = isExpanded ? max(stableHeight, expandedHeight) : stableHeight
+        guard let content else { return profileHeight }
+        return max(
+            profileHeight,
+            measuredLiveRailHeight(
+                content: content,
+                canvasSize: canvasSize,
+                isAccessibilityType: isAccessibilityType
+            )
+        )
     }
 
     static func liveRailWidth(canvasSize: CGSize, isAccessibilityType: Bool) -> CGFloat {
@@ -147,6 +182,97 @@ enum SETCameraCoachMetric {
             isAccessibilityType ? liveRailAccessibilityPortraitWidthFraction : liveRailPortraitWidthFraction
         }
         return min(liveRailMaximumWidth, canvasSize.width * fraction)
+    }
+
+    private static func measuredLiveRailHeight(
+        content: SETCameraCoachRailContent,
+        canvasSize: CGSize,
+        isAccessibilityType: Bool
+    ) -> CGFloat {
+        let railWidth = liveRailWidth(
+            canvasSize: canvasSize,
+            isAccessibilityType: isAccessibilityType
+        )
+        let innerWidth = max(1, railWidth - commandHorizontalInset * 2)
+        let bodyFont = SETTypography.uiFont(.hudMono, size: SETTypographySize.body)
+        let commandFont = weightedFont(
+            SETTypography.uiFont(.display, size: SETTypographySize.command),
+            traits: .traitBold
+        )
+        let labelFont = weightedFont(
+            SETTypography.uiFont(.hudMono, size: SETTypographySize.label),
+            traits: .traitBold
+        )
+
+        let controlWidths = [content.whyLabel, content.continueLabel]
+            .compactMap { $0 }
+            .map { max(SETComponentMetric.minimumHitTarget, measuredTextWidth($0, font: labelFont)) }
+        let commandTextWidth = max(
+            1,
+            innerWidth
+                - controlWidths.reduce(0, +)
+                - CGFloat(controlWidths.count) * SETSpacing.x3
+        )
+
+        let observationHeight = measuredTextHeight(
+            content.observation,
+            font: bodyFont,
+            width: commandTextWidth
+        )
+        let actionHeight = measuredTextHeight(
+            content.actionInstruction,
+            font: commandFont,
+            width: commandTextWidth,
+            maximumLines: 2
+        )
+
+        let commandStackHeight = observationHeight
+            + (actionHeight > 0 ? SETSpacing.x1 + actionHeight : 0)
+        let controlsHeight = controlWidths.isEmpty ? 0 : SETComponentMetric.minimumHitTarget
+        let commandContentHeight = max(commandStackHeight, controlsHeight)
+
+        var totalHeight = commandContentHeight + commandVerticalInset * 2
+        let explanationHeight = measuredTextHeight(
+            content.explanation,
+            font: UIFont.preferredFont(forTextStyle: .body),
+            width: innerWidth
+        )
+        if explanationHeight > 0 {
+            totalHeight += SETSpacing.x2 + explanationHeight
+        }
+        return ceil(totalHeight)
+    }
+
+    private static func measuredTextHeight(
+        _ text: String?,
+        font: UIFont,
+        width: CGFloat,
+        maximumLines: Int? = nil
+    ) -> CGFloat {
+        guard let text, !text.isEmpty, width > 0 else { return 0 }
+        let bounds = (text as NSString).boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font],
+            context: nil
+        )
+        let measured = max(font.lineHeight, ceil(bounds.height))
+        guard let maximumLines else { return measured }
+        return min(measured, ceil(font.lineHeight * CGFloat(maximumLines)))
+    }
+
+    private static func measuredTextWidth(_ text: String, font: UIFont) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    private static func weightedFont(
+        _ font: UIFont,
+        traits: UIFontDescriptor.SymbolicTraits
+    ) -> UIFont {
+        guard let descriptor = font.fontDescriptor.withSymbolicTraits(traits) else {
+            return font
+        }
+        return UIFont(descriptor: descriptor, size: font.pointSize)
     }
 }
 

@@ -252,7 +252,9 @@ final class LLMParserService: LocalScenePlanProvider {
             return nil
         }
 
+#if DEBUG
         print("🤖 [LLM] Начало LLM парсинга для: '\(description)'")
+#endif
         let canonicalization = buildScenePlanCanonicalization(
             description: description,
             markedObjects: markedObjects,
@@ -284,7 +286,9 @@ final class LLMParserService: LocalScenePlanProvider {
             let elapsed = CFAbsoluteTimeGetCurrent() - attemptStart
             print("🤖 [LLM] Генерация\(attemptSuffix) заняла: \(String(format: "%.2f", elapsed)) сек")
             print("🤖 [LLM] stopReason=\(generationOutput.stopReason.rawValue), generatedTokens=\(generationOutput.generatedTokenCount)/\(generationOutput.maxTokens)")
+            #if DEBUG
             print("🤖 [LLM] Ответ модели\(attemptSuffix):\n\(generatedText)")
+            #endif
 
             // Парсим JSON из ответа
             if let planResult = parsePlanFromResponse(
@@ -1556,7 +1560,9 @@ final class LLMParserService: LocalScenePlanProvider {
         let elapsed = CFAbsoluteTimeGetCurrent() - startedAt
         print("🩹 [LLM] Semantic repair pass занял: \(String(format: "%.2f", elapsed)) сек")
         print("🩹 [LLM] stopReason=\(output.stopReason.rawValue), generatedTokens=\(output.generatedTokenCount)/\(output.maxTokens)")
+#if DEBUG
         print("🩹 [LLM] Ответ repair pass:\n\(output.text)")
+#endif
 
         guard output.stopReason != .maxTokensReached else {
             print("⚠️ [LLM] Semantic repair pass упёрся в maxTokens; считаем ответ ненадёжным")

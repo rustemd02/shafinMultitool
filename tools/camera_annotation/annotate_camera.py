@@ -11,6 +11,7 @@ overwriting an annotator's vote.
 Modes:
   vote        Append one annotator vote for one record.
   adjudicate  Append one adjudication decision (references votes).
+  hidden-qc   Append one hidden-QC check (observed answer vs the known answer).
   export      Emit the append-only store as a merged review bundle.
 
 Storage: one JSONL file (append-only). Every line is a complete
@@ -78,6 +79,8 @@ def build_vote(
     selected_subject_id: str | None,
     region_ids: list[str],
     notes: str = "",
+    assisted: bool = False,
+    assist_source: str | None = None,
 ) -> dict:
     if verdict not in VOTE_VERDICTS:
         raise AdmissionError(f"verdict must be one of {sorted(VOTE_VERDICTS)}")
@@ -85,6 +88,10 @@ def build_vote(
         raise AdmissionError(f"subject_state must be one of {sorted(VOTE_SUBJECT_STATES)}")
     if verdict == "abstain" and not notes:
         raise AdmissionError("abstain votes require a reason in notes")
+    # An assisted vote is not an independent annotator, so it has to say so: the
+    # gold gate needs independent votes and must be able to exclude these.
+    if assisted and not assist_source:
+        raise AdmissionError("assisted=true requires assist_source")
     vote: dict[str, Any] = {
         "record_type": "vote",
         "tool_id": TOOL_ID,
@@ -96,8 +103,11 @@ def build_vote(
         "selected_subject_id": selected_subject_id,
         "region_ids": list(region_ids),
         "notes": notes,
+        "assisted": bool(assisted),
         "created_at": _utc_now(),
     }
+    if assist_source:
+        vote["assist_source"] = assist_source
     if subject_state in {"ambiguous", "none", "abstain"} and selected_subject_id is not None:
         raise AdmissionError(f"subject_state={subject_state} requires selected_subject_id=null")
     check_no_candidate_leak(vote)
@@ -127,6 +137,47 @@ def build_adjudication(
         "outcome": outcome,
         "referenced_vote_ids": list(referenced_vote_ids),
         "resolved_subject_id": resolved_subject_id,
+        "notes": notes,
+        "created_at": _utc_now(),
+    }
+    check_no_candidate_leak(entry)
+    return entry
+
+
+def build_hidden_qc(
+    record_id: str,
+    annotator_id: str,
+    observed_verdict: str,
+    expected_verdict: str,
+    notes: str,
+) -> dict:
+    """Record the outcome of one hidden-QC check.
+
+    The store already allowed a `hidden_qc` record type and the export already
+    counted it, but nothing could create one: the CLI offered vote/adjudicate/export
+    only. That left §5.2's `hidden_qc` and `hidden_qc_rate` unproducible, so the only
+    way to fill the gold block was to write the numbers by hand.
+
+    The record says what the annotator answered on a seeded item and what the known
+    answer was, so agreement is a comparison rather than a claim. Which items are
+    seeded, and how often, stays with the protocol and the reviewer: this function
+    only records the check.
+    """
+    if observed_verdict not in VOTE_VERDICTS:
+        raise AdmissionError(f"observed_verdict must be one of {sorted(VOTE_VERDICTS)}")
+    if expected_verdict not in VOTE_VERDICTS:
+        raise AdmissionError(f"expected_verdict must be one of {sorted(VOTE_VERDICTS)}")
+    if not notes:
+        raise AdmissionError("a hidden-QC record requires notes describing the seeded item")
+    entry: dict[str, Any] = {
+        "record_type": "hidden_qc",
+        "tool_id": TOOL_ID,
+        "store_version": STORE_VERSION,
+        "record_id": record_id,
+        "annotator_id": annotator_id,
+        "observed_verdict": observed_verdict,
+        "expected_verdict": expected_verdict,
+        "agrees": observed_verdict == expected_verdict,
         "notes": notes,
         "created_at": _utc_now(),
     }
@@ -187,6 +238,9 @@ def main() -> int:
     vote_ap.add_argument("--selected-subject-id", default=None)
     vote_ap.add_argument("--region-ids", nargs="*", default=[])
     vote_ap.add_argument("--notes", default="")
+    vote_ap.add_argument("--assisted", action="store_true",
+                         help="the vote was formed with an AI hint; it is not an independent annotator")
+    vote_ap.add_argument("--assist-source", default=None)
 
     adj_ap = sub.add_parser("adjudicate")
     adj_ap.add_argument("--record-id", required=True)
@@ -195,6 +249,13 @@ def main() -> int:
     adj_ap.add_argument("--referenced-vote-ids", nargs="+", required=True)
     adj_ap.add_argument("--resolved-subject-id", default=None)
     adj_ap.add_argument("--notes", required=True)
+
+    qc_ap = sub.add_parser("hidden-qc")
+    qc_ap.add_argument("--record-id", required=True)
+    qc_ap.add_argument("--annotator-id", required=True)
+    qc_ap.add_argument("--observed-verdict", required=True, choices=sorted(VOTE_VERDICTS))
+    qc_ap.add_argument("--expected-verdict", required=True, choices=sorted(VOTE_VERDICTS))
+    qc_ap.add_argument("--notes", required=True)
 
     sub.add_parser("export")
     args = ap.parse_args()
@@ -209,6 +270,8 @@ def main() -> int:
                 selected_subject_id=args.selected_subject_id,
                 region_ids=args.region_ids,
                 notes=args.notes,
+                assisted=args.assisted,
+                assist_source=args.assist_source,
             )
             count = append_record(args.store, record)
             print(f"APPENDED vote line_count={count}")
@@ -224,6 +287,17 @@ def main() -> int:
             )
             count = append_record(args.store, record)
             print(f"APPENDED adjudication line_count={count}")
+            return 0
+        if args.command == "hidden-qc":
+            record = build_hidden_qc(
+                record_id=args.record_id,
+                annotator_id=args.annotator_id,
+                observed_verdict=args.observed_verdict,
+                expected_verdict=args.expected_verdict,
+                notes=args.notes,
+            )
+            count = append_record(args.store, record)
+            print(f"APPENDED hidden_qc line_count={count} agrees={record['agrees']}")
             return 0
         bundle = export_bundle(args.store)
         print(json.dumps(bundle, ensure_ascii=False, indent=1))

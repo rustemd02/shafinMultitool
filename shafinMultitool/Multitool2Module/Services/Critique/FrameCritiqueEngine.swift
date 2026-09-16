@@ -251,6 +251,9 @@ struct FrameCritiqueEngine {
         if hasReadableBackgroundLikeObjectAnchor(snapshot: snapshot, semantics: semantics) {
             raw *= 0.45
         }
+        if hasStrongSubjectIsolationEvidence(snapshot: snapshot, semantics: semantics) {
+            raw = 0
+        }
         let confidence = clamp01((0.55 * semantics.sceneTypeConfidence)
                                  + (0.45 * (snapshot.sources.detr.confidence ?? 0.0)))
         let evidence = [
@@ -388,6 +391,21 @@ struct FrameCritiqueEngine {
         )
     }
 
+
+    private func hasStrongSubjectIsolationEvidence(snapshot: FrameFeatureSnapshot,
+                                                   semantics: SceneSemanticsReport) -> Bool {
+        // Intra-engine consistency: when the strength analysis finds strong
+        // subject isolation (same score/confidence gates as the exported
+        // goodSubjectIsolation strength), the frame cannot simultaneously
+        // carry background overload/competition defects.
+        let score = clamp01((0.60 * semantics.readability.separationScore)
+                            + (0.40 * (1.0 - semantics.dominance.backgroundClutterScore)))
+        let confidence = clamp01((0.60 * semantics.primarySubject.confidence)
+                                 + (0.40 * semantics.sceneTypeConfidence))
+        return score >= Constants.strengthScoreThreshold
+            && confidence >= Constants.strengthConfidenceThreshold
+    }
+
     private func issueFrameVisuallyOverloaded(snapshot: FrameFeatureSnapshot,
                                               semantics: SceneSemanticsReport) -> IssueCandidate {
         let densityScore = clamp01(Double(snapshot.objects.totalCount) / 8.0)
@@ -399,6 +417,9 @@ struct FrameCritiqueEngine {
         }
         if hasReadableBackgroundLikeObjectAnchor(snapshot: snapshot, semantics: semantics) {
             raw *= 0.35
+        }
+        if hasStrongSubjectIsolationEvidence(snapshot: snapshot, semantics: semantics) {
+            raw = 0
         }
         if preservesIntentionalComposition(snapshot: snapshot, semantics: semantics),
            snapshot.subjectSignals.personCount <= 1 {

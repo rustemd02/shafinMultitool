@@ -12,6 +12,34 @@ Run from the repository root with an existing narrow derived-data root:
 
     scripts/run_release_gates.sh --derived-data-root /absolute/existing/path
 
-The command owns only `<root>/shafin-release-gates`, performs Debug and Release builds, validates the Release bundle and acknowledgements, and runs the six contamination fixtures. It does not discover DerivedData, install dependencies, access the network, or delete the caller-supplied root.
+The command owns only `<root>/shafin-release-gates`, performs Debug and Release builds, validates the Release bundle and acknowledgements, and runs the six contamination fixtures. Each run writes into its own `<root>/shafin-release-gates/run-<UTC>-<pid>/` directory, so the stage logs and derived data of an earlier run are kept rather than replaced; the run prints its directory as `RUN_OUTPUT_ROOT`. It does not discover DerivedData, install dependencies, access the network, or delete the caller-supplied root or the owned root itself.
 
 For validation-only and fixture use, pass an explicit built `.app` to `scripts/validate_release_bundle.sh` and `scripts/tests/test_release_bundle_gate.sh` respectively.
+
+
+## Swift unit-test survey (scripts/run_swift_unit_tests.sh)
+
+The release-gate script above does **not** run the app's unit suite, so its verdict says nothing about
+whether the app's own tests pass. Use this runner for that.
+
+    bash scripts/run_swift_unit_tests.sh --keep-going      # survey: report every failing batch
+    bash scripts/run_swift_unit_tests.sh                   # stop at the first failing batch
+    BATCHES_ONLY=1 bash scripts/run_swift_unit_tests.sh    # preview the batch split, no simulator, no build
+
+It discovers the `*Tests` classes, runs them in batches (default 6) with a throwaway `DerivedData` and
+**without** `-resultBundlePath` (that omission is what makes a batch affordable), and aborts if free space
+falls below `--floor-mib` (default 2048).
+
+Exit codes: `0` all classes ran with no failure, `1` at least one failing batch, `2` refused before running
+(no simulator, no classes, bad argument), `3` aborted by the disk guard or an incomplete run.
+
+**Known state (2026-09-14): the suite is RED.** A full survey of 159 classes reports about 29 failing tests in
+four classes — `AnalysisPipelinePresentationTests` (24), `CameraViewModelLensSwitchTests` (3),
+`AnalysisPipelineReleaseTests` (1), `CameraViewModelLifecycleTests` (1). The cause is not established as a
+product bug or as stale tests; see `docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-release/OWNER-DECISIONS-audit.md`
+item 11. A green release gate therefore does **not** mean the app's tests pass.
+
+Disk note: repeated `xcodebuild test` runs leave disposable device clones in
+`~/Library/Developer/XCTestDevices`. Left alone they grow into tens of gigabytes and end in
+`No space left on device`; clearing that directory (never the `CoreSimulator/Devices` entries) is safe —
+Xcode recreates the clones on demand.

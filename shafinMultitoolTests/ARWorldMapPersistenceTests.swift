@@ -17,22 +17,37 @@ import XCTest
 final class ARWorldMapPersistenceTests: XCTestCase {
     private var dbService: DBService!
     private var projectName: String!
+    private var createdProjectID: UUID?
 
     override func setUp() {
         super.setUp()
         dbService = DBService()
         projectName = "m6-worldmap-\(UUID().uuidString.prefix(8))"
+        createdProjectID = nil
     }
 
     override func tearDown() {
         if let projectName {
             dbService.deleteUnifiedSceneProject(named: projectName) { _ in }
         }
+        // A deliberately corrupted record cannot be decoded, so the
+        // name-based delete above cannot find or remove it. Remove the
+        // ID-derived files directly so this suite never leaves a
+        // malformed record behind: the typed Library projection treats
+        // any undecodable record as a whole-store load failure, so a
+        // leaked corrupt file would poison every later Library test.
+        if let createdProjectID, let directory = try? projectsDirectory() {
+            let projectURL = directory.appendingPathComponent("\(createdProjectID.uuidString)_project.json")
+            let worldMapURL = directory.appendingPathComponent("\(createdProjectID.uuidString)_worldmap")
+            try? FileManager.default.removeItem(at: projectURL)
+            try? FileManager.default.removeItem(at: worldMapURL)
+        }
+        createdProjectID = nil
         super.tearDown()
     }
 
     private func makeProject() -> UnifiedSceneProject {
-        UnifiedSceneProject(
+        let project = UnifiedSceneProject(
             id: UUID(),
             name: projectName,
             createdAt: Date(),
@@ -41,6 +56,8 @@ final class ARWorldMapPersistenceTests: XCTestCase {
             parsedScript: nil,
             plannedScene: nil
         )
+        createdProjectID = project.id
+        return project
     }
 
     private func projectsDirectory() throws -> URL {

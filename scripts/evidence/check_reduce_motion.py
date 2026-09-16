@@ -20,6 +20,10 @@ for d in SCOPE:
             if not re.search(r'reduceMotion|isMotionReduced|setReduceMotion|reducedMotionCrossfade|markerDrawDuration|tallyPulseDuration', window):
                 violations.append(f"{p}:{text[:m.start()].count(chr(10))+1}")
 print(f"REDUCE MOTION: {count} withAnimation sites scanned")
+if count == 0:
+    print("REDUCE MOTION FAIL: 0 withAnimation sites were scanned — a scan that found nothing "
+          "is not a scan that found no problems")
+    sys.exit(1)
 if violations:
     print(f"FAIL: {len(violations)} unguarded:")
     for v in violations[:10]: print('  ', v)

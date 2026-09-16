@@ -1,0 +1,41 @@
+{
+  "version": "camera-coach.research-probe.1",
+  "research_only": true, "human_gold": false, "release_admissible": false,
+  "annotation_source": "agent_visual_review; additional challenge, provisional point anchors only",
+  "cases": [
+    {
+      "id": "two-matching-wall-lights", "source_id": "commons-67628709",
+      "task": "Найди две одинаковые настенные группы светильников слева и справа от камина. Каждая группа с двумя плафонами — один объект. Различи левую и правую группу. Только наблюдение, без изменений.",
+      "observation_only": true, "no_move": true,
+      "anchors": [{"name": "left_light", "label": "lamp", "center": [0.226, 0.444]}, {"name": "right_light", "label": "lamp", "center": [0.809, 0.444]}]
+    },
+    {
+      "id": "two-vases", "source_id": "commons-67628709",
+      "task": "Найди две небольшие вазы на каминной полке слева и справа. Они отдельные объекты, не светильники под полкой. Только наблюдение, ничего передвигать не надо.",
+      "observation_only": true, "no_move": true,
+      "anchors": [{"name": "left_vase", "label": "vase", "center": [0.343, 0.396]}, {"name": "right_vase", "label": "vase", "center": [0.752, 0.407]}]
+    },
+    {
+      "id": "two-chairs-fireplace", "source_id": "commons-67628709",
+      "task": "Найди отдельно два деревянных стула по сторонам камина. Только наблюдение, сохраняем композицию и монохром.",
+      "observation_only": true, "no_move": true,
+      "anchors": [{"name": "left_chair", "label": "chair", "center": [0.265, 0.705]}, {"name": "right_chair", "label": "chair", "center": [0.809, 0.683]}]
+    },
+    {
+      "id": "matching-lights-no-physical-move", "source_id": "commons-67628709",
+      "task": "Хочу симметричнее показать камин и две настенные группы светильников. Они закреплены и их нельзя передвигать. Пол и возможность сделать шаг не проверены. Дай максимум одно обоснованное предложение, не выдумывай физический маршрут и сантиметры.",
+      "no_move": true
+    },
+    {
+      "id": "hotel-repeated-chairs", "source_id": "commons-171760454",
+      "task": "Найди два полностью видимых светло-коричневых кресла слева: дальнее и среднее. Самое ближнее кресло обрезано снизу: не подменяй им среднее. Только наблюдение, ничего менять не надо.",
+      "observation_only": true, "no_move": true,
+      "anchors": [{"name": "far_chair", "label": "chair", "center": [0.288, 0.50]}, {"name": "middle_chair", "label": "chair", "center": [0.232, 0.711]}]
+    },
+    {
+      "id": "hotel-reflection-not-lamp", "source_id": "commons-171760454",
+      "task": "На стекле левой из двух картин справа видны отражения светильников. Не считай отражение самостоятельной лампой, которую можно передвинуть. Нужен совет для самой отражённой лампы, но если её реальное положение не видно, откажись. Предметы трогать нельзя.",
+      "absent_target": true, "no_move": true
+    }
+  ]
+}

@@ -416,7 +416,6 @@ final class UserMovementObserverTests: XCTestCase {
             SemanticActionType.stepCloser.rawValue: .scaleDistance,
             SemanticActionType.lowerCamera.rawValue: .subjectDisplacement,
             SemanticActionType.raiseCamera.rawValue: .subjectDisplacement,
-            SemanticActionType.changeCameraAngle.rawValue: .horizonRotation,
             SemanticActionType.levelHorizon.rawValue: .horizonRotation,
             SemanticActionType.rotateSubjectTowardLight.rawValue: .lightExposure,
             SemanticActionType.moveSubjectLeft.rawValue: .subjectDisplacement,
@@ -442,6 +441,10 @@ final class UserMovementObserverTests: XCTestCase {
         }
 
         let unsupportedSemantic: [SemanticActionType] = [
+            // C04.1: prescribed for background/merger cleanup, but horizon
+            // rotation is not evidence the obstruction was fixed; no qualified
+            // contour metric exists yet, so the honest verdict is unsupported.
+            .changeCameraAngle,
             .removeDistractingObject,
             .repositionPropForBalance,
             .simplifyBackground,
@@ -539,11 +542,16 @@ final class UserMovementObserverTests: XCTestCase {
             opposite: productionFrame(id: "level-opposite", metrics: UserMovementMetrics(horizonAngleDegrees: 12)),
             noOp: productionFrame(id: "level-noop", metrics: UserMovementMetrics(horizonAngleDegrees: 7.5))
         )
-        assertRelevantAndNoOp(
-            actionID: SemanticActionType.changeCameraAngle.rawValue,
-            previous: productionFrame(id: "angle-previous", metrics: UserMovementMetrics(horizonAngleDegrees: 8)),
-            relevant: productionFrame(id: "angle-relevant", metrics: UserMovementMetrics(horizonAngleDegrees: 11)),
-            noOp: productionFrame(id: "angle-noop", metrics: UserMovementMetrics(horizonAngleDegrees: 8.4))
+        // C04.1: a horizon rotation must NOT be read as fixing a background
+        // obstruction. Until a contour/occlusion metric exists the action is
+        // unsupported, whatever the horizon does.
+        XCTAssertEqual(
+            UserMovementObserver.observe(
+                previous: productionFrame(id: "angle-previous", metrics: UserMovementMetrics(horizonAngleDegrees: 8)),
+                current: productionFrame(id: "angle-relevant", metrics: UserMovementMetrics(horizonAngleDegrees: 11)),
+                action: .changeCameraAngle
+            ),
+            .uncertain(reason: "unsupported_action")
         )
 
         XCTAssertEqual(
@@ -554,7 +562,7 @@ final class UserMovementObserverTests: XCTestCase {
                                          metrics: UserMovementMetrics(horizonAngleDegrees: -8)),
                 action: .changeCameraAngle
             ),
-            .relevant
+            .uncertain(reason: "unsupported_action")
         )
         XCTAssertEqual(
             UserMovementObserver.observe(
@@ -1354,5 +1362,78 @@ final class UserMovementObserverTests: XCTestCase {
         XCTAssertFalse(tracker.movementGoalReached)
         XCTAssertNil(tracker.lastVerdict)
         XCTAssertEqual(tracker.totalObservations, 0)
+    }
+
+    // MARK: - C04.2 target scope
+
+    private func entityFrame(id: String,
+                             subjectX: Double,
+                             lampAX: Double,
+                             lampBX: Double,
+                             capturedAt: Date) -> UserMovementFrame {
+        let base = productionFrame(id: id, x: subjectX, capturedAt: capturedAt)
+        guard let evidence = base.evidence else { return base }
+        let lampA = UserMovementEntityObservation(
+            entityRef: "lampA",
+            trackID: "ta",
+            visibility: .visible,
+            region: NormalizedRect(x: lampAX, y: 0.2, width: 0.15, height: 0.2)
+        )!
+        let lampB = UserMovementEntityObservation(
+            entityRef: "lampB",
+            trackID: "tb",
+            visibility: .visible,
+            region: NormalizedRect(x: lampBX, y: 0.2, width: 0.15, height: 0.2)
+        )!
+        return UserMovementFrame(
+            frameID: base.frameID,
+            subjectRegion: base.subjectRegion,
+            meanLuma: base.meanLuma,
+            motionIsStill: base.motionIsStill,
+            metrics: base.metrics,
+            evidence: evidence,
+            entityObservations: [lampA, lampB]
+        )
+    }
+
+    /// N10 "two lamps": movement of `lampB` must not complete the `lampA` step.
+    func testTargetScopedTrackerIgnoresAnotherObjectMovement() {
+        var tracker = UserMovementTracker(
+            actionID: SemanticActionType.moveObjectLeft.rawValue,
+            targetRefs: ["lampA"],
+            requiredRelevantFrames: 1
+        )
+        let t0 = evidenceTime
+        _ = tracker.observe(entityFrame(
+            id: "target-scope-0",
+            subjectX: 0.50,
+            lampAX: 0.45,
+            lampBX: 0.70,
+            capturedAt: t0
+        ))
+        // The subject and lampB move; the commanded lampA does not.
+        let otherMoved = tracker.observe(entityFrame(
+            id: "target-scope-1",
+            subjectX: 0.30,
+            lampAX: 0.45,
+            lampBX: 0.58,
+            capturedAt: t0.addingTimeInterval(0.05)
+        ))
+        XCTAssertEqual(otherMoved, .noOp)
+        XCTAssertFalse(
+            tracker.movementGoalReached,
+            "movement of another object must not complete the commanded step"
+        )
+
+        // Now the commanded lampA moves left.
+        let commandedMoved = tracker.observe(entityFrame(
+            id: "target-scope-2",
+            subjectX: 0.30,
+            lampAX: 0.35,
+            lampBX: 0.58,
+            capturedAt: t0.addingTimeInterval(0.10)
+        ))
+        XCTAssertEqual(commandedMoved, .relevant)
+        XCTAssertTrue(tracker.movementGoalReached)
     }
 }

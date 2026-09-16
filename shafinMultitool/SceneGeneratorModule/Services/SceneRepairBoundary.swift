@@ -373,6 +373,11 @@ enum SceneRepairBoundary {
             repairClass: .safeNormalization,
             description: "Input text canonicalized (whitespace/case folding) before parsing; wording preserved."
         ),
+        SceneRepairEntry(
+            noteCode: "v9.duplicate_provider_object_merged",
+            repairClass: .safeNormalization,
+            description: "Provider emitted the same real object twice (one entry without an explicit label); both refs bound to one canonical identity."
+        ),
     ]
 
     /// All registered codes.

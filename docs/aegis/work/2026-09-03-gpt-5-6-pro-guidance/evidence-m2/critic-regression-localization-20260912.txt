@@ -1,0 +1,53 @@
+Critic regression localization - 2026-09-12
+historical = docs/cameraanalysis/eval/out_semantic_real_runtime_v2_regen_bad_v1/candidate_outputs_raw.jsonl
+current    = docs/cameraanalysis/eval/camera-baseline-v0/drift-174/m4-001-fullruntime-174-drift-r1.jsonl
+labels     = bundled pack camera_full_labels.jsonl (content-identical to the regen_bad_v1 bundle)
+
+Pause-row comparison over 174 records:
+  changed action sets: 109/174
+  keep_current_setup -> corrective: 43
+
+Feature deltas on the 43 keep->corrective flips (current minus historical, pause rows):
+  object_count                     mean_delta= +0.6279  changed= 22/43
+  edge_pressure                    mean_delta= +0.4315  changed= 42/43
+  exposure_bias                    mean_delta= -0.3339  changed= 42/43
+  primary_subject_confidence       mean_delta= +0.2192  changed= 43/43
+  subject_area_ratio               mean_delta= -0.0954  changed= 28/43
+  focus_competition                mean_delta= -0.0899  changed= 43/43
+  scene_type_confidence            mean_delta= -0.0881  changed= 15/43
+  separation_score                 mean_delta= +0.0746  changed= 43/43
+  horizon_confidence               mean_delta= -0.0744  changed= 32/43
+  background_clutter               mean_delta= +0.0725  changed= 29/43
+  verdict_confidence               mean_delta= -0.0495  changed= 40/43
+  backlight_index                  mean_delta= -0.0066  changed= 25/43
+  aesthetic_score                  mean_delta= +0.0001  changed=  1/43
+  person_count                     mean_delta= +0.0000  changed=  0/43
+  aesthetic_confidence             mean_delta= +0.0000  changed=  0/43
+  frame_aspect_ratio               mean_delta= +0.0000  changed=  0/43
+  horizon_angle                    mean_delta= +0.0000  changed=  0/43
+
+Issues on current flipped rows: {'background_competes_with_subject': 5, 'subject_too_close_to_edge': 35, 'scene_has_no_clear_focus': 3, 'subject_not_prominent_enough': 3, 'backlight_hides_subject': 2, 'frame_visually_overloaded': 4}
+Issues on historical flipped rows: {'scene_has_no_clear_focus': 1, 'subject_not_prominent_enough': 1, 'backlight_hides_subject': 1, 'frame_visually_overloaded': 4, 'subject_too_close_to_edge': 1}
+
+Label transitions on flipped records (historical -> current):
+  subject_readable: 'true' -> 'false'  x39
+  verdict: 'good' -> 'needs_fix'  x29
+  verdict: 'good' -> 'mixed'  x8
+  has_clear_focus: 'true' -> 'false'  x5
+  primary_subject_kind: 'object' -> 'unknown'  x4
+  scene_type: 'object_insert' -> 'unknown'  x3
+  scene_type: 'object_insert' -> 'establishing_like_frame'  x2
+  has_clear_focus: 'false' -> 'true'  x2
+  verdict: 'mixed' -> 'needs_fix'  x2
+  primary_subject_label: 'book' -> ''  x1
+  region_subject_too_close_to_edge: None -> '0.36607142857142855,0.0,0.25,0.17633928571428573'  x1
+  region_subject_not_prominent_enough: None -> '0.36607142857142855,0.0,0.25,0.17633928571428573'  x1
+  region_subject_too_close_to_edge: None -> '0.0,0.0,0.41964285714285715,0.8727678571428571'  x1
+  region_subject_not_prominent_enough: None -> '0.109375,0.1160714285714286,0.171875,0.296875'  x1
+  region_backlight_hides_subject: None -> '0.109375,0.1160714285714286,0.171875,0.296875'  x1
+
+Read: the flips concentrate in the subject-readability / edge-pressure / subject-selection path.
+39 of 43 flipped records change debug_semantic_labels.subject_readable from true to false and
+35 of 43 emit subject_too_close_to_edge, while aesthetic_score is identical in 171/174 records
+(pixel path unchanged, 3 records differ only in the 4th decimal). person_count is 0 in both.
+object_count differs in 66/174 pause rows, so subject detection/selection itself changed too.

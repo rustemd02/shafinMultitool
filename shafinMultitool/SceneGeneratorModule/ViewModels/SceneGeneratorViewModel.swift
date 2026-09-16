@@ -854,11 +854,6 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private let storyboardMotionEventLedger = SETMotionEventLedger()
     private var storyboardSelectionSequence = 0
     private var storyboardSelectionTask: Task<Void, Never>?
-#if DEBUG
-    private var debugFixtureID: String?
-    private var storyboardDebugMutationDelay: TimeInterval = 0
-    private var generationDebugDelay: TimeInterval = 0
-    private var didStartGenerationLeaderFixture = false
     private static let generationLeaderFixtureArgument = "-SHAFIN_GENERATOR_LEADER_FIXTURE"
 
     /// M5-018 UI fixture hold: when the app is launched with the leader
@@ -873,6 +868,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private static var leaderActionHoldSeconds: TimeInterval {
         generationLeaderFixtureHoldsSequence ? 30 : SETMotion.leaderActionDuration
     }
+
+#if DEBUG
+    private var debugFixtureID: String?
+    private var storyboardDebugMutationDelay: TimeInterval = 0
+    private var generationDebugDelay: TimeInterval = 0
+    private var didStartGenerationLeaderFixture = false
     private var testingParserResultOverride: ((String, [MarkedObject]) async -> ParsingResult)?
     private(set) var testingGenerationOwnerCount = 0
     private(set) var testingGenerationStateTrace: [SceneGenerationRequestState] = [.idle]
@@ -2549,7 +2550,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         for (beatIndex, beat) in script.beats.enumerated() {
             print("🔍 [VIEWMODEL]     Beat[\(beatIndex)]: id='\(beat.id)', actions=\(beat.actions.count)")
             for (actionIndex, action) in beat.actions.enumerated() {
+#if DEBUG
                 print("🔍 [VIEWMODEL]       Action[\(actionIndex)]: id='\(action.id)', actorId='\(action.actorId)', type=\(action.type.rawValue), target=\(action.target ?? "nil"), holding=\(action.holdingObject ?? "nil"), direction=\(action.direction?.rawValue ?? "nil"), dialogue='\(action.dialogue ?? "nil")', fallback='\(action.fallbackText ?? "nil")', source='\(action.sourceText ?? "nil")'")
+#endif
             }
         }
         print("🔍 [VIEWMODEL]   Confidence: \(result.diagnostics.confidence)")
@@ -5719,7 +5722,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
         hintPreviewSuggestions = []
         hintPauseCritique = nil
+#if DEBUG
         print("[CA_DEBUG][PAUSE_START] token=\(requestToken.uuidString) snapshot=\(acceptedSnapshot?.snapshotID ?? "nil") liveHint=\(liveHint?.text ?? "nil") overlayBBox=\(formatDebugRect(coachingOverlayState.primaryBoundingBox))")
+#endif
         analysisPipeline.clearLivePresentationState()
 
         guard let acceptedSnapshot else {

@@ -1,5 +1,12 @@
 # AGENTS.md
 
+## Local project data (owner instruction, 2026-09-16)
+
+- Store datasets, annotation journals, checkpoints, Colab bundles and task snapshots in `/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/`, never in Library/Application Support.
+- Do not create new project data under `/Users/unterlantas/Library` or `/Library`. This rule concerns development artifacts, not iOS sandbox APIs.
+- Keep raw media out of this iOS repository and Xcode bundles. Backend `local-data/` is local-only, excluded from Git and must not be deployed or published.
+- Historical receipts/manifests retain their original bytes and old absolute paths. See `../setos-backend/LOCAL_DATA.md` for the relocation mapping; do not rewrite hash-bound evidence in place.
+
 ## Thesis / Dissertation workflow
 
 - `docs/thesis/litreview*` is protected existing theory/literature-review material. Do not edit it unless the user explicitly asks for litreview changes.

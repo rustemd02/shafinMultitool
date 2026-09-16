@@ -1,0 +1,16 @@
+{
+  "artifacts": [
+    {
+      "bytes": 7172,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-failure-classes/failure-class-decomposition.json",
+      "sha256": "3b89e85c5806c11f3c5527f3198d48de6e0c3b47f6c1bfccbf44eca97453e99b"
+    }
+  ],
+  "captured_at": "2026-09-12T23:07:56+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Analysis evidence only; no release measurement.",
+  "lane_id": "camera-label-drift-174-failure-classes",
+  "purpose": "Decompose the remaining expectation failures by class against the fresh baseline lane, record action coverage, and record the rejection of the candidate good-verdict technical gate.",
+  "schema_version": 1,
+  "source_change": "none: this package changed no Swift source, so the last control run (phase A 18/17/1, phase B 177/142/35) covers the current source hash 9391c81bd8ba08ec4c72b8e4587f65246456ebea5bd1f020b58cbe7db77f400a.",
+  "status": "analysis_evidence_research_only"
+}

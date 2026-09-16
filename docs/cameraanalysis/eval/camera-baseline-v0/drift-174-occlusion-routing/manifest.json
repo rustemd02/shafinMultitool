@@ -1,0 +1,16 @@
+{
+  "artifacts": [
+    {
+      "bytes": 4549,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-occlusion-routing/occlusion-routing.json",
+      "sha256": "efb99b26d11da40b34ae283b2c490dfed2f7235e86453c0d145829d4936ab475"
+    }
+  ],
+  "captured_at": "2026-09-12T23:18:24+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Routing analysis and negative decision only; no release measurement.",
+  "lane_id": "camera-label-drift-174-occlusion-routing",
+  "purpose": "Locate how a detected occlusion should become a semantic remark and decide whether the routing fix pays for itself.",
+  "schema_version": 1,
+  "source_change": "none: no Swift source changed, so the last control run (phase A 18/17/1, phase B 177/142/35) covers the current source hash 9391c81bd8ba08ec4c72b8e4587f65246456ebea5bd1f020b58cbe7db77f400a.",
+  "status": "routing_analysis_negative_decision_research_only"
+}

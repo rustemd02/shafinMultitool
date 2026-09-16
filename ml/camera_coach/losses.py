@@ -19,6 +19,7 @@ from torch import Tensor
 from torch.nn import functional as F
 
 from .models.set_composition_net import SETCompositionNetManifest
+from .models.set_composition_net_v2 import INTENT_CONDITIONED_HEAD_ORDER
 
 
 MANIFEST = SETCompositionNetManifest.load()
@@ -107,8 +108,13 @@ def focal_binary_cross_entropy(
     *,
     gamma: float = 2.0,
     alpha: float = 0.25,
+    pos_weight: Tensor | None = None,
 ) -> Tensor:
-    """Focal BCE for multi-label issue/action heads."""
+    """Focal BCE for multi-label issue/action heads.
+
+    ``pos_weight`` is an optional per-class positive-class weight.  It is
+    applied by the train split only; validation and evaluation pass ``None``.
+    """
 
     _finite_tensor(logits, "logits")
     _finite_tensor(targets, "targets")
@@ -120,10 +126,17 @@ def focal_binary_cross_entropy(
         raise LossError("focal gamma must be finite and non-negative")
     if not 0.0 <= alpha <= 1.0:
         raise LossError("focal alpha must be finite in [0, 1]")
+    if pos_weight is not None:
+        if not isinstance(pos_weight, Tensor) or pos_weight.ndim != 1 or pos_weight.shape[0] != logits.shape[1]:
+            raise LossError(f"pos_weight must be a [{logits.shape[1]}] tensor")
+        _finite_tensor(pos_weight, "pos_weight")
+        if torch.any(pos_weight <= 0.0):
+            raise LossError("pos_weight must be strictly positive")
+        pos_weight = pos_weight.to(dtype=logits.dtype, device=logits.device)
     target = targets.to(dtype=logits.dtype, device=logits.device)
     if torch.any((target < 0.0) | (target > 1.0)):
         raise LossError("focal BCE targets must be in [0, 1]")
-    base = F.binary_cross_entropy_with_logits(logits, target, reduction="none")
+    base = F.binary_cross_entropy_with_logits(logits, target, reduction="none", pos_weight=pos_weight)
     probability_of_target = torch.exp(-base)
     balancing = alpha * target + (1.0 - alpha) * (1.0 - target)
     return masked_mean(balancing * (1.0 - probability_of_target).pow(gamma) * base, mask)
@@ -525,18 +538,71 @@ def _prediction_targets(
     return output_values, target_values, batch_size
 
 
+def merge_intent_supervision_mask(
+    outputs: Mapping[str, Tensor],
+    masks: Mapping[str, Tensor] | None,
+    intent_mask: Tensor | None,
+    *,
+    batch_size: int,
+) -> dict[str, Tensor]:
+    """Fold the frozen `[B, 4]` intent mask into the four head masks.
+
+    A head with no caller mask but a zero intent column receives an explicit
+    all-zero mask, so the head contributes exactly zero loss and zero gradient
+    instead of silently falling back to an all-ones mask.
+    """
+
+    merged: dict[str, Tensor] = dict(masks or {})
+    if intent_mask is None:
+        return merged
+    if not isinstance(intent_mask, Tensor) or intent_mask.ndim not in (1, 2):
+        raise LossError("intent_mask must be a [B] or [B, 4] tensor")
+    if intent_mask.ndim == 2 and intent_mask.shape[1] != len(INTENT_CONDITIONED_HEAD_ORDER):
+        raise LossError("intent_mask second dimension must mirror the four intent-conditioned heads")
+    _finite_tensor(intent_mask, "intent_mask")
+    if torch.any((intent_mask != 0.0) & (intent_mask != 1.0)):
+        raise LossError("intent_mask must contain only 0/1 values")
+    if intent_mask.shape[0] != batch_size:
+        raise LossError("intent_mask first dimension must match the output batch")
+    for index, head in enumerate(INTENT_CONDITIONED_HEAD_ORDER):
+        reference = outputs.get(head)
+        if reference is None:
+            raise LossError(f"intent-conditioned head {head} is missing from outputs")
+        sample = intent_mask if intent_mask.ndim == 1 else intent_mask[:, index]
+        existing = merged.get(head)
+        if existing is None:
+            merged[head] = sample.to(dtype=reference.dtype, device=reference.device).reshape(
+                batch_size, *([1] * (reference.ndim - 1))
+            )
+        elif existing.ndim == 1:
+            merged[head] = existing * sample.to(dtype=existing.dtype, device=existing.device)
+        else:
+            merged[head] = existing * sample.to(dtype=existing.dtype, device=existing.device).reshape(
+                batch_size, *([1] * (existing.ndim - 1))
+            )
+    return merged
+
+
 def compute_multitask_loss(
     outputs: Mapping[str, Tensor],
     targets: Mapping[str, Tensor],
     *,
     masks: Mapping[str, Tensor] | None = None,
     label_masks: Mapping[str, Tensor] | None = None,
+    intent_mask: Tensor | None = None,
+    head_pos_weights: Mapping[str, Tensor] | None = None,
     pair_labels: Mapping[str, object] | None = None,
     contrastive_pairs: Mapping[str, object] | None = None,
     weights: LossWeights | Mapping[str, object] | None = None,
     config: LossConfig | None = None,
 ) -> LossResult:
-    """Compute weighted manifest losses and optional labelled pair terms."""
+    """Compute weighted manifest losses and optional labelled pair terms.
+
+    ``intent_mask`` is the frozen `[B]`/`[B, 4]` admissibility mask for the
+    intent-conditioned heads; it can only remove supervision, never add it.
+    ``head_pos_weights`` supplies train-only per-class positive weights for the
+    multi-label issue/utility heads.
+    """
 
     if masks is not None and label_masks is not None:
         raise LossError("pass masks or label_masks, not both")
@@ -549,8 +615,10 @@ def compute_multitask_loss(
         raise LossError("pass config or weights, not both")
     if not isinstance(config, LossConfig):
         raise LossError("config must be LossConfig")
-    outputs, targets, batch_size = _prediction_targets(outputs, targets, label_masks or masks)
-    active_masks = label_masks or masks or {}
+    if head_pos_weights is not None and not isinstance(head_pos_weights, Mapping):
+        raise LossError("head_pos_weights must be a mapping of head name to per-class weight")
+    output_values, targets, batch_size = _prediction_targets(outputs, targets, label_masks or masks)
+    active_masks = merge_intent_supervision_mask(output_values, label_masks or masks, intent_mask, batch_size=batch_size)
     raw_terms: dict[str, Tensor] = {}
     weighted_terms: dict[str, Tensor] = {}
 
@@ -576,6 +644,7 @@ def compute_multitask_loss(
                 mask,
                 gamma=config.focal_gamma,
                 alpha=config.focal_alpha,
+                pos_weight=None if head_pos_weights is None else head_pos_weights.get(name),
             )
         elif name == "continuous_target_deltas":
             raw = smooth_l1_loss(prediction, target, mask)
@@ -681,6 +750,7 @@ __all__ = [
     "cross_entropy",
     "focal_binary_cross_entropy",
     "masked_mean",
+    "merge_intent_supervision_mask",
     "multi_task_loss",
     "multitask_loss",
     "pairwise_contrastive_loss",

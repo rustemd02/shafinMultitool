@@ -91,7 +91,7 @@ final class DecisionTracePresentationTests: XCTestCase {
 
         XCTAssertEqual(trace.actionRows.first?.semanticActionId, "simplify_background")
         XCTAssertTrue(trace.actionRows.first?.linkedEvidenceIds.isEmpty == true)
-        XCTAssertEqual(trace.actionRows.first?.detail, "Упростить фон")
+        XCTAssertEqual(trace.actionRows.first?.detail, "Сместись к выбранной точке, где фон за человеком чище")
         XCTAssertEqual(trace.actionRows.first?.traceId, "trace_action_simplify")
 
         let rawNeuralCopy = [
@@ -225,7 +225,7 @@ final class DecisionTracePresentationTests: XCTestCase {
         XCTAssertEqual(trace.headline, SETCopyKey.cameraCorrectiveObservation.localizedString(locale: Locale(identifier: "en")))
         XCTAssertTrue(trace.reasonLines.isEmpty)
         XCTAssertTrue(trace.evidenceRows.isEmpty)
-        XCTAssertEqual(trace.actionRows.first?.detail, "Move your subject right")
+        XCTAssertEqual(trace.actionRows.first?.detail, "Aim the camera slightly left, keeping the subject in the preview")
         XCTAssertTrue(trace.actionRows.first?.linkedEvidenceIds.isEmpty == true)
         XCTAssertFalse(trace.headline.contains("Unsupported speculation"))
     }

@@ -1,0 +1,25 @@
+{
+  "candidate_id": "m4-001-fullruntime-174-drift-r1",
+  "runtime_claim": "real_runtime_still_replay",
+  "set_metrics": {
+    "confidence_band_accuracy": 0.66092,
+    "demo_priority_pass_rate": 0.222222,
+    "expected_action_hit_rate": 0.465517,
+    "failure_counts": {
+      "confidence_band_mismatch": 59,
+      "forbidden_action_violation": 20,
+      "good_frame_overcorrection": 39,
+      "missing_expected_action": 93,
+      "missing_future_action": 14,
+      "missing_positive_confirmation": 42,
+      "semantic_overreach_on_technical_failure": 2
+    },
+    "forbidden_action_violation_rate": 0.114943,
+    "future_action_hit_rate": 0.802817,
+    "good_frame_preservation_rate": 0.518519,
+    "pass_rate": 0.37931,
+    "positive_confirmation_rate": 0.481481,
+    "record_count": 174,
+    "technical_failure_gate_rate": 0.9
+  }
+}

@@ -1,0 +1,173 @@
+{
+  "answer": "None of them: the pixels-based technical probe and the future-action lane both fire. The remaining failure is a presentation/verdict question, and for the one still-failing expectation test the missing signal is not observable in this lane.",
+  "bar_lowering_cost": [
+    {
+      "bad": 56,
+      "bar": 0.55,
+      "good": 47,
+      "mixed": 12
+    },
+    {
+      "bad": 68,
+      "bar": 0.5,
+      "good": 57,
+      "mixed": 13
+    },
+    {
+      "bad": 69,
+      "bar": 0.45,
+      "good": 63,
+      "mixed": 13
+    },
+    {
+      "bad": 69,
+      "bar": 0.4,
+      "good": 63,
+      "mixed": 13
+    }
+  ],
+  "motion_like_conclusion": "Only ca_img_090 still answers keep_current_setup. Its label defect is motion_blur, its expected action set is empty (silence is correct) and keep is forbidden. The still-image lane has one frame and no temporal signal, so motion blur is not observable as such; the probe reports one non-dominant issue (severity 0.45, confidence 0.50) and the critique reports no issue at all. Closing this expectation by lowering the dominance bar would newly qualify 54 additional good-labelled frames (9 -> 63), so it is rejected as overfitting.",
+  "motion_like_test_records": {
+    "ca_img_086": {
+      "defects": [
+        "motion_blur",
+        "underexposure"
+      ],
+      "expected_actions": [],
+      "forbidden_actions": [
+        "keep_current_setup",
+        "step_closer"
+      ],
+      "future_actions": [
+        "reduce_iso_noise",
+        "increase_exposure",
+        "stabilize_camera",
+        "avoid_occlusion"
+      ],
+      "probe_dominant_count": 0,
+      "probe_issue_count": 2,
+      "probe_max_confidence": 1,
+      "probe_max_severity": 1,
+      "quality_label": "bad",
+      "semantic_actions": [],
+      "verdict": "good"
+    },
+    "ca_img_090": {
+      "defects": [
+        "motion_blur"
+      ],
+      "expected_actions": [],
+      "forbidden_actions": [
+        "level_horizon",
+        "keep_current_setup"
+      ],
+      "future_actions": [
+        "stabilize_camera",
+        "reduce_exposure"
+      ],
+      "probe_dominant_count": 0,
+      "probe_issue_count": 1,
+      "probe_max_confidence": 0.5,
+      "probe_max_severity": 0.45,
+      "quality_label": "bad",
+      "semantic_actions": [
+        "keep_current_setup"
+      ],
+      "verdict": "good"
+    },
+    "ca_img_211": {
+      "defects": [
+        "underexposure"
+      ],
+      "expected_actions": [
+        "add_front_fill_light",
+        "rotate_subject_toward_light"
+      ],
+      "forbidden_actions": [
+        "keep_current_setup"
+      ],
+      "future_actions": [
+        "reduce_iso_noise",
+        "increase_exposure",
+        "stabilize_camera",
+        "avoid_occlusion"
+      ],
+      "probe_dominant_count": 0,
+      "probe_issue_count": 2,
+      "probe_max_confidence": 1,
+      "probe_max_severity": 1,
+      "quality_label": "bad",
+      "semantic_actions": [],
+      "verdict": "good"
+    },
+    "ca_img_224": {
+      "defects": [
+        "underexposure"
+      ],
+      "expected_actions": [
+        "add_front_fill_light",
+        "rotate_subject_toward_light"
+      ],
+      "forbidden_actions": [
+        "keep_current_setup"
+      ],
+      "future_actions": [
+        "reduce_iso_noise",
+        "increase_exposure",
+        "avoid_occlusion"
+      ],
+      "probe_dominant_count": 0,
+      "probe_issue_count": 2,
+      "probe_max_confidence": 1,
+      "probe_max_severity": 1,
+      "quality_label": "bad",
+      "semantic_actions": [],
+      "verdict": "good"
+    },
+    "ca_img_232": {
+      "defects": [],
+      "expected_actions": [
+        "simplify_background",
+        "remove_distracting_object"
+      ],
+      "forbidden_actions": [
+        "keep_current_setup"
+      ],
+      "future_actions": [
+        "reduce_exposure"
+      ],
+      "probe_dominant_count": 0,
+      "probe_issue_count": 0,
+      "probe_max_confidence": 0,
+      "probe_max_severity": 0,
+      "quality_label": "bad",
+      "semantic_actions": [],
+      "verdict": "good"
+    }
+  },
+  "per_class": {
+    "bad": {
+      "median_max_confidence": 0.617,
+      "median_max_severity": 0.617,
+      "records": 79,
+      "records_with_any_probe_issue": 69,
+      "records_with_dominant_probe_issue": 44
+    },
+    "good": {
+      "median_max_confidence": 0.55,
+      "median_max_severity": 0.5,
+      "records": 81,
+      "records_with_any_probe_issue": 63,
+      "records_with_dominant_probe_issue": 9
+    },
+    "mixed": {
+      "median_max_confidence": 0.712,
+      "median_max_severity": 0.712,
+      "records": 14,
+      "records_with_any_probe_issue": 13,
+      "records_with_dominant_probe_issue": 7
+    }
+  },
+  "question": "Which detector fails to fire on the non-good frames that still answer keep/silence?",
+  "trigger_validation": "The existing dominantTechnicalQualityIssue trigger (isDominant flag AND max(severity,confidence) >= 0.55) separates the classes at 9/81 good versus 44/79 bad. Relaxing any of it does not: at a 0.45 severity bar 63 of 81 good frames qualify, and 'any issue at all' fires on 63 of 81 good frames versus 69 of 79 bad frames. The trigger used by the applied change is therefore the calibrated one, not a fitted one."
+}

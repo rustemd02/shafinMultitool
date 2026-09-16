@@ -1,0 +1,489 @@
+{
+  "admitted_data": "none (M03/M04 blocked)",
+  "artifact_kind": "tooling_export_path_validation",
+  "blocked_on": "M03,M04 admitted data (0 admitted)",
+  "calibration": "absent",
+  "candidate_id": "candidate_b_roi_conditioned_ablation",
+  "contract_manifest": {
+    "contract_version": "setcompositionnet.v2",
+    "path": "ml/camera_coach/contracts/set_composition_net_v2.json",
+    "sha256": "2ab88e9595e5b02935877b1dc1d7fbd2d6ef2aaeae97eadfc08dbebccb312b85"
+  },
+  "contract_validation": {
+    "inputs": [
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          3,
+          320,
+          320
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "inputs.full_frame_rgb",
+        "manifest_shape": [
+          1,
+          3,
+          320,
+          320
+        ],
+        "matched": true,
+        "name": "full_frame_rgb"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          3,
+          192,
+          192
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "inputs.subject_crop_rgb",
+        "manifest_shape": [
+          1,
+          3,
+          192,
+          192
+        ],
+        "matched": true,
+        "name": "subject_crop_rgb"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          4
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "inputs.roi_normalized_xywh",
+        "manifest_shape": [
+          1,
+          4
+        ],
+        "matched": true,
+        "name": "roi_normalized_xywh"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          1,
+          320,
+          320
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "inputs.roi_mask",
+        "manifest_shape": [
+          1,
+          1,
+          320,
+          320
+        ],
+        "matched": true,
+        "name": "roi_mask"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          40
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "inputs.scalar_features",
+        "manifest_shape": [
+          1,
+          40
+        ],
+        "matched": true,
+        "name": "scalar_features"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          40
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "inputs.scalar_features.missing_mask",
+        "manifest_shape": [
+          1,
+          40
+        ],
+        "matched": true,
+        "name": "missing_feature_mask"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          9
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "inputs.intent_features",
+        "manifest_shape": [
+          1,
+          9
+        ],
+        "matched": true,
+        "name": "intent_features"
+      }
+    ],
+    "intent_features_dtype_shape": "float32[1, 9]",
+    "intent_features_separate_input": true,
+    "intent_order": [
+      "natural",
+      "silhouette",
+      "low_key",
+      "symmetry",
+      "negative_space",
+      "dutch_angle",
+      "intentional_motion_blur",
+      "handheld",
+      "known"
+    ],
+    "output_head_order": [
+      "scene_class_logits",
+      "subjectness_roi_agreement_logits",
+      "issue_logits",
+      "action_utility_logits",
+      "good_frame_probability",
+      "abstention_probability",
+      "risk_probability",
+      "continuous_target_deltas",
+      "embedding"
+    ],
+    "output_head_order_matches": true,
+    "outputs": [
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          8
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "outputs.heads[0]",
+        "manifest_shape": [
+          1,
+          8
+        ],
+        "matched": true,
+        "name": "scene_class_logits"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          3
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "outputs.heads[1]",
+        "manifest_shape": [
+          1,
+          3
+        ],
+        "matched": true,
+        "name": "subjectness_roi_agreement_logits"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          8
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "outputs.heads[2]",
+        "manifest_shape": [
+          1,
+          8
+        ],
+        "matched": true,
+        "name": "issue_logits"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          26
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "outputs.heads[3]",
+        "manifest_shape": [
+          1,
+          26
+        ],
+        "matched": true,
+        "name": "action_utility_logits"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          1
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "outputs.heads[4]",
+        "manifest_shape": [
+          1,
+          1
+        ],
+        "matched": true,
+        "name": "good_frame_probability"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          1
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "outputs.heads[5]",
+        "manifest_shape": [
+          1,
+          1
+        ],
+        "matched": true,
+        "name": "abstention_probability"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          1
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "outputs.heads[6]",
+        "manifest_shape": [
+          1,
+          1
+        ],
+        "matched": true,
+        "name": "risk_probability"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          5
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "outputs.heads[7]",
+        "manifest_shape": [
+          1,
+          5
+        ],
+        "matched": true,
+        "name": "continuous_target_deltas"
+      },
+      {
+        "export_dtype": "float32",
+        "export_shape": [
+          1,
+          128
+        ],
+        "manifest_dtype": "float32",
+        "manifest_node": "outputs.heads[8]",
+        "manifest_shape": [
+          1,
+          128
+        ],
+        "matched": true,
+        "name": "embedding"
+      }
+    ],
+    "passed": true,
+    "scalar_intent_name_overlap": [],
+    "scalar_slots": 40
+  },
+  "coremltools": "9.0",
+  "exporter_sha256": "3ae718ded0c5c489c6de050dcfa99f8d639d8e4a60ec06198b2e9c24cefac06b",
+  "human_gold": false,
+  "inputs": [
+    {
+      "dtype": "float32",
+      "name": "full_frame_rgb",
+      "shape": [
+        1,
+        3,
+        320,
+        320
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "subject_crop_rgb",
+      "shape": [
+        1,
+        3,
+        192,
+        192
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "roi_normalized_xywh",
+      "shape": [
+        1,
+        4
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "roi_mask",
+      "shape": [
+        1,
+        1,
+        320,
+        320
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "scalar_features",
+      "shape": [
+        1,
+        40
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "missing_feature_mask",
+      "shape": [
+        1,
+        40
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "intent_features",
+      "shape": [
+        1,
+        9
+      ]
+    }
+  ],
+  "intent_features": {
+    "count": 9,
+    "name": "intent_features",
+    "order": [
+      "natural",
+      "silhouette",
+      "low_key",
+      "symmetry",
+      "negative_space",
+      "dutch_angle",
+      "intentional_motion_blur",
+      "handheld",
+      "known"
+    ],
+    "separate_input": true
+  },
+  "mlpackage": {
+    "compute_units_for_parity": "CPU_ONLY",
+    "format": "mlprogram",
+    "minimum_deployment_target": "iOS17",
+    "path": "/Users/unterlantas/Documents/XCode/shafinMultitool/ml/camera_coach/artifacts/SETCompositionNet-v2-tooling-untrained.mlpackage",
+    "precision": "float16",
+    "tree_sha256": "30e788eb9ec4fd232178bd02618050ddf46ec9132f7b49a4fd5e04c70bfbeda7"
+  },
+  "not_a_release_candidate": "true",
+  "numpy": "2.4.2",
+  "output_head_order": [
+    "scene_class_logits",
+    "subjectness_roi_agreement_logits",
+    "issue_logits",
+    "action_utility_logits",
+    "good_frame_probability",
+    "abstention_probability",
+    "risk_probability",
+    "continuous_target_deltas",
+    "embedding"
+  ],
+  "outputs": [
+    {
+      "dtype": "float32",
+      "name": "scene_class_logits",
+      "shape": [
+        1,
+        8
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "subjectness_roi_agreement_logits",
+      "shape": [
+        1,
+        3
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "issue_logits",
+      "shape": [
+        1,
+        8
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "action_utility_logits",
+      "shape": [
+        1,
+        26
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "good_frame_probability",
+      "shape": [
+        1,
+        1
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "abstention_probability",
+      "shape": [
+        1,
+        1
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "risk_probability",
+      "shape": [
+        1,
+        1
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "continuous_target_deltas",
+      "shape": [
+        1,
+        5
+      ]
+    },
+    {
+      "dtype": "float32",
+      "name": "embedding",
+      "shape": [
+        1,
+        128
+      ]
+    }
+  ],
+  "quality_claim": "none",
+  "release_admissible": false,
+  "schema_id": "camera-v2-coreml-tooling-export-v1",
+  "seed": 20260913,
+  "source_model_sha256": "c2725c9e596babac8ed36e073bc9ed91cdbe560c49b5cb4e94a0e62634a654e7",
+  "status": "tooling_path_validated",
+  "tooling_only": "true",
+  "torch": "2.10.0",
+  "untrained_weights": "true",
+  "warning": "not a release candidate / not a quality claim",
+  "weight_parameter_count": 420389,
+  "weights_origin": "deterministically seeded random initialization; no training performed",
+  "weights_sha256": "7b5c74d416c6422bd2e4b4966e71cc0384d084cc9a468e488231653b0cef041e"
+}

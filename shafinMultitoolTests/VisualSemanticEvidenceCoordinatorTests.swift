@@ -89,6 +89,92 @@ final class VisualSemanticEvidenceCoordinatorTests: XCTestCase {
         }
     }
 
+    func testRemoteProviderRequiresExplicitUserRequest() async {
+        let spy = SpyVisualEvidenceProvider(remoteCapable: true, response: makeValidResponse())
+        let coordinator = VisualSemanticEvidenceCoordinator(provider: spy)
+        let request = makeRequest(trigger: .ambiguousLocalCase)
+
+        let result = await coordinator.fetchEvidence(request: request)
+
+        switch result {
+        case let .skipped(reason, diagnostics):
+            XCTAssertEqual(reason, "explicit_request_required")
+            XCTAssertEqual(diagnostics.fallbackReason, "explicit_request_required")
+        default:
+            XCTFail("Expected skipped(explicit_request_required)")
+        }
+        let invocations = await spy.invocations
+        XCTAssertEqual(invocations, 0, "no hidden egress without an explicit user request")
+    }
+
+    func testRefusedResponseIsTypedAndNotResent() async {
+        let spy = SpyVisualEvidenceProvider(remoteCapable: true, response: makeRefusedResponse())
+        let coordinator = VisualSemanticEvidenceCoordinator(provider: spy)
+        let request = makeRequest(trigger: .explicitUserRequest)
+
+        let result = await coordinator.fetchEvidence(request: request)
+
+        switch result {
+        case let .refused(reason, diagnostics):
+            XCTAssertEqual(reason, "provider_refused")
+            XCTAssertEqual(diagnostics.fallbackReason, "provider_refused")
+        default:
+            XCTFail("Expected refused(provider_refused)")
+        }
+        let invocations = await spy.invocations
+        XCTAssertEqual(invocations, 1, "refusal is terminal; no additional data is sent")
+    }
+
+    func testUnavailableProviderKeepsLocalPath() async {
+        let spy = SpyVisualEvidenceProvider(remoteCapable: true, response: makeUnavailableResponse())
+        let coordinator = VisualSemanticEvidenceCoordinator(provider: spy)
+        let request = makeRequest(trigger: .explicitUserRequest)
+
+        let result = await coordinator.fetchEvidence(request: request)
+
+        switch result {
+        case let .unavailable(reason, diagnostics):
+            XCTAssertEqual(reason, "provider_unavailable")
+            XCTAssertEqual(diagnostics.fallbackReason, "provider_unavailable")
+        default:
+            XCTFail("Expected unavailable(provider_unavailable)")
+        }
+    }
+
+    func testOfflineProviderFailureIsTyped() async {
+        let provider = MockVLMVisualEvidenceProvider(thrownError: .offline)
+        let coordinator = VisualSemanticEvidenceCoordinator(provider: provider)
+        let request = makeRequest()
+
+        let result = await coordinator.fetchEvidence(request: request)
+
+        switch result {
+        case let .failed(reason, diagnostics):
+            XCTAssertEqual(reason, "offline")
+            XCTAssertEqual(diagnostics.fallbackReason, "offline")
+        default:
+            XCTFail("Expected failed(offline)")
+        }
+    }
+
+    func testRevokedConsentStopsVisualEgress() async {
+        let spy = SpyVisualEvidenceProvider(remoteCapable: false, response: makeValidResponse())
+        let coordinator = VisualSemanticEvidenceCoordinator(provider: spy, isConsentGranted: { false })
+        let request = makeRequest(privacyTier: .redactedVisual)
+
+        let result = await coordinator.fetchEvidence(request: request)
+
+        switch result {
+        case let .skipped(reason, diagnostics):
+            XCTAssertEqual(reason, "consent_revoked")
+            XCTAssertEqual(diagnostics.fallbackReason, "consent_revoked")
+        default:
+            XCTFail("Expected skipped(consent_revoked)")
+        }
+        let invocations = await spy.invocations
+        XCTAssertEqual(invocations, 0, "revoked consent must not send an image")
+    }
+
     @MainActor
     func testPipelineIntegrationBuildsPauseRequestAndAcceptsProviderEvidence() async {
         let pipeline = AnalysisPipeline(
@@ -143,9 +229,74 @@ private actor VisualEvidenceInvocationSpyProvider: VisualSemanticEvidenceProvide
     }
 }
 
+private actor SpyVisualEvidenceProvider: VisualSemanticEvidenceProvider {
+    let providerId: String
+    let capabilities: VisualSemanticEvidenceCapabilities
+    let fixed: VLMVisualEvidenceResponse
+    private(set) var invocations = 0
+
+    init(remoteCapable: Bool, response: VLMVisualEvidenceResponse) {
+        self.providerId = remoteCapable ? "spy_remote_visual_evidence" : "spy_local_visual_evidence"
+        self.capabilities = VisualSemanticEvidenceCapabilities(
+            supportsOffline: !remoteCapable,
+            supportsRemote: remoteCapable,
+            supportsPrivacyTiers: [.structuredOnly, .redactedVisual]
+        )
+        self.fixed = response
+    }
+
+    func fetchVisualEvidence(request: VLMVisualEvidenceRequest) async throws -> VLMVisualEvidenceResponse {
+        invocations += 1
+        return fixed
+    }
+}
+
+private func makeRefusedResponse() -> VLMVisualEvidenceResponse {
+    makeTerminalResponse(status: .refused, fallbackReason: "provider_refused")
+}
+
+private func makeUnavailableResponse() -> VLMVisualEvidenceResponse {
+    makeTerminalResponse(status: .unavailable, fallbackReason: "provider_unavailable")
+}
+
+private func makeTerminalResponse(status: VLMResponseStatus,
+                                  fallbackReason: String) -> VLMVisualEvidenceResponse {
+    VLMVisualEvidenceResponse(
+        schemaVersion: .s1,
+        requestId: "vlm-req-301",
+        frameId: "pause-frame-301",
+        mode: .pause,
+        providerId: "spy_provider",
+        status: status,
+        primaryEntityRef: nil,
+        primaryEntityKind: .unknown,
+        primaryEntityDisplayLabelCandidate: "объект",
+        primaryEntityLabelConfidence: 0,
+        secondaryEntityRef: nil,
+        secondaryEntityKind: nil,
+        secondaryEntityDisplayLabelCandidate: nil,
+        secondaryEntityLabelConfidence: nil,
+        observations: [],
+        relations: [],
+        suggestedActionIds: [],
+        explanation: nil,
+        safety: VLMEvidenceSafetyReport(passed: true, violations: []),
+        diagnostics: VLMEvidenceDiagnostics(
+            latencyMs: 10,
+            providerModelFamily: "spy",
+            providerModelVersion: "test",
+            promptVersion: "test",
+            privacyTier: .structuredOnly,
+            fallbackReason: fallbackReason
+        )
+    )
+}
+
 private func makeRequest(mode: AnalysisMode = .pause,
                          frameId: String = "pause-frame-301",
-                         requestId: String = "vlm-req-301") -> VLMVisualEvidenceRequest {
+                         requestId: String = "vlm-req-301",
+                         trigger: VLMTrigger? = .ambiguousLocalCase,
+                         privacyTier: VLMPrivacyTier = .structuredOnly) -> VLMVisualEvidenceRequest {
     let critique = makeCritique(mode: mode, frameId: frameId)
     let plan = makePlan(mode: mode, frameId: frameId, issueId: critique.issues[0].id)
     let localContext = VLMVisualEvidenceLocalContext(
@@ -193,15 +344,26 @@ private func makeRequest(mode: AnalysisMode = .pause,
         localNeuralEvidenceSummary: nil
     )
 
+    let visualInput: VLMVisualInput? = privacyTier == .redactedVisual
+        ? VLMVisualInput(
+            attachmentKind: .redactedStill,
+            mediaRef: "redacted://\(frameId)",
+            longEdgePx: 768,
+            exifStripped: true,
+            redactionApplied: true,
+            redactionNotes: ["subject_only"]
+        )
+        : nil
+
     return VLMVisualEvidenceRequest(
         schemaVersion: .s1,
         requestId: requestId,
         frameId: frameId,
         mode: mode,
         locale: "ru-RU",
-        privacyTier: .structuredOnly,
-        trigger: .ambiguousLocalCase,
-        visualInput: nil,
+        privacyTier: privacyTier,
+        trigger: trigger,
+        visualInput: visualInput,
         localContext: localContext,
         allowedCatalog: .prS01,
         constraints: .default,

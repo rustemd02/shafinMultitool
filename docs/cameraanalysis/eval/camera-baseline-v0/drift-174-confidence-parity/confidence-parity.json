@@ -1,0 +1,40 @@
+{
+  "band_mismatch_decomposition": {
+    "target_high_actual_lower": 26,
+    "target_medium_actual_higher": 21,
+    "target_medium_actual_lower": 1
+  },
+  "boundary_clusters": {
+    "exactly_0.74": 6,
+    "exactly_0.75": 12
+  },
+  "boundary_explanation": "pauseVerdictConfidence caps a mixed verdict with actions at min(base, 0.74) and promotes a good verdict with strengths to max(base, 0.75); the evaluator bands are high >= 0.75 and medium [0.45, 0.75), so those two rules place values immediately on either side of the boundary. The mismatches there are verdict disagreements, not band arithmetic.",
+  "captured_at": "2026-09-12T23:30:17+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Measurement and negative decision only; no release measurement.",
+  "control_run": {
+    "delta": "none vs the previous state, matching the 348-row identity check that the added debug key changes no behaviour",
+    "phase_a": "18 total / 17 passed / 1 failed",
+    "phase_b": "177 / 142 passed / 35 failed",
+    "recipe": "scripts/run_camera_certification.sh"
+  },
+  "decision": {
+    "applied": false,
+    "correction": "This also corrects an earlier inference in this project's record: the raw publication of primary-subject confidence had been listed as a parity break likely to hurt alignment. Measured against the labels it is the opposite \u2014 the raw publication matches the label bands far better than the historical weighting, so the change was an improvement rather than a regression.",
+    "verdict": "Rejected: restoring the historical multiplicative weighting would drop band matches from 126 to 6 (net -120)."
+  },
+  "instrumentation_added": "primary_subject_base_confidence is now exported alongside the published value (additive debug key), because the lane previously exported only the post-weighting number and the effect could not be estimated from it.",
+  "measurement": {
+    "band_matches_current": 126,
+    "band_matches_if_published_were_historically_weighted": 6,
+    "gained": 1,
+    "lost": 121,
+    "lost_breakdown": {
+      "other": 14,
+      "target_high": 107
+    },
+    "net": -120,
+    "note": "The historical formula was reconstructed as base * max(base,0.25) * kindWeight * regionWeight for subject candidates and base * 0.50 * kindWeight * regionWeight for object candidates; the DETR source confidence is not exported, so 0.50 is used as the historical default."
+  },
+  "question": "The primary-subject confidence is published raw today while the historical lane published base * sourceReliability * kindWeight * regionWeight. Does restoring the historical weighting improve confidence-band alignment with the labels?",
+  "report_id": "drift-174-confidence-parity"
+}

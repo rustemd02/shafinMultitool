@@ -22,6 +22,8 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
     private func observation(
         id: String,
         x: Double = 0.20,
+        y: Double = 0.30,
+        height: Double = 0.40,
         capturedAt: Date,
         measuredAt: Date? = nil,
         evaluatedAt: Date? = nil,
@@ -41,7 +43,8 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
         featureConfidence: Double = 0.92
     ) -> CoachingEpisodeObservation {
         let subjectIdentity = subjectIdentity ?? identity
-        let region = NormalizedRect(x: x, y: 0.30, width: 0.20, height: 0.40)
+        let actionFamily = UserMovementObserver.actionFamily(for: actionID)!
+        let region = NormalizedRect(x: x, y: y, width: 0.20, height: height)
         let measured = measuredAt ?? capturedAt
         let evaluated = evaluatedAt ?? capturedAt
         let binding = UserMovementSubjectBinding(
@@ -98,7 +101,8 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
             actionID: actionID,
             frameID: id,
             targetX: 0.5,
-            targetY: 0.5
+            targetY: 0.5,
+            targetIdentity: actionFamily.requiresSubjectBinding ? subjectIdentity : nil
         )
         let geometryContext = ActionVerificationGeometryContext(
             frameID: id,
@@ -369,6 +373,142 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.state.baseline?.frameID, "fresh-baseline")
     }
 
+    func testPreviewGeometryNormalizesValidatedBindingAndFreezesTargetAgainstNewHint() throws {
+        let baseline = observation(
+            id: "preview-baseline",
+            x: 0.27,
+            y: 0.70,
+            height: 0.10,
+            capturedAt: startDate,
+            actionID: SemanticActionType.shiftFrameLeft.rawValue
+        )
+        var coordinator = CoachingEpisodeCoordinator()
+        let activeState = coordinator.begin(with: baseline)
+        let binding = try XCTUnwrap(baseline.frame.evidence?.subjectBinding)
+        let expectedSubject = try XCTUnwrap(
+            binding.region.converted(from: .subjectTarget, to: .vision)
+        )
+        XCTAssertEqual(expectedSubject.x, 0.27, accuracy: 1e-12)
+        XCTAssertEqual(expectedSubject.y, 0.20, accuracy: 1e-12)
+        XCTAssertEqual(expectedSubject.width, 0.20, accuracy: 1e-12)
+        XCTAssertEqual(expectedSubject.height, 0.10, accuracy: 1e-12)
+        let expectedTarget = try XCTUnwrap(
+            SemanticActionType.shiftFrameLeft.subjectTargetRegion(
+                from: expectedSubject,
+                sourceSpace: .vision
+            )
+        )
+        let distractorSubject = NormalizedRect(x: 0.71, y: 0.08, width: 0.16, height: 0.22)
+        let distractorTarget = NormalizedRect(x: 0.04, y: 0.76, width: 0.20, height: 0.14)
+
+        let active = CoachingEpisodeCoordinator.previewGeometry(
+            for: activeState,
+            actionID: SemanticActionType.shiftFrameLeft.rawValue,
+            subjectIdentity: binding.identity,
+            observedSourceRegion: distractorSubject,
+            targetRegion: distractorTarget
+        )
+        XCTAssertEqual(active.subjectRegion, expectedSubject)
+        XCTAssertEqual(active.targetRegion, expectedTarget)
+
+        let idle = CoachingEpisodeCoordinator.previewGeometry(
+            for: .idle,
+            actionID: SemanticActionType.shiftFrameLeft.rawValue,
+            subjectIdentity: binding.identity,
+            observedSourceRegion: expectedSubject,
+            targetRegion: expectedTarget
+        )
+        XCTAssertEqual(idle.subjectRegion, expectedSubject)
+        XCTAssertEqual(idle.targetRegion, expectedTarget)
+    }
+
+    func testPreviewGeometryClearsTerminalHistoryAndAcceptsFreshBaseline() throws {
+        let first = observation(
+            id: "terminal-first",
+            y: 0.70,
+            height: 0.10,
+            capturedAt: startDate,
+            actionID: SemanticActionType.shiftFrameRight.rawValue
+        )
+        var coordinator = CoachingEpisodeCoordinator()
+        let firstState = coordinator.begin(with: first)
+        let firstBinding = try XCTUnwrap(first.frame.evidence?.subjectBinding)
+        let firstPreview = CoachingEpisodeCoordinator.previewGeometry(
+            for: firstState,
+            actionID: nil,
+            subjectIdentity: nil,
+            observedSourceRegion: nil,
+            targetRegion: nil
+        )
+        XCTAssertNotNil(firstPreview.subjectRegion)
+
+        let cancelled = coordinator.consume(.cancel(.staleEvidence))
+        XCTAssertEqual(cancelled.phase, .cancelled)
+        XCTAssertEqual(
+            CoachingEpisodeCoordinator.previewGeometry(
+                for: cancelled,
+                actionID: SemanticActionType.shiftFrameRight.rawValue,
+                subjectIdentity: firstBinding.identity,
+                observedSourceRegion: firstBinding.region,
+                targetRegion: firstPreview.targetRegion
+            ),
+            .none
+        )
+
+        let fresh = observation(
+            id: "terminal-fresh",
+            x: 0.49,
+            y: 0.70,
+            height: 0.10,
+            capturedAt: startDate.addingTimeInterval(1),
+            actionID: SemanticActionType.shiftFrameRight.rawValue
+        )
+        let freshState = coordinator.consume(.baseline(fresh))
+        let freshBinding = try XCTUnwrap(fresh.frame.evidence?.subjectBinding)
+        let freshPreview = CoachingEpisodeCoordinator.previewGeometry(
+            for: freshState,
+            actionID: nil,
+            subjectIdentity: nil,
+            observedSourceRegion: nil,
+            targetRegion: nil
+        )
+        XCTAssertEqual(
+            freshPreview.subjectRegion,
+            freshBinding.region.converted(from: .subjectTarget, to: .vision)
+        )
+        XCTAssertNotEqual(freshPreview.subjectRegion, firstPreview.subjectRegion)
+    }
+
+    func testPreviewGeometryFailsClosedForGlobalAndUnboundIdleHints() {
+        let source = NormalizedRect(x: 0.30, y: 0.18, width: 0.20, height: 0.28)
+        let target = NormalizedRect(x: 0.04, y: 0.50, width: 0.16, height: 0.12)
+        let identity = SubjectTrackIdentity(
+            trackID: "preview-global-check",
+            firstSeenFrameID: "preview-global-frame",
+            generation: 7
+        )
+        XCTAssertEqual(
+            CoachingEpisodeCoordinator.previewGeometry(
+                for: .idle,
+                actionID: SemanticActionType.levelHorizon.rawValue,
+                subjectIdentity: identity,
+                observedSourceRegion: source,
+                targetRegion: target
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            CoachingEpisodeCoordinator.previewGeometry(
+                for: .idle,
+                actionID: SemanticActionType.shiftFrameLeft.rawValue,
+                subjectIdentity: nil,
+                observedSourceRegion: source,
+                targetRegion: target
+            ),
+            .none
+        )
+    }
+
     func testFrameGlobalHorizonEpisodeNeedsNoSubjectBinding() {
         let actionID = SemanticActionType.levelHorizon.rawValue
         var coordinator = CoachingEpisodeCoordinator()
@@ -471,6 +611,76 @@ final class CoachingEpisodeCoordinatorTests: XCTestCase {
                 isStable: true
             ),
             "a track identity cannot be rebound to a different same-frame region"
+        )
+    }
+
+    func testSubjectBoundAdviceRequiresMatchingTargetIdentity() {
+        let baseline = baselineObservation()
+        let missingIdentityAdvice = StabilizedAdvice(
+            decision: .correct,
+            actionID: baseline.stabilizedAdvice.actionID,
+            frameID: baseline.frame.frameID,
+            targetX: baseline.stabilizedAdvice.targetPoint?.x,
+            targetY: baseline.stabilizedAdvice.targetPoint?.y,
+            targetIdentity: nil
+        )
+        XCTAssertNil(
+            CoachingEpisodeObservation(
+                frame: baseline.frame,
+                stabilizedAdvice: missingIdentityAdvice,
+                subjectTrack: baseline.subjectTrack,
+                lifecycle: baseline.lifecycle,
+                isStable: true
+            )
+        )
+
+        let otherIdentity = SubjectTrackIdentity(
+            trackID: "track-other",
+            firstSeenFrameID: "other-f0",
+            generation: baseline.lifecycle.generation
+        )
+        let mismatchedIdentityAdvice = StabilizedAdvice(
+            decision: .correct,
+            actionID: baseline.stabilizedAdvice.actionID,
+            frameID: baseline.frame.frameID,
+            targetX: baseline.stabilizedAdvice.targetPoint?.x,
+            targetY: baseline.stabilizedAdvice.targetPoint?.y,
+            targetIdentity: otherIdentity
+        )
+        XCTAssertNil(
+            CoachingEpisodeObservation(
+                frame: baseline.frame,
+                stabilizedAdvice: mismatchedIdentityAdvice,
+                subjectTrack: baseline.subjectTrack,
+                lifecycle: baseline.lifecycle,
+                isStable: true
+            )
+        )
+    }
+
+    func testFrameGlobalAdviceRequiresNilTargetIdentity() {
+        let baseline = frameGlobalObservation(
+            id: "global-target",
+            capturedAt: startDate,
+            actionID: SemanticActionType.levelHorizon.rawValue,
+            horizonAngle: 4
+        )
+        let invalidAdvice = StabilizedAdvice(
+            decision: .correct,
+            actionID: baseline.stabilizedAdvice.actionID,
+            frameID: baseline.frame.frameID,
+            targetX: nil,
+            targetY: nil,
+            targetIdentity: identity
+        )
+        XCTAssertNil(
+            CoachingEpisodeObservation(
+                frame: baseline.frame,
+                stabilizedAdvice: invalidAdvice,
+                subjectTrack: nil,
+                lifecycle: baseline.lifecycle,
+                isStable: true
+            )
         )
     }
 

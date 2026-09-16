@@ -1,0 +1,112 @@
+{
+  "fixture_id": "set_composition_net_v2_intent_parity",
+  "synthetic": true,
+  "contract_version": "setcompositionnet.v2",
+  "input_contract_version": "setcompositionnet.input.v2",
+  "preprocessing_version": "setcompositionnet.preprocessing.v2",
+  "feature_version": "setcompositionnet.features.v2",
+  "output_contract_version": "setcompositionnet.output.v2",
+  "intent_order": [
+    "natural",
+    "silhouette",
+    "low_key",
+    "symmetry",
+    "negative_space",
+    "dutch_angle",
+    "intentional_motion_blur",
+    "handheld",
+    "known"
+  ],
+  "known_flag_index": 8,
+  "intent_conditioned_head_order": [
+    "good_frame_probability",
+    "risk_probability",
+    "action_utility_logits",
+    "continuous_target_deltas"
+  ],
+  "encoding_cases": [
+    {
+      "case_id": "unknown_empty_list",
+      "styles": [],
+      "expected": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    },
+    {
+      "case_id": "unknown_null",
+      "styles": null,
+      "expected": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    },
+    {
+      "case_id": "explicit_natural_distinct_from_unknown",
+      "styles": ["natural"],
+      "expected": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    },
+    {
+      "case_id": "explicit_multi_style_preserved",
+      "styles": ["silhouette", "negative_space"],
+      "expected": [0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    },
+    {
+      "case_id": "explicit_single_handheld",
+      "styles": ["handheld"],
+      "expected": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0]
+    },
+    {
+      "case_id": "explicit_all_styles",
+      "styles": ["natural", "silhouette", "low_key", "symmetry", "negative_space", "dutch_angle", "intentional_motion_blur", "handheld"],
+      "expected": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    }
+  ],
+  "invalid_cases": [
+    {
+      "case_id": "unknown_encoded_as_natural",
+      "vector": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      "reason": "known=0 with a style flag set is forbidden; unknown must not be filled with natural"
+    },
+    {
+      "case_id": "known_one_with_empty_styles",
+      "vector": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+      "reason": "known=1 requires at least one explicit style flag"
+    },
+    {
+      "case_id": "non_binary_value",
+      "vector": [0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+      "reason": "intent_features values must be exactly 0 or 1"
+    }
+  ],
+  "paired_distinctness_cases": [
+    {
+      "case_id": "same_pixels_roi_unknown_vs_explicit_natural",
+      "left_styles": [],
+      "right_styles": ["natural"],
+      "expected_differing_indices": [0, 8],
+      "reason": "identical pixels/ROI must differ only in the explicit intent part; unknown is not silently promoted to natural"
+    },
+    {
+      "case_id": "same_pixels_roi_natural_vs_silhouette",
+      "left_styles": ["natural"],
+      "right_styles": ["silhouette"],
+      "expected_differing_indices": [0, 1],
+      "reason": "two explicit styles differ only at their style flags"
+    }
+  ],
+  "supervision_mask_cases": [
+    {
+      "case_id": "unknown_intent_roi_present",
+      "styles": [],
+      "roi_present": 1,
+      "expected": [0.0, 0.0, 0.0, 0.0]
+    },
+    {
+      "case_id": "known_intent_roi_present",
+      "styles": ["silhouette"],
+      "roi_present": 1,
+      "expected": [1.0, 1.0, 1.0, 1.0]
+    },
+    {
+      "case_id": "known_intent_roi_absent",
+      "styles": ["silhouette"],
+      "roi_present": 0,
+      "expected": [0.0, 0.0, 0.0, 0.0]
+    }
+  ]
+}

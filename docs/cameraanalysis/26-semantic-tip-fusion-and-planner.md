@@ -1,5 +1,7 @@
 # 26. Semantic Tip Fusion and Planner (PR-S04)
 
+Дополнение 2026-09-11: для следующего расширения использовать [доменный контракт v3, N6–N7](03-domain-contracts.md#n6-решение-действие-и-цель). Финальный выбор принадлежит CameraBoundedActionPlanner после проверки каждого кандидата; SemanticTipPlanner проецирует этот результат в текст и overlay, не ранжирует сырой VLM второй раз. Review proposals не запускают live-эпизод; после изменения предмета требуется новый анализ. Это design delta, не изменение работающей реализации PR-S04.
+
 Статус: design spec + design verify (ready for implement)
 
 Дата: 2026-05-05

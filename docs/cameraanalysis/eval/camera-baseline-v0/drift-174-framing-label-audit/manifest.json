@@ -1,0 +1,15 @@
+{
+  "artifacts": [
+    {
+      "bytes": 21172,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-framing-label-audit/framing-label-audit.json",
+      "sha256": "cdc08c0842300642b28c6fc98c2895d17fc9de3546543bbc245259cac0c2dc53"
+    }
+  ],
+  "captured_at": "2026-09-12T23:33:51+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Label audit only; no release measurement.",
+  "lane_id": "camera-label-drift-174-framing-label-audit",
+  "purpose": "Audit the framing label expectations against the stated problems and the measured geometry, and record which need rewording or corpus revision.",
+  "schema_version": 1,
+  "status": "label_audit_evidence_research_only"
+}

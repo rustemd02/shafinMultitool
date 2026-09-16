@@ -1,0 +1,637 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "setcompositionnet.v2.schema.json",
+  "title": "SETCompositionNet-v2 contract manifest",
+  "type": "object",
+  "required": [
+    "contract_id",
+    "contract_version",
+    "input_contract_version",
+    "preprocessing_version",
+    "feature_version",
+    "output_contract_version",
+    "tensor_layout",
+    "inputs",
+    "preprocessing",
+    "categorical_features",
+    "feature_normalization",
+    "supervision",
+    "outputs"
+  ],
+  "properties": {
+    "contract_id": { "const": "SETCompositionNet" },
+    "contract_version": { "const": "setcompositionnet.v2" },
+    "input_contract_version": { "const": "setcompositionnet.input.v2" },
+    "preprocessing_version": { "const": "setcompositionnet.preprocessing.v2" },
+    "feature_version": { "const": "setcompositionnet.features.v2" },
+    "output_contract_version": { "const": "setcompositionnet.output.v2" },
+    "tensor_layout": { "const": "HWC" },
+    "inputs": {
+      "type": "object",
+      "required": ["full_frame_rgb", "subject_crop_rgb", "roi_normalized_xywh", "roi_mask", "scalar_features", "intent_features"],
+      "properties": {
+        "full_frame_rgb": {
+          "$ref": "#/$defs/rgbTensor",
+          "properties": { "shape": { "const": [320, 320, 3] } }
+        },
+        "subject_crop_rgb": {
+          "$ref": "#/$defs/rgbTensor",
+          "properties": { "shape": { "const": [192, 192, 3] } }
+        },
+        "roi_normalized_xywh": {
+          "type": "object",
+          "required": ["dtype", "shape", "ordered_names", "coordinate_space", "origin", "axis_direction", "value_range", "bounds", "missing_value"],
+          "properties": {
+            "dtype": { "const": "float32" },
+            "shape": { "const": [4] },
+            "ordered_names": { "const": ["x", "y", "width", "height"] },
+            "coordinate_space": { "const": "oriented_full_frame" },
+            "origin": { "const": "top_left" },
+            "axis_direction": { "const": ["right", "down"] },
+            "value_range": { "const": [0.0, 1.0] },
+            "bounds": { "const": ["x + width <= 1.0", "y + height <= 1.0"] },
+            "missing_value": { "const": [0.0, 0.0, 0.0, 0.0] }
+          },
+          "additionalProperties": false
+        },
+        "roi_mask": {
+          "$ref": "#/$defs/binaryTensor",
+          "properties": { "shape": { "const": [320, 320, 1] } }
+        },
+        "scalar_features": {
+          "type": "object",
+          "required": ["dtype", "shape", "count", "inherited_from", "ordered_names", "missing_mask"],
+          "properties": {
+            "dtype": { "const": "float32" },
+            "shape": { "const": [40] },
+            "count": { "const": 40 },
+            "inherited_from": { "const": "setcompositionnet.input.v1" },
+            "ordered_names": {
+              "type": "array",
+              "const": [
+                "subject_bbox_x", "subject_bbox_y", "subject_bbox_width", "subject_bbox_height",
+                "subject_area_ratio", "subject_edge_pressure_left", "subject_edge_pressure_right",
+                "subject_edge_pressure_top", "subject_edge_pressure_bottom", "person_count",
+                "face_count", "group_count", "person_confidence", "face_confidence", "group_confidence",
+                "saliency_left_right_balance", "saliency_top_bottom_balance", "saliency_subject_mean",
+                "saliency_background_mean", "saliency_subject_background_delta", "horizon_angle",
+                "horizon_confidence", "subject_mean_luma", "background_mean_luma", "subject_luma_delta",
+                "subject_clipped_ratio", "background_hotspot_ratio", "motion_shake", "motion_stability",
+                "focus_readability", "focus_confidence", "orientation_category", "mirroring_flag",
+                "lens_category", "format_aspect_ratio", "roi_present", "roi_area_ratio",
+                "roi_mask_coverage", "subject_separation", "camera_exposure_bias"
+              ]
+            },
+            "missing_mask": {
+              "type": "object",
+              "required": ["dtype", "shape", "ordered_names", "values", "fill_value", "semantics"],
+              "properties": {
+                "dtype": { "const": "float32" },
+                "shape": { "const": [40] },
+                "ordered_names": { "const": "same_as_scalar_features" },
+                "values": { "const": [0.0, 1.0] },
+                "fill_value": { "const": 0.0 },
+                "semantics": { "type": "string", "minLength": 1 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "intent_features": { "$ref": "#/$defs/intentFeatures" }
+      },
+      "additionalProperties": false
+    },
+    "preprocessing": {
+      "type": "object",
+      "required": ["source_color_space", "source_pixel_format", "model_channel_order", "alpha", "orientation", "mirroring", "resize_interpolation", "resize_geometry", "normalization", "subject_crop", "intent_encoding"],
+      "properties": {
+        "source_color_space": { "const": "sRGB" },
+        "source_pixel_format": { "const": "32BGRA" },
+        "model_channel_order": { "const": ["R", "G", "B"] },
+        "alpha": { "const": "discard" },
+        "orientation": { "type": "string", "pattern": "^apply the ImageIO orientation exactly once" },
+        "mirroring": { "type": "string", "pattern": "no additional mirror" },
+        "resize_interpolation": { "const": "bilinear" },
+        "resize_geometry": { "const": "independent_scale_to_target" },
+        "normalization": {
+          "type": "object",
+          "required": ["source_dtype", "target_dtype", "source_range", "formula", "denominator", "value_range", "per_channel_offset", "per_channel_scale"],
+          "properties": {
+            "source_dtype": { "const": "uint8" },
+            "target_dtype": { "const": "float32" },
+            "source_range": { "const": [0, 255] },
+            "formula": { "const": "uint8_channel / 255.0" },
+            "denominator": { "const": 255.0 },
+            "value_range": { "const": [0.0, 1.0] },
+            "per_channel_offset": { "const": [0.0, 0.0, 0.0] },
+            "per_channel_scale": { "const": [0.00392156862745098, 0.00392156862745098, 0.00392156862745098] }
+          },
+          "additionalProperties": false
+        },
+        "subject_crop": {
+          "type": "object",
+          "required": ["recipe_version", "square_side", "clipping", "missing_crop"],
+          "properties": {
+            "recipe_version": { "const": "square_expand_1.25.v1" },
+            "square_side": { "const": "1.25 * max(roi.width_pixels, roi.height_pixels)" },
+            "clipping": { "type": "string", "pattern": "derive raw padded square bounds first.*clip padded square to oriented full-frame bounds.*intersection without shifting" },
+            "missing_crop": { "const": "zero-filled 192x192x3 tensor" }
+          },
+          "additionalProperties": false
+        },
+        "intent_encoding": {
+          "type": "object",
+          "required": ["recipe_version", "source_state", "order", "empty_selection", "unknown", "known", "natural_is_explicit", "no_silent_default"],
+          "properties": {
+            "recipe_version": { "const": "explicit_style_flags.v2" },
+            "source_state": { "const": "CaptureIntent.styles plus intent selection state" },
+            "order": { "const": "manifest inputs.intent_features.ordered_names" },
+            "empty_selection": { "const": "unknown" },
+            "unknown": { "const": "known=0.0 with all eight style flags 0.0" },
+            "known": { "const": "known=1.0 with at least one explicit style flag 1.0" },
+            "natural_is_explicit": { "const": true },
+            "no_silent_default": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "categorical_features": {
+      "type": "object",
+      "required": ["orientation_category", "lens_category"],
+      "properties": {
+        "orientation_category": { "$ref": "#/$defs/orientationCatalog" },
+        "lens_category": { "$ref": "#/$defs/lensCatalog" }
+      },
+      "additionalProperties": false
+    },
+    "feature_normalization": {
+      "type": "object",
+      "required": [
+        "unit_interval",
+        "signed_unit_interval",
+        "count_0_to_8",
+        "angle_degrees_to_unit",
+        "categorical_index",
+        "aspect_ratio",
+        "feature_to_normalization"
+      ],
+      "properties": {
+        "unit_interval": {
+          "type": "object",
+          "required": ["formula", "value_range"],
+          "properties": {
+            "formula": { "const": "clip(raw, 0.0, 1.0)" },
+            "value_range": { "const": [0.0, 1.0] }
+          },
+          "additionalProperties": false
+        },
+        "signed_unit_interval": {
+          "type": "object",
+          "required": ["formula", "value_range"],
+          "properties": {
+            "formula": { "const": "clip(raw, -1.0, 1.0)" },
+            "value_range": { "const": [-1.0, 1.0] }
+          },
+          "additionalProperties": false
+        },
+        "count_0_to_8": {
+          "type": "object",
+          "required": ["formula", "value_range"],
+          "properties": {
+            "formula": { "const": "clip(raw, 0.0, 8.0) / 8.0" },
+            "value_range": { "const": [0.0, 1.0] }
+          },
+          "additionalProperties": false
+        },
+        "angle_degrees_to_unit": {
+          "type": "object",
+          "required": ["formula", "value_range"],
+          "properties": {
+            "formula": { "const": "clip(raw_degrees / 180.0, -1.0, 1.0)" },
+            "value_range": { "const": [-1.0, 1.0] }
+          },
+          "additionalProperties": false
+        },
+        "categorical_index": {
+          "type": "object",
+          "required": ["formula", "value_range"],
+          "properties": {
+            "formula": { "const": "index / (category_count - 1)" },
+            "value_range": { "const": [0.0, 1.0] }
+          },
+          "additionalProperties": false
+        },
+        "aspect_ratio": {
+          "type": "object",
+          "required": ["formula", "value_range"],
+          "properties": {
+            "formula": { "const": "clip(raw_width / raw_height, 0.0, 4.0) / 4.0" },
+            "value_range": { "const": [0.0, 1.0] }
+          },
+          "additionalProperties": false
+        },
+        "feature_to_normalization": {
+          "type": "object",
+          "const": {
+            "subject_bbox_x": "unit_interval",
+            "subject_bbox_y": "unit_interval",
+            "subject_bbox_width": "unit_interval",
+            "subject_bbox_height": "unit_interval",
+            "subject_area_ratio": "unit_interval",
+            "subject_edge_pressure_left": "unit_interval",
+            "subject_edge_pressure_right": "unit_interval",
+            "subject_edge_pressure_top": "unit_interval",
+            "subject_edge_pressure_bottom": "unit_interval",
+            "person_count": "count_0_to_8",
+            "face_count": "count_0_to_8",
+            "group_count": "count_0_to_8",
+            "person_confidence": "unit_interval",
+            "face_confidence": "unit_interval",
+            "group_confidence": "unit_interval",
+            "saliency_left_right_balance": "signed_unit_interval",
+            "saliency_top_bottom_balance": "signed_unit_interval",
+            "saliency_subject_mean": "unit_interval",
+            "saliency_background_mean": "unit_interval",
+            "saliency_subject_background_delta": "signed_unit_interval",
+            "horizon_angle": "angle_degrees_to_unit",
+            "horizon_confidence": "unit_interval",
+            "subject_mean_luma": "unit_interval",
+            "background_mean_luma": "unit_interval",
+            "subject_luma_delta": "signed_unit_interval",
+            "subject_clipped_ratio": "unit_interval",
+            "background_hotspot_ratio": "unit_interval",
+            "motion_shake": "unit_interval",
+            "motion_stability": "unit_interval",
+            "focus_readability": "unit_interval",
+            "focus_confidence": "unit_interval",
+            "orientation_category": "categorical_index",
+            "mirroring_flag": "unit_interval",
+            "lens_category": "categorical_index",
+            "format_aspect_ratio": "aspect_ratio",
+            "roi_present": "unit_interval",
+            "roi_area_ratio": "unit_interval",
+            "roi_mask_coverage": "unit_interval",
+            "subject_separation": "unit_interval",
+            "camera_exposure_bias": "signed_unit_interval"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "supervision": {
+      "type": "object",
+      "required": ["principle", "runtime_gates_owner", "intent_conditioned_heads", "intent_independent_heads", "supervision_mask", "admissibility", "unsupported_target_rule", "forbidden_neural_targets", "new_intent_inputs"],
+      "properties": {
+        "principle": { "type": "string", "minLength": 1 },
+        "runtime_gates_owner": { "type": "string", "minLength": 1 },
+        "intent_conditioned_heads": {
+          "type": "array",
+          "const": ["good_frame_probability", "risk_probability", "action_utility_logits", "continuous_target_deltas"],
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "intent_independent_heads": {
+          "type": "array",
+          "const": ["scene_class_logits", "subjectness_roi_agreement_logits", "issue_logits", "abstention_probability", "embedding"],
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "supervision_mask": {
+          "type": "object",
+          "required": ["dtype", "shape", "ordered_names", "values", "fill_value", "semantics"],
+          "properties": {
+            "dtype": { "const": "float32" },
+            "shape": { "const": [4] },
+            "ordered_names": { "const": ["good_frame_probability", "risk_probability", "action_utility_logits", "continuous_target_deltas"] },
+            "values": { "const": [0.0, 1.0] },
+            "fill_value": { "const": 0.0 },
+            "semantics": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "admissibility": {
+          "type": "object",
+          "required": ["requires_intent_known", "requires_roi_present", "rule"],
+          "properties": {
+            "requires_intent_known": { "const": true },
+            "requires_roi_present": { "const": true },
+            "rule": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "unsupported_target_rule": {
+          "type": "object",
+          "required": ["preserve_human_annotation", "set_neural_mask_zero", "mark_neural_target_unsupported", "runtime_action", "fabricated_conditional_label_forbidden"],
+          "properties": {
+            "preserve_human_annotation": { "const": true },
+            "set_neural_mask_zero": { "const": true },
+            "mark_neural_target_unsupported": { "const": true },
+            "runtime_action": { "const": "request intent clarification or ABSTAIN" },
+            "fabricated_conditional_label_forbidden": { "const": true }
+          },
+          "additionalProperties": false
+        },
+        "forbidden_neural_targets": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "required": ["signal", "example", "reason", "policy_evaluation_label_retained", "neural_target"],
+            "properties": {
+              "signal": { "type": "string", "minLength": 1 },
+              "example": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 },
+              "policy_evaluation_label_retained": { "const": true },
+              "neural_target": { "const": false }
+            },
+            "additionalProperties": false
+          }
+        },
+        "new_intent_inputs": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "outputs": {
+      "type": "object",
+      "required": ["head_order", "heads", "forbidden_outputs"],
+      "properties": {
+        "head_order": {
+          "type": "array",
+          "const": ["scene_class_logits", "subjectness_roi_agreement_logits", "issue_logits", "action_utility_logits", "good_frame_probability", "abstention_probability", "risk_probability", "continuous_target_deltas", "embedding"],
+          "minItems": 9,
+          "maxItems": 9,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "heads": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "prefixItems": [
+            { "$ref": "#/$defs/headScene" },
+            { "$ref": "#/$defs/headSubjectness" },
+            { "$ref": "#/$defs/headIssues" },
+            { "$ref": "#/$defs/headActions" },
+            { "$ref": "#/$defs/headGoodFrame" },
+            { "$ref": "#/$defs/headAbstention" },
+            { "$ref": "#/$defs/headRisk" },
+            { "$ref": "#/$defs/headDeltas" },
+            { "$ref": "#/$defs/headEmbedding" }
+          ],
+          "items": false
+        },
+        "forbidden_outputs": {
+          "type": "array",
+          "const": ["generated_text", "arbitrary_object_name"],
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "rgbTensor": {
+      "type": "object",
+      "required": ["dtype", "shape", "channel_order", "value_range"],
+      "properties": {
+        "dtype": { "const": "float32" },
+        "shape": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "minItems": 3, "maxItems": 3 },
+        "channel_order": { "const": ["R", "G", "B"] },
+        "value_range": { "const": [0.0, 1.0] }
+      },
+      "additionalProperties": false
+    },
+    "binaryTensor": {
+      "type": "object",
+      "required": ["dtype", "shape", "value_range", "values", "rasterization", "missing_value"],
+      "properties": {
+        "dtype": { "const": "float32" },
+        "shape": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 },
+        "value_range": { "const": [0.0, 1.0] },
+        "values": { "const": [0.0, 1.0] },
+        "rasterization": { "type": "string", "minLength": 1 },
+        "missing_value": { "const": 0.0 }
+      },
+      "additionalProperties": false
+    },
+    "intentFeatures": {
+      "type": "object",
+      "required": ["dtype", "shape", "count", "value_range", "values", "separate_input", "not_encoded_in_scalar_features", "source", "ordered_names", "style_flags", "known_flag", "unknown_encoding", "known_encoding", "explicit_natural", "distinctness"],
+      "properties": {
+        "dtype": { "const": "float32" },
+        "shape": { "const": [9] },
+        "count": { "const": 9 },
+        "value_range": { "const": [0.0, 1.0] },
+        "values": { "const": [0.0, 1.0] },
+        "separate_input": { "const": true },
+        "not_encoded_in_scalar_features": { "type": "string", "minLength": 1 },
+        "source": { "const": "CaptureIntent.styles" },
+        "ordered_names": {
+          "type": "array",
+          "const": ["natural", "silhouette", "low_key", "symmetry", "negative_space", "dutch_angle", "intentional_motion_blur", "handheld", "known"],
+          "minItems": 9,
+          "maxItems": 9,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "style_flags": {
+          "type": "object",
+          "required": ["count", "indices", "ordered_names", "one_hot", "multi_style_allowed", "multi_style_semantics"],
+          "properties": {
+            "count": { "const": 8 },
+            "indices": { "const": [0, 1, 2, 3, 4, 5, 6, 7] },
+            "ordered_names": { "const": ["natural", "silhouette", "low_key", "symmetry", "negative_space", "dutch_angle", "intentional_motion_blur", "handheld"] },
+            "one_hot": { "const": false },
+            "multi_style_allowed": { "const": true },
+            "multi_style_semantics": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "known_flag": {
+          "type": "object",
+          "required": ["name", "index", "values", "semantics"],
+          "properties": {
+            "name": { "const": "known" },
+            "index": { "const": 8 },
+            "values": { "const": [0.0, 1.0] },
+            "semantics": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "unknown_encoding": {
+          "type": "object",
+          "required": ["known", "style_flags", "forbidden_default", "rule"],
+          "properties": {
+            "known": { "const": 0.0 },
+            "style_flags": { "const": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] },
+            "forbidden_default": { "const": "natural" },
+            "rule": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "known_encoding": {
+          "type": "object",
+          "required": ["requires", "empty_with_known_one_invalid"],
+          "properties": {
+            "requires": { "const": "known=1.0 requires at least one of the eight style flags to be 1.0" },
+            "empty_with_known_one_invalid": { "const": true }
+          },
+          "additionalProperties": false
+        },
+        "explicit_natural": {
+          "type": "object",
+          "required": ["allowed", "distinct_from_unknown", "rule"],
+          "properties": {
+            "allowed": { "const": true },
+            "distinct_from_unknown": { "const": true },
+            "rule": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "distinctness": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "orientationCatalog": {
+      "type": "object",
+      "required": ["count", "ordered_names", "allowed_normalized_values", "index_semantics"],
+      "properties": {
+        "count": { "const": 4 },
+        "ordered_names": { "const": ["up", "right", "down", "left"] },
+        "allowed_normalized_values": { "const": [0.0, 0.3333333333333333, 0.6666666666666666, 1.0] },
+        "index_semantics": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "lensCatalog": {
+      "type": "object",
+      "required": ["count", "ordered_names", "allowed_normalized_values", "index_semantics"],
+      "properties": {
+        "count": { "const": 3 },
+        "ordered_names": { "const": ["ultra_wide", "wide", "tele"] },
+        "allowed_normalized_values": { "const": [0.0, 0.5, 1.0] },
+        "index_semantics": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "headScene": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "ordered_names", "value_semantics"],
+      "properties": {
+        "name": { "const": "scene_class_logits" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [8] },
+        "ordered_names": { "const": ["dialogue_closeup", "single_character_medium", "two_character_frame", "object_insert", "establishing_like_frame", "moody_backlit_subject", "unknown", "out_of_domain"] },
+        "value_semantics": { "const": "unbounded logits" }
+      },
+      "additionalProperties": false
+    },
+    "headSubjectness": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "ordered_names", "value_semantics"],
+      "properties": {
+        "name": { "const": "subjectness_roi_agreement_logits" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [3] },
+        "ordered_names": { "const": ["subjectness", "roi_agreement", "ambiguity"] },
+        "value_semantics": { "const": "unbounded logits" }
+      },
+      "additionalProperties": false
+    },
+    "headIssues": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "ordered_names", "value_semantics"],
+      "properties": {
+        "name": { "const": "issue_logits" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [8] },
+        "ordered_names": { "const": ["subject_too_close_to_edge", "subject_not_prominent_enough", "background_competes_with_subject", "insufficient_look_space", "backlight_hides_subject", "scene_has_no_clear_focus", "frame_visually_overloaded", "horizon_distracts"] },
+        "value_semantics": { "const": "bounded operational issue catalog logits" }
+      },
+      "additionalProperties": false
+    },
+    "headActions": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "ordered_names", "catalog_version", "catalog_source", "value_semantics"],
+      "properties": {
+        "name": { "const": "action_utility_logits" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [26] },
+        "ordered_names": { "const": ["shift_frame_left", "shift_frame_right", "shift_frame_up", "shift_frame_down", "step_back", "step_closer", "lower_camera", "raise_camera", "change_camera_angle", "level_horizon", "rotate_subject_toward_light", "move_subject_left", "move_subject_right", "move_subject_away_from_background", "move_object_left", "move_object_right", "move_object_forward", "move_object_back", "remove_distracting_object", "reposition_prop_for_balance", "add_front_fill_light", "add_background_light", "remove_background_hotspot", "simplify_background", "wait_for_background_clearance", "keep_current_setup"] },
+        "catalog_version": { "const": 2 },
+        "catalog_source": { "const": "CameraCoachContractV2.production.approvedActionIDs" },
+        "value_semantics": { "const": "bounded CameraCoachContractV2 approved SemanticActionType utility logits, conditioned on the explicit intent and the chosen ROI" }
+      },
+      "additionalProperties": false
+    },
+    "headGoodFrame": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "value_range"],
+      "properties": {
+        "name": { "const": "good_frame_probability" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [1] },
+        "value_range": { "const": [0.0, 1.0] }
+      },
+      "additionalProperties": false
+    },
+    "headAbstention": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "value_range"],
+      "properties": {
+        "name": { "const": "abstention_probability" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [1] },
+        "value_range": { "const": [0.0, 1.0] }
+      },
+      "additionalProperties": false
+    },
+    "headRisk": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "value_range"],
+      "properties": {
+        "name": { "const": "risk_probability" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [1] },
+        "value_range": { "const": [0.0, 1.0] }
+      },
+      "additionalProperties": false
+    },
+    "headDeltas": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "ordered_names", "value_range", "value_semantics"],
+      "properties": {
+        "name": { "const": "continuous_target_deltas" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [5] },
+        "ordered_names": { "const": ["delta_x", "delta_y", "scale_delta", "light_delta", "horizon_delta"] },
+        "value_range": { "const": [-1.0, 1.0] },
+        "value_semantics": { "const": "bounded normalized target deltas" }
+      },
+      "additionalProperties": false
+    },
+    "headEmbedding": {
+      "type": "object",
+      "required": ["name", "dtype", "shape", "value_semantics"],
+      "properties": {
+        "name": { "const": "embedding" },
+        "dtype": { "const": "float32" },
+        "shape": { "const": [128] },
+        "value_semantics": { "const": "internal visual-semantic embedding only" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/datasets/camera-coach/v1/silver-action-pair-schema.json",
+  "title": "Camera Coach research-only silver paired-corruption record",
+  "description": "A deterministic pixel derivative paired with a silver Apple Vision geometry source. This is not human gold or release evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id", "schema_version", "pair_id", "source_family_id", "derivation_family_id", "split",
+    "is_independent", "counts_toward_quota", "research_only", "human_gold", "release_admissible",
+    "source", "derivative", "recipe", "roi", "geometry", "targets", "semantics_sha256"
+  ],
+  "properties": {
+    "schema_id": {"const": "camera-silver-action-pair-v1"},
+    "schema_version": {"const": "1.0.0"},
+    "pair_id": {"type": "string", "pattern": "^pair_[0-9a-f]{40}$"},
+    "source_family_id": {"type": "string", "pattern": "^family_[0-9a-f]{32}$"},
+    "derivation_family_id": {"type": "string", "pattern": "^family_[0-9a-f]{32}$"},
+    "split": {"const": "research_fit"},
+    "is_independent": {"const": false},
+    "counts_toward_quota": {"const": false},
+    "research_only": {"const": true},
+    "human_gold": {"const": false},
+    "release_admissible": {"const": false},
+    "issue_projection": {"const": "object_edge_pressure_to_subject_too_close_to_edge_silver"},
+    "source": {"$ref": "#/$defs/source"},
+    "derivative": {"$ref": "#/$defs/derivative"},
+    "recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "parameters"],
+      "properties": {
+        "name": {"enum": ["rotate_horizon", "crop_translate", "crop_zoom_in"]},
+        "version": {"const": "camera-corruption-v1"},
+        "parameters": {"type": "object"}
+      }
+    },
+    "roi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coordinate_space", "transform", "source_xywh", "derivative_xywh"],
+      "properties": {
+        "coordinate_space": {"const": "oriented_full_frame_top_left_normalized"},
+        "transform": {"const": "analytic"},
+        "source_xywh": {"$ref": "#/$defs/optionalRoi"},
+        "derivative_xywh": {"$ref": "#/$defs/optionalRoi"}
+      }
+    },
+    "geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "runtime", "sha256", "schema_id", "schema_version", "schema_sha256", "source_record_id"],
+      "properties": {
+        "provider": {"const": "silver_apple_vision"},
+        "runtime": {"const": "conditional_on_captured_apple_os_vision_runtime"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "schema_id": {"const": "camera-silver-geometry-v1"},
+        "schema_version": {"const": "1.0.0"},
+        "schema_sha256": {"$ref": "#/$defs/sha256"},
+        "source_record_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "targets": {"$ref": "#/$defs/targets"},
+    "semantics_sha256": {"const": "fcca9e96e79e4cc2631ab9041736c81653c59143a6a05017002ad906f40b48f5"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(^|/)\\.{1,2}(/|$)).+$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "source_record_id", "relative_path", "sha256", "width", "height", "format"],
+      "properties": {
+        "source_id": {"type": "string", "minLength": 1},
+        "source_record_id": {"type": "string", "minLength": 1},
+        "relative_path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "format": {"type": "string", "minLength": 1, "pattern": "^[a-z0-9.+-]+$"}
+      }
+    },
+    "derivative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relative_path", "sha256", "width", "height", "format"],
+      "properties": {
+        "relative_path": {"type": "string", "pattern": "^images/pair_[0-9a-f]{40}\\.png$"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "format": {"const": "png"}
+      }
+    },
+    "optionalRoi": {
+      "type": ["array", "null"],
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {"type": "number", "minimum": 0, "maximum": 1}
+    },
+    "issueHead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ordered_names", "values", "mask"],
+      "properties": {
+        "ordered_names": {"const": [
+          "subject_too_close_to_edge", "subject_not_prominent_enough", "background_competes_with_subject",
+          "insufficient_look_space", "backlight_hides_subject", "scene_has_no_clear_focus",
+          "frame_visually_overloaded", "horizon_distracts"
+        ]},
+        "values": {"type": "array", "minItems": 8, "maxItems": 8, "items": {"type": "integer", "enum": [0, 1]}},
+        "mask": {"type": "array", "minItems": 8, "maxItems": 8, "items": {"type": "integer", "enum": [0, 1]}}
+      }
+    },
+    "actionHead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ordered_names", "values", "mask"],
+      "properties": {
+        "ordered_names": {"const": [
+          "shift_frame_left", "shift_frame_right", "shift_frame_up", "shift_frame_down", "step_back", "step_closer",
+          "lower_camera", "raise_camera", "change_camera_angle", "level_horizon", "rotate_subject_toward_light",
+          "move_subject_left", "move_subject_right", "move_subject_away_from_background", "move_object_left", "move_object_right",
+          "move_object_forward", "move_object_back", "remove_distracting_object", "reposition_prop_for_balance",
+          "add_front_fill_light", "add_background_light", "remove_background_hotspot", "simplify_background",
+          "wait_for_background_clearance", "keep_current_setup"
+        ]},
+        "values": {"type": "array", "minItems": 26, "maxItems": 26, "items": {"type": "integer", "enum": [0, 1]}},
+        "mask": {"type": "array", "minItems": 26, "maxItems": 26, "items": {"type": "integer", "enum": [0, 1]}}
+      }
+    },
+    "continuousHead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ordered_names", "values", "mask"],
+      "properties": {
+        "ordered_names": {"const": ["delta_x", "delta_y", "scale_delta", "light_delta", "horizon_delta"]},
+        "values": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"type": "number", "minimum": -1, "maximum": 1}},
+        "mask": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"type": "integer", "enum": [0, 1]}}
+      }
+    },
+    "targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issue", "action", "continuous"],
+      "properties": {
+        "issue": {"$ref": "#/$defs/issueHead"},
+        "action": {"$ref": "#/$defs/actionHead"},
+        "continuous": {"$ref": "#/$defs/continuousHead"}
+      }
+    }
+  },
+  "x-semantics": {
+    "coordinate_space": "oriented_full_frame_top_left_normalized",
+    "axes": {"x": "right", "y": "down"},
+    "roi": "transform the silver selected ROI analytically; never detect on a derivative",
+    "delta_x": "desired subject-center displacement in normalized frame units; positive is right",
+    "delta_y": "desired subject-center displacement in normalized frame units; positive is down",
+    "scale_delta": "log2(target source linear scale / derivative linear scale); zoom-in is negative",
+    "horizon_delta": "required scene correction degrees / 180; derivative +theta maps to -theta/180",
+    "label_mask": "mask=1 only for the recipe-positive label and exact forbidden opposite/keep labels; unknown=0"
+  },
+  "x-semantics-sha256": "fcca9e96e79e4cc2631ab9041736c81653c59143a6a05017002ad906f40b48f5"
+}

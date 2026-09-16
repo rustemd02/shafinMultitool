@@ -114,10 +114,14 @@ final class SceneMetadataExtractor {
         else {
             return nil
         }
-        let normalizedRemainder = remainder.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
-        guard !normalizedRemainder.isEmpty else {
+        // The heading keeps the line's own sentence punctuation (cue phrases
+        // often carry a terminal period); periods are stripped only for the
+        // emptiness check so a bare "ЭКСТ." line stays rejected.
+        let contentOnly = remainder.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        guard !contentOnly.isEmpty else {
             return nil
         }
+        let normalizedRemainder = remainder
 
         let components = splitHeadingComponents(normalizedRemainder)
         let timeOfDay = extractHeadingTime(from: components)

@@ -17,4 +17,13 @@ final class VisualEvidenceProviderFactoryTests: XCTestCase {
         let capabilities = await mock.capabilities
         XCTAssertTrue(capabilities.supportsOffline)
     }
+
+    func testDefaultProviderIsNeverRemoteCapableInTests() {
+        // C09: no hidden egress. In this build configuration the default
+        // factory must not hand out a remote-capable provider.
+        guard let provider = VisualSemanticEvidenceProviderFactory.makeDefaultProvider() else {
+            return
+        }
+        XCTAssertFalse(provider.capabilities.supportsRemote)
+    }
 }

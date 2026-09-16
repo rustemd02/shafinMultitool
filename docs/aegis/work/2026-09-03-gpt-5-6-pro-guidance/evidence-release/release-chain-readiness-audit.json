@@ -1,0 +1,156 @@
+{
+  "claim_scope": "Local Release-configuration build and bundle inspection with signing disabled. Nothing was signed, archived, uploaded or published, and no App Store Connect access was used.",
+  "control_run": {
+    "delta_vs_before_fix": "none: identical counts to the run before the guard fix, confirming the moved declarations are the same code and only their conditional-compilation scope changed",
+    "failures_total": 36,
+    "log_sha256": "34a2357543858edf28380786c7878cbc583115d8781746af37176fabccc3dc20",
+    "phase_a": "18 total / 17 passed / 1 failed",
+    "phase_b": "177 / 142 passed / 35 failed",
+    "recipe": "scripts/run_camera_certification.sh",
+    "simulator": "iPhone 17e 1F680A42-CEB3-43E8-9CED-52F874962A62 (iOS 26.5)"
+  },
+  "finding": {
+    "before": "The Release configuration did not compile: 5 errors, all the same defect class \u2014 production call sites referencing members declared only under #if DEBUG.",
+    "cause": "Every previous certification in this project ran the Debug configuration only, so a Debug-only declaration referenced from an unguarded production path could not fail until a Release build was attempted.",
+    "errors_before": [
+      "AnalysisPipeline.swift:5193 cannot find 'updateIntentClarification' in scope (the CC-I05 intent API lived inside the #if DEBUG extension spanning lines 13750-15394 while publishLivePresentation calls it unconditionally)",
+      "CameraViewModel.swift:793 AnalysisPipeline has no member 'answerIntentClarification' (same extension)",
+      "SceneGeneratorViewModel.swift:1932/1933/1949 Self has no member 'generationLeaderFixtureHoldsSequence' / 'leaderActionHoldSeconds' (declared inside the #if DEBUG block at 857-881, used by the production leader sequence)"
+    ],
+    "fix": [
+      "Moved the four production intent members (recordIntentClarification, resetIntentClarificationSession, answerIntentClarification, updateIntentClarification) out of the #if DEBUG extension into a production extension; the testing accessors stay under #if DEBUG.",
+      "Moved generationLeaderFixtureArgument, generationLeaderFixtureHoldsSequence and leaderActionHoldSeconds out of the #if DEBUG block in SceneGeneratorViewModel; the fixture-only behaviour is unchanged because it still activates only through the -SHAFIN_GENERATOR_LEADER_FIXTURE launch argument."
+    ],
+    "severity": "release blocker, now fixed"
+  },
+  "release_build": {
+    "bundle": "/private/tmp/shafin-release-derived3/Build/Products/Release-iphoneos/shafinMultitool.app",
+    "bundle_arch": "arm64",
+    "configuration": "Release",
+    "destination": "generic/platform=iOS",
+    "errors": 0,
+    "log_sha256": "1673bd819b48d4879dc0b1f98c5f4ef20421940784c4fe783ae7a177e98445e7",
+    "result": "BUILD SUCCEEDED",
+    "signing": "CODE_SIGNING_ALLOWED=NO (no certificate needed, nothing was signed or published)",
+    "warnings": 68
+  },
+  "release_build_verification": {
+    "checked_in_bundle": {
+      "ITSAppUsesNonExemptEncryption": "false",
+      "localized_info_plists": [
+        "en.lproj/InfoPlist.strings",
+        "ru.lproj/InfoPlist.strings"
+      ],
+      "usage_keys_verified": [
+        "NSCameraUsageDescription",
+        "NSMicrophoneUsageDescription",
+        "NSPhotoLibraryAddUsageDescription",
+        "NSSpeechRecognitionUsageDescription"
+      ]
+    },
+    "configuration": "Release",
+    "destination": "generic/platform=iOS",
+    "errors": 0,
+    "log_sha256": "a7086da5343cc034c3b59fba5ee177139f9ce350994648dbb3dc617a10df7bb2",
+    "result": "BUILD SUCCEEDED",
+    "signing": "CODE_SIGNING_ALLOWED=NO"
+  },
+  "report_id": "release-chain-readiness-audit-2026-09-12",
+  "source_state": {
+    "branch": "store",
+    "head": "0733df2cb83c8e3687c31251e11e5d0747052602",
+    "note": "The release build ran against the working tree, not commit 0733df2c alone; modified paths include the two files fixed in this package.",
+    "porcelain_v2_sha256": "cabd9921c73da68da87e3f853eb2510be4b5218508343ccf755e9e065ccb76e0"
+  },
+  "static_facts_verified": {
+    "app_icon": "single 1024x1024 universal icon (\u043b\u043e\u0433\u043e-\u043a\u0440\u0443\u0433\u043b.png) with CFBundleIconName AppIcon; the built bundle contains rendered AppIcon sizes",
+    "build_number": "1",
+    "bundle_identifier": "com.vigvamcev-media.shafinMultitool",
+    "deployment_target": "17.0",
+    "entitlements": "no .entitlements file in the app target",
+    "export_compliance": {
+      "declared_in": "shafinMultitool/Info.plist",
+      "justification": "The app implements no cryptography of its own: CryptoKit SHA-256 is used for request digests (SceneCreateJobRequestBuilder) and the App Attest client data hash (AppAttestServiceTokenProvider), and every network endpoint requires https (SceneGenerationClient requires the https scheme).",
+      "key": "ITSAppUsesNonExemptEncryption",
+      "value": false,
+      "verified_in_built_plist": true
+    },
+    "export_compliance_declaration": null,
+    "export_options_note": "method app-store-connect, destination export, teamID 5NAKQ28539, automatic signing, symbols uploaded, version/build management disabled. It is committed for reproducibility but cannot run until the owner supplies the distribution identity, and it is deliberately set to export rather than upload.",
+    "export_options_plist": "docs/implementation/release/ExportOptions.plist",
+    "localization": "Localizable.xcstrings has 480 keys with both en and ru, none missing a language",
+    "marketing_version": "1.0",
+    "photo_access_level": ".addOnly (SystemPermissionClient and ScenePhotosExportService request add-only), so the Add usage description is the correct key",
+    "privacy_manifest": {
+      "app": "shafinMultitool/PrivacyInfo.xcprivacy",
+      "collected_data_types": [],
+      "declares": [
+        "NSPrivacyAccessedAPICategoryUserDefaults CA92.1",
+        "NSPrivacyAccessedAPICategorySystemBootTime 35F9.1"
+      ],
+      "third_party": "Pods/SnapKit/Sources/PrivacyInfo.xcprivacy ships a manifest",
+      "tracking": false
+    },
+    "required_device_capability": "arkit, and ARKit is genuinely used (CameraService, DBService, PerformanceMonitor, CameraScreenInteractor, LegacySceneGeneratorCameraShell)",
+    "signing_style": "Automatic (development identity configured; no distribution profile present)",
+    "swift": "5.0",
+    "team": "5NAKQ28539",
+    "usage_descriptions_localized": true,
+    "usage_descriptions_note": "Corrected: the earlier audit reported this as false because it looked only for InfoPlist.strings files in the source tree. The app localizes Info.plist keys through a String Catalog (shafinMultitool/Resources/InfoPlist.xcstrings, source language en, five keys), and the built bundle contains en.lproj/InfoPlist.strings and ru.lproj/InfoPlist.strings with all four usage descriptions plus the display name.",
+    "usage_descriptions_present": [
+      "NSCameraUsageDescription",
+      "NSMicrophoneUsageDescription",
+      "NSPhotoLibraryAddUsageDescription",
+      "NSSpeechRecognitionUsageDescription"
+    ]
+  },
+  "testflight_prerequisites": [
+    {
+      "blocking": true,
+      "item": "App Store Connect app record for com.vigvamcev-media.shafinMultitool",
+      "owner": "owner"
+    },
+    {
+      "blocking": true,
+      "item": "Apple Distribution certificate and provisioning profile for team 5NAKQ28539 (today only a development identity is configured)",
+      "owner": "owner"
+    },
+    {
+      "blocking": false,
+      "item": "ExportOptions.plist committed at docs/implementation/release/ExportOptions.plist",
+      "owner": "agent (done)"
+    },
+    {
+      "blocking": false,
+      "item": "Export compliance declared: ITSAppUsesNonExemptEncryption=false in shafinMultitool/Info.plist and verified in the built Release plist",
+      "owner": "agent (done)"
+    },
+    {
+      "blocking": false,
+      "item": "App Attest environment entitlement (com.apple.developer.devicecheck.appattest-environment) \u2014 absent; required before the remote Scene path can use App Attest on a device",
+      "note": "the remote provider is fail-closed off today, so this blocks the egress path rather than the current launch surface",
+      "owner": "owner (capability) + agent (plumbing)"
+    },
+    {
+      "blocking": false,
+      "item": "Localized usage descriptions already shipped through shafinMultitool/Resources/InfoPlist.xcstrings (en+ru) and verified inside the built bundle",
+      "owner": "agent (already present, now verified)"
+    },
+    {
+      "blocking": true,
+      "item": "Screenshots, metadata, privacy answers and age rating in App Store Connect",
+      "owner": "owner"
+    },
+    {
+      "blocking": true,
+      "item": "Owner GO for any submission",
+      "owner": "owner"
+    }
+  ],
+  "toolchain": {
+    "sdk": "26.5",
+    "sdk_build": "23F81a",
+    "xcode": "Xcode 26.6"
+  },
+  "utc": "2026-09-12T20:53:07+00:00"
+}

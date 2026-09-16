@@ -1,0 +1,93 @@
+{
+  "claim_scope": "Repository-derived answers with per-item evidence. They are a draft for the owner to confirm and enter into App Store Connect, not a submitted declaration.",
+  "configuration": "Shipping configuration as committed today: the remote Scene provider is fail-closed off and the remote VLM provider cannot be constructed in Release at all.",
+  "data_collection": {
+    "answer": "none in the shipping configuration",
+    "off_device_processing": "Apple Speech may receive microphone audio for spoken scene input. SpeechRecognitionService builds SFSpeechAudioBufferRecognitionRequest without requiresOnDeviceRecognition, so recognition is server-based, and the app's own NSSpeechRecognitionUsageDescription states that audio is sent to Apple servers. This is platform processing rather than developer collection, but it must be disclosed in the privacy policy and reviewed in the App Privacy questionnaire before submission.",
+    "conditional": "If the remote Scene provider is ever enabled by deployment configuration, the scene text and the App Attest attestation/assertion payloads are transmitted to that endpoint, and these answers must be revisited before any release that enables it.",
+    "evidence": [
+      "camera frames are analysed on device (Vision, DETR, NIMA, deterministic critique) and never uploaded",
+      "scene text, photos and videos are written to the app container and the user's photo library only when the user asks",
+      "VisualSemanticEvidenceProviderFactory returns a remote provider only under #if DEBUG; the Release build has no VLM network path",
+      "SceneRemoteServiceComposition is fail-closed: without an explicitly configured https endpoint and App Attest the remote provider is nil",
+      "S07 2026-09-13: the Speech path is not on-device; the privacy policy must state that spoken input is processed by Apple"
+    ],
+    "question": "What data does the app collect off the device?"
+  },
+  "data_linked_to_identity": {
+    "answer": false,
+    "evidence": [
+      "the app has no account, sign-in or user identifier; App Attest keys are per-installation and carry no identity"
+    ],
+    "question": "Is any collected data linked to the user's identity?"
+  },
+  "data_used_for_tracking": {
+    "answer": false,
+    "evidence": [
+      "no tracking SDKs, no identifiers, no tracking domains"
+    ],
+    "question": "Is data used for tracking across apps or websites?"
+  },
+  "privacy_policy": {
+    "answer": null,
+    "note": "Gate 5 of the product plan requires a hosted policy URL plus an in-app policy; neither exists yet.",
+    "question": "Privacy policy URL",
+    "status": "owner_required"
+  },
+  "report_id": "app-privacy-answers-2026-09-12",
+  "required_reason_apis": {
+    "answer": [
+      {
+        "api": "NSPrivacyAccessedAPICategoryUserDefaults",
+        "reason": "CA92.1",
+        "used_in": [
+          "10 source files"
+        ]
+      },
+      {
+        "api": "NSPrivacyAccessedAPICategorySystemBootTime",
+        "reason": "35F9.1",
+        "used_in": [
+          "CameraViewModel recording timer (ProcessInfo.processInfo.systemUptime)"
+        ]
+      },
+      {
+        "api": "NSPrivacyAccessedAPICategoryFileTimestamp",
+        "reason": "C617.1",
+        "used_in": [
+          "RecordingArtifactStore.swift:1308 stat() and :1411-1412 lstat() in the recovery/ownership scan (Apple classifies the stat family as File timestamp APIs)"
+        ]
+      },
+      {
+        "api": "NSPrivacyAccessedAPICategoryDiskSpace",
+        "reason": "E174.1",
+        "used_in": [
+          "RecordingArtifactStore (volumeAvailableCapacityForImportantUsage) checks free space before writing a recording"
+        ]
+      }
+    ],
+    "evidence": [
+      "S07 2026-09-13 correction, tightened by the tools owner after reading the call sites: the earlier claim that no file-timestamp API is used was wrong. The File timestamp basis is the stat()/lstat() family (RecordingArtifactStore.swift:1308, :1411-1412); DiskSpace is volumeAvailableCapacityForImportantUsage (RecordingArtifactStore.swift:285-299). FileManager.attributesOfItem is used for file SIZE only, so it is not cited as timestamp evidence.",
+      "shafinMultitool/PrivacyInfo.xcprivacy now declares FileTimestamp C617.1 and DiskSpace E174.1 in addition to UserDefaults CA92.1 and SystemBootTime 35F9.1; scripts/validate_privacy_manifest.sh enforces exactly those four category/reason pairs.",
+      "No keyboard (activeInputModes) usage was found."
+    ],
+    "question": "Which Required Reason APIs does the app use?",
+    "verified_by": "tools owner, S07 handover: the usage scan in tools/tests/test_release_metadata.py confirms all four APIs and fails if the manifest omits any of them"
+  },
+  "s07_review_flags": [
+    "The Speech input path sends microphone audio to Apple servers; the hosted privacy policy must disclose this.",
+    "The remote VLM seam transmits a redacted, EXIF-stripped visual reference but is #if DEBUG only and not constructible in Release.",
+    "The remote Scene provider is fail-closed off; enabling it requires revisiting these answers (C09).",
+    "tools/tests/test_release_metadata.py still pins the legacy two-entry required-reason list and must be updated by the tools owner."
+  ],
+  "tracking": {
+    "answer": false,
+    "evidence": [
+      "PrivacyInfo.xcprivacy declares NSPrivacyTracking=false with an empty NSPrivacyTrackingDomains",
+      "no AdSupport, ATT or IDFA API is referenced anywhere in the app sources",
+      "the Podfile declares SnapKit only; no analytics, attribution or crash-reporting SDK is linked"
+    ],
+    "question": "Does the app track users?"
+  },
+  "utc": "2026-09-12T20:56:24+00:00"
+}

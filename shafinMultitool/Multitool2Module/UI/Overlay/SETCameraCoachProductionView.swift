@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import ImageIO
 
 /// Deterministic input for the DEBUG production-route fixture. The fixture
@@ -154,6 +155,7 @@ private struct SETCameraCoachRuntimeSurface: View {
                         mode: pauseMode,
                         timecode: viewModel.nominalTimecode,
                         critique: pauseCritique,
+                        review: reviewPresentation,
                         eventLedger: viewModel.motionEventLedger,
                         reduceMotion: reduceMotion,
                         markerRegion: pauseMarkerRegion,
@@ -178,7 +180,8 @@ private struct SETCameraCoachRuntimeSurface: View {
                         cameraManager: cameraManager,
                         subjectRegions: previewSubjectRegions,
                         correctiveTargetRegion: previewCorrectiveTargetRegion,
-                        transformStore: previewTransformStore
+                        transformStore: previewTransformStore,
+                        onSceneTap: { viewModel.handleSceneTap(sceneX: $0, sceneY: $1) }
                     )
                     .ignoresSafeArea()
                     .accessibilityHidden(true)
@@ -227,7 +230,8 @@ private struct SETCameraCoachRuntimeSurface: View {
                                 onAction: { viewModel.start() }
                             )
                         case .liveSeeking, .stableTip, .explanation, .keepAsIs,
-                             .lensSwitching, .pauseLoading, .pauseSuccess,
+                             .actionObserved, .verification, .verificationImproved,
+                             .verificationNotImproved, .abstention, .lensSwitching, .pauseLoading, .pauseSuccess,
                              .pauseEmpty, .pauseFailure, .resuming:
                             SETCameraLiveOverlay(
                                 viewModel: viewModel,
@@ -248,8 +252,10 @@ private struct SETCameraCoachRuntimeSurface: View {
                     onTogglePause: { viewModel.togglePause() }
                 )
 
-                // M9-016: discoverable Pro Controls toggle (top-trailing,
-                // 44pt target, localized, one layer over the same session).
+                // M9-016: discoverable Pro Controls toggle (44pt target,
+                // localized, one layer over the same session). It sits one
+                // top-chrome row lower so it never covers the existing
+                // pause/resume control that shares the top-trailing edge.
                 VStack {
                     HStack {
                         Spacer()
@@ -277,23 +283,35 @@ private struct SETCameraCoachRuntimeSurface: View {
                     }
                     Spacer()
                 }
+                .padding(.top, SETCameraCoachMetric.topControlRowHeight + SETSpacing.x2)
 
                 SETAccessibilityIdentifierProbe(identifier: CameraOverlayAccessibilityID.surface)
 
                 // M9-016: the single Pro Controls layer inside the Coach
                 // screen — same session, same owners, no second screen.
                 if isProControlsPresented {
-                    ProControlsPanelView(
-                        rows: ProControlsPresentation.rows(
-                            torchActive: cameraManager.isTorchActive,
-                            meterLevel: cameraManager.audioLevel,
-                            formatText: nil,
+                    // The 13-row contract is taller than a compact-height
+                    // canvas (and grows further at accessibility text sizes).
+                    // Scrolling keeps every row reachable; the minimum-height
+                    // frame keeps the existing centered composition whenever
+                    // the panel already fits.
+                    ScrollView(.vertical) {
+                        ProControlsPanelView(
+                            rows: ProControlsPresentation.rows(
+                                torchActive: cameraManager.isTorchActive,
+                                meterLevel: cameraManager.audioLevel,
+                                formatText: nil,
+                                locale: locale
+                            ),
                             locale: locale
-                        ),
-                        locale: locale
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    .padding(SETSpacing.x4)
+                        )
+                        .padding(SETSpacing.x4)
+                        .frame(maxWidth: .infinity,
+                               minHeight: canvasSize.height,
+                               alignment: .center)
+                    }
+                    .scrollIndicators(.hidden)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture { isProControlsPresented = false }
                 }
             }
@@ -331,6 +349,14 @@ private struct SETCameraCoachRuntimeSurface: View {
         return viewModel.pauseCritique
     }
 
+    /// C09.3: review-only projection of the accepted still. It carries no
+    /// active action and opens no live episode; without a local verifier the
+    /// status stays `unknown` and the review asks for a human assessment.
+    private var reviewPresentation: CameraReviewPresentation? {
+        guard let critique = pauseCritique else { return nil }
+        return CameraReviewPresentation.make(critique: critique, locale: locale)
+    }
+
     private var pauseMarkerRegion: NormalizedRect? {
         guard let acceptedSnapshot = viewModel.acceptedPauseSnapshot,
               let critique = pauseCritique,
@@ -356,27 +382,12 @@ private struct SETCameraCoachRuntimeSurface: View {
         return action.targetRegion ?? issue.affectedRegion
     }
 
-    private var validatedCorrectiveTargetRegion: NormalizedRect? {
-        guard let liveHint = viewModel.liveHint,
-              let overlayHint = liveHint.overlayHint,
-              overlayHint.kind == .arrow || overlayHint.kind == .regionHighlight,
-              let targetRegion = liveHint.targetRegion,
-              !targetRegion.isDegenerate else { return nil }
-        return targetRegion
-    }
-
     private var previewSubjectRegions: [NormalizedRect] {
-        if viewModel.coachingEpisodeState.baseline != nil {
-            return viewModel.coachingEpisodeSubjectRegion.map { [$0] } ?? []
-        }
-        return viewModel.subjectRegions
+        viewModel.coachingEpisodeSubjectRegion.map { [$0] } ?? []
     }
 
     private var previewCorrectiveTargetRegion: NormalizedRect? {
-        if viewModel.coachingEpisodeState.baseline != nil {
-            return viewModel.coachingEpisodeTargetRegion
-        }
-        return validatedCorrectiveTargetRegion
+        viewModel.coachingEpisodeTargetRegion
     }
 
     private var runtimePresentation: CameraOverlayUXPresentation {
@@ -391,8 +402,7 @@ private struct SETCameraCoachRuntimeSurface: View {
                 lensState: viewModel.lensSwitchPresentationState,
                 performance: viewModel.effectivePerformance,
                 analysisStatus: viewModel.analysisStatus,
-                hasSpatialEvidence: viewModel.coachingEpisodeState.baseline == nil
-                    || viewModel.coachingEpisodeTargetRegion != nil
+                hasSpatialEvidence: viewModel.coachingEpisodeTargetRegion != nil
             ),
             locale: locale
         )
@@ -544,9 +554,10 @@ private struct SETCameraTopChrome: View {
             .accessibilityLabel(Text(
                 (isPaused ? SETCopyKey.cameraResume : SETCopyKey.cameraPause).localizedTextKey
             ))
-            .accessibilityValue(Text(
-                (isPaused ? SETCopyKey.cameraWhyValueOpen : SETCopyKey.cameraWhyValueClosed).localizedTextKey
-            ))
+            // No accessibilityValue: it used to announce the WHY panel's open/closed copy
+            // (set.camera.why.open/.closed) keyed off the pause state, so VoiceOver read a
+            // different control's state. The label (Pause/Resume) plus .isSelected already
+            // carry this control's state truthfully.
             .accessibilityAddTraits(isPaused ? .isSelected : [])
         }
         .padding(.top, SETCameraCoachMetric.topControlTopInset)
@@ -572,6 +583,7 @@ private struct SETCameraLiveOverlay: View {
 
     var body: some View {
         let presentation = self.presentation
+        let continuationToken = presentation.canContinueEpisode ? presentation.episodeToken : nil
         let placement = advicePlacement
         let railFrame = placement?.frame ?? legacyCommandRailFrame
 
@@ -610,7 +622,8 @@ private struct SETCameraLiveOverlay: View {
                 )
             }
 
-            if let geometry = correctiveArrowGeometry,
+            if !isHintsPaused,
+               let geometry = correctiveArrowGeometry,
                let markerEventID = presentation.markerEventID {
                 SETCorrectiveArrowDrawGuide(
                     geometry: geometry,
@@ -620,7 +633,7 @@ private struct SETCameraLiveOverlay: View {
                 )
                 .frame(width: canvasSize.width, height: canvasSize.height)
                 .accessibilityHidden(true)
-            } else if let markerKind, let markerEventID = presentation.markerEventID {
+            } else if !isHintsPaused, let markerKind, let markerEventID = presentation.markerEventID {
                 SETMarkerDrawGuide(
                     kind: markerKind,
                     eventID: markerEventID,
@@ -633,28 +646,62 @@ private struct SETCameraLiveOverlay: View {
             }
 
             Group {
-                if let placement {
+                if !isHintsPaused, let placement {
                     SETCameraCommandBand(
                         state: presentationState,
                         actionKey: actionKey,
+                        observation: presentation.observation,
                         actionInstruction: presentation.actionInstruction,
                         explanation: presentation.explanation,
                         showsWhy: presentation.showsWhy,
                         isExpanded: isExpanded,
                         railHeight: placement.frame.height,
-                        onWhy: toggleExplanation
+                        onWhy: toggleExplanation,
+                        onContinue: continuationToken.map { token in
+                            { _ = viewModel.continueCoaching(after: token) }
+                        }
                     )
                     .frame(width: placement.frame.width, height: placement.frame.height)
                     .position(x: placement.frame.midX, y: placement.frame.midY)
                 }
             }
 
+            if let cue = viewModel.pendingIntentClarificationCue {
+                SETCameraIntentClarificationPrompt(
+                    cue: cue,
+                    onAnswer: { intended in viewModel.answerIntentClarification(intended: intended) }
+                )
+                .padding(.horizontal, 16)
+                .frame(maxWidth: canvasSize.width, alignment: .center)
+                .offset(y: -max(0, canvasSize.height * 0.18))
+            }
+
             SETAccessibilityIdentifierProbe(identifier: CameraOverlayAccessibilityID.surface)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(CameraOverlayAccessibilityID.surface)
-        .onChange(of: viewModel.liveHint?.id) { _, _ in
+        .accessibilityValue(Text(verbatim: presentation.verificationClarity?.label(locale: locale) ?? ""))
+        // C07: conversation controls only. Repeating the hint re-announces the
+        // exact accepted copy through VoiceOver (never synthetic speech, so no
+        // audio can leak into a recording). Skip mirrors the visible Continue
+        // control. Pausing hints only hides the rail locally; it is not a new
+        // motor action and never changes the owner decision.
+        .accessibilityAction(named: Text(SETCopyKey.cameraHintRepeat.localizedTextKey)) {
+            announceCurrentHint()
+        }
+        .accessibilityAction(named: Text(SETCopyKey.cameraHintSkip.localizedTextKey)) {
+            skipCurrentHint()
+        }
+        .accessibilityAction(named: Text(
+            (isHintsPaused ? SETCopyKey.cameraHintResume : SETCopyKey.cameraHintPause).localizedTextKey
+        )) {
+            isHintsPaused.toggle()
+        }
+        .onChange(of: viewModel.liveHint?.id) { _, newID in
             isExpanded = false
+            if newID != nil {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
         }
         .onChange(of: viewModel.coachingEpisodeEventID) { _, _ in
             isExpanded = false
@@ -662,6 +709,25 @@ private struct SETCameraLiveOverlay: View {
     }
 
     @State private var isExpanded = false
+    @State private var isHintsPaused = false
+
+    /// Repeats the currently accepted copy through the system VoiceOver
+    /// announcement channel. No synthesizer is started, so nothing here can be
+    /// captured by the microphone during video recording.
+    private func announceCurrentHint() {
+        guard !isHintsPaused else { return }
+        let copy = presentation.accessibilityLabel
+        guard !copy.isEmpty else { return }
+        UIAccessibility.post(notification: .announcement, argument: copy)
+    }
+
+    /// Skip is the existing Continue owner path; it never fabricates a new
+    /// action and stays a no-op when no episode is ready to close.
+    private func skipCurrentHint() {
+        guard presentation.canContinueEpisode,
+              let token = presentation.episodeToken else { return }
+        _ = viewModel.continueCoaching(after: token)
+    }
 
     private var presentation: CameraOverlayUXPresentation {
         CameraOverlayUXPresentation.make(
@@ -694,6 +760,10 @@ private struct SETCameraLiveOverlay: View {
         case .keepAsIs: return .keep
         case .explanation: return .explanation
         case .stableTip: return .corrective
+        case .actionObserved, .verification, .verificationImproved, .verificationNotImproved:
+            return .corrective
+        case .abstention:
+            return .fallback
         case .liveSeeking: return .seeking
         case .starting, .interrupted, .failed, .lensSwitching,
              .pauseLoading, .pauseSuccess, .pauseEmpty, .pauseFailure, .resuming:
@@ -732,7 +802,30 @@ private struct SETCameraLiveOverlay: View {
         SETCameraCoachMetric.liveRailHeight(
             canvasSize: canvasSize,
             isAccessibilityType: dynamicTypeSize.isAccessibilitySize,
-            isExpanded: isExpanded
+            isExpanded: isExpanded,
+            content: commandRailContent
+        )
+    }
+
+    private var commandRailContent: SETCameraCoachRailContent {
+        let presentation = self.presentation
+        let renderedActionInstruction: String? = switch presentationState {
+        case .corrective, .explanation:
+            presentation.actionInstruction
+        case .seeking, .keep, .fallback:
+            nil
+        }
+        return SETCameraCoachRailContent(
+            observation: presentation.observation,
+            actionInstruction: renderedActionInstruction,
+            explanation: isExpanded ? presentation.explanation : nil,
+            whyLabel: presentation.showsWhy
+                ? (isExpanded ? SETCopyKey.cameraHideWhy : SETCopyKey.cameraWhy)
+                    .localizedString(locale: locale)
+                : nil,
+            continueLabel: presentation.canContinueEpisode
+                ? SETCopyKey.cameraContinue.localizedString(locale: locale)
+                : nil
         )
     }
 
@@ -785,28 +878,8 @@ private struct SETCameraLiveOverlay: View {
 
     private var acceptedSubjectRegion: CGRect? {
         let usableRegions = subjectRegions.filter { !$0.isNull && !$0.isEmpty }
-        guard !usableRegions.isEmpty else { return nil }
-        let target = correctiveTargetRegion ?? targetRegion
-        guard let target else {
-            return usableRegions.sorted { lhs, rhs in
-                let lhsArea = lhs.width * lhs.height
-                let rhsArea = rhs.width * rhs.height
-                if lhsArea != rhsArea { return lhsArea > rhsArea }
-                if lhs.minY != rhs.minY { return lhs.minY < rhs.minY }
-                return lhs.minX < rhs.minX
-            }.first
-        }
-        let targetCenter = CGPoint(x: target.midX, y: target.midY)
-        return usableRegions.sorted { lhs, rhs in
-            let leftDistance = hypot(lhs.midX - targetCenter.x, lhs.midY - targetCenter.y)
-            let rightDistance = hypot(rhs.midX - targetCenter.x, rhs.midY - targetCenter.y)
-            if abs(leftDistance - rightDistance) > 0.001 { return leftDistance < rightDistance }
-            let lhsArea = lhs.width * lhs.height
-            let rhsArea = rhs.width * rhs.height
-            if lhsArea != rhsArea { return lhsArea > rhsArea }
-            if lhs.minY != rhs.minY { return lhs.minY < rhs.minY }
-            return lhs.minX < rhs.minX
-        }.first
+        guard usableRegions.count == 1 else { return nil }
+        return usableRegions[0]
     }
 
     private var markerGeometry: SETCorrectiveArrowGeometry? {
@@ -1467,6 +1540,31 @@ private enum SETCameraPresentationState: Equatable {
 }
 
 enum SETCameraCopy {
+    /// Baseline action IDs are canonical typed catalog values. This helper is
+    /// intentionally enum-backed: opaque provenance IDs never become UI copy.
+    static func actionKey(forCanonicalActionID actionID: String) -> SETCopyKey? {
+        let actionID = actionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !actionID.isEmpty else { return nil }
+        if let semanticActionType = SemanticActionType(rawValue: actionID) {
+            return actionKey(for: semanticActionType)
+        }
+        if let technicalActionType = TechnicalQualityActionType(rawValue: actionID) {
+            switch technicalActionType {
+            case .stabilizeCamera: return .cameraTechnicalStabilizeCamera
+            case .refocusSubject: return .cameraTechnicalRefocusSubject
+            case .reduceExposure: return .cameraTechnicalReduceExposure
+            case .increaseExposure: return .cameraTechnicalIncreaseExposure
+            case .avoidOcclusion: return .cameraTechnicalAvoidOcclusion
+            case .cleanLens: return .cameraTechnicalCleanLens
+            case .reduceIsoNoise: return .cameraTechnicalReduceNoise
+            }
+        }
+        if let legacyActionType = ActionTypeV1(rawValue: actionID) {
+            return actionKey(for: legacyActionType)
+        }
+        return nil
+    }
+
     static func actionKey(for actionType: ActionTypeV1) -> SETCopyKey {
         switch actionType {
         case .moveFrameLeft: return .cameraCorrectiveMoveLeft
@@ -1528,14 +1626,23 @@ enum SETCameraCopy {
 
 private struct SETCameraCommandBand: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    // The one command has to scale with Dynamic Type: the typography helper renders
+    // fixed-size custom fonts, so an unscaled size would keep the most important text at
+    // 22pt at every accessibility size. Clamped the same way as the shared SETCommandLabel.
+    @ScaledMetric(relativeTo: .headline) private var scaledCommandSize: CGFloat = SETTypographySize.command
+    private var commandFontSize: CGFloat {
+        min(max(scaledCommandSize, SETTypographySize.command), SETTypographySize.commandMaximum)
+    }
     let state: SETCameraPresentationState
     let actionKey: SETCopyKey
+    let observation: String
     let actionInstruction: String?
     let explanation: String?
     let showsWhy: Bool
     let isExpanded: Bool
     let railHeight: CGFloat
     let onWhy: () -> Void
+    let onContinue: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: SETSpacing.x2) {
@@ -1560,6 +1667,20 @@ private struct SETCameraCommandBand: View {
                     .accessibilityValue(Text(
                         (isExpanded ? SETCopyKey.cameraWhyValueOpen : SETCopyKey.cameraWhyValueClosed).localizedTextKey
                     ))
+                }
+
+                if let onContinue {
+                    Button(action: onContinue) {
+                        Text(SETCopyKey.cameraContinue.localizedTextKey)
+                            .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.setOrange)
+                            .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                                   minHeight: SETComponentMetric.minimumHitTarget)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("camera_coach_continue")
+                    .accessibilityLabel(Text(SETCopyKey.cameraContinue.localizedTextKey))
                 }
             }
 
@@ -1596,17 +1717,24 @@ private struct SETCameraCommandBand: View {
     private var commandText: some View {
         switch state {
         case .corrective, .explanation:
-            if let actionInstruction {
-                Text(verbatim: actionInstruction)
-                    .font(SETTypography.font(.display, size: SETTypographySize.command))
-                    .fontWeight(.bold)
-                    .lineLimit(2)
+            VStack(alignment: .leading, spacing: SETSpacing.x1) {
+                Text(verbatim: observation)
+                    .font(SETTypography.font(.hudMono, size: SETTypographySize.body))
+                    .foregroundStyle(.setTextPrimary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .foregroundStyle(state == .corrective ? .setOrange : .setTextPrimary)
-                    .accessibilityIdentifier(CameraOverlayAccessibilityID.action)
+
+                if let actionInstruction {
+                    Text(verbatim: actionInstruction)
+                        .font(SETTypography.font(.display, size: commandFontSize))
+                        .fontWeight(.bold)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(state == .corrective ? .setOrange : .setTextPrimary)
+                        .accessibilityIdentifier(CameraOverlayAccessibilityID.action)
+                }
             }
         case .seeking, .keep, .fallback:
-            Text(actionKey.localizedTextKey)
+            Text(verbatim: observation.isEmpty ? actionKey.localizedString(locale: .current) : observation)
                 .font(SETTypography.font(.hudMono, size: SETTypographySize.body))
                 .foregroundStyle(state == .fallback ? .setTextPrimary : .setTextPrimary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1832,6 +1960,8 @@ private struct SETCameraStatusOverlay: View {
         case .interrupted:
             return SETCopyKey.cameraResume.localizedString(locale: locale)
         case .starting, .liveSeeking, .stableTip, .explanation, .keepAsIs,
+             .actionObserved, .verification, .verificationImproved,
+             .verificationNotImproved, .abstention,
              .lensSwitching, .pauseLoading, .pauseSuccess, .pauseEmpty,
              .pauseFailure, .resuming:
             return nil
@@ -1922,6 +2052,9 @@ private struct SETPauseReviewOverlay: View {
     let mode: SETPauseReviewMode
     let timecode: String
     let critique: PauseCritiquePresentation?
+    /// C09.3 review-only details. Optional so the failure surface keeps its
+    /// existing single-line recovery band.
+    let review: CameraReviewPresentation?
     let eventLedger: SETMotionEventLedger
     let reduceMotion: Bool
     let markerRegion: NormalizedRect?
@@ -1942,6 +2075,7 @@ private struct SETPauseReviewOverlay: View {
         mode: SETPauseReviewMode,
         timecode: String,
         critique: PauseCritiquePresentation?,
+        review: CameraReviewPresentation? = nil,
         eventLedger: SETMotionEventLedger,
         reduceMotion: Bool,
         markerRegion: NormalizedRect?,
@@ -1959,6 +2093,7 @@ private struct SETPauseReviewOverlay: View {
         self.mode = mode
         self.timecode = timecode
         self.critique = critique
+        self.review = review
         self.eventLedger = eventLedger
         self.reduceMotion = reduceMotion
         self.markerRegion = markerRegion
@@ -2060,17 +2195,23 @@ private struct SETPauseReviewOverlay: View {
     }
 
     private var reviewBand: some View {
-        SETPauseReviewBand(
-            title: titleText,
-            detail: detailText,
-            isLoading: mode == .loading,
-            actionTitle: mode == .failure ? failureActionKey : .actionMoreTake,
-            loadingEventID: "\(snapshotID).pause-loading",
-            eventLedger: eventLedger,
-            reduceMotion: reduceMotion,
-            actionAccessibilityIdentifier: "camera_coach_pause_action",
-            onAction: onResume
-        )
+        VStack(alignment: .leading, spacing: 0) {
+            SETPauseReviewBand(
+                title: titleText,
+                detail: detailText,
+                isLoading: mode == .loading,
+                actionTitle: mode == .failure ? failureActionKey : .actionMoreTake,
+                loadingEventID: "\(snapshotID).pause-loading",
+                eventLedger: eventLedger,
+                reduceMotion: reduceMotion,
+                actionAccessibilityIdentifier: "camera_coach_pause_action",
+                onAction: onResume
+            )
+
+            if mode == .success, let review {
+                SETPauseReviewDetails(review: review)
+            }
+        }
     }
 
     private var titleKey: SETCopyKey {
@@ -2174,6 +2315,159 @@ private struct SETPauseReviewOverlay: View {
     }
 }
 
+/// C09.3 review-only detail surface. It renders findings, evidence,
+/// uncertainty and alternative groups. It contains no executable proposal
+/// control: a review explains and compares, it never issues a live command.
+private struct SETPauseReviewDetails: View {
+    let review: CameraReviewPresentation
+
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SETSpacing.x3) {
+            Text(verbatim: review.status.label(locale: locale))
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                .fontWeight(.semibold)
+                .foregroundStyle(.setTextPrimary)
+                .accessibilityIdentifier("camera_coach_review_status")
+
+            if !review.findings.isEmpty {
+                findingsSection
+            }
+            if !review.evidence.isEmpty {
+                section(header: .traceEvidence, identifier: "camera_coach_review_evidence") {
+                    ForEach(Array(review.evidence.enumerated()), id: \.offset) { _, item in
+                        reviewRow(item.summary, detail: nil, identifier: nil)
+                    }
+                }
+            }
+            if !review.uncertainties.isEmpty {
+                section(header: .traceLimitations, identifier: "camera_coach_review_uncertainty") {
+                    ForEach(Array(review.uncertainties.enumerated()), id: \.offset) { _, item in
+                        reviewRow(item.detail(locale: locale), detail: nil, identifier: nil)
+                    }
+                }
+            }
+            alternativesSection
+            assessmentSection
+        }
+        .padding(.horizontal, SETCameraCoachMetric.headerControlHorizontalInset)
+        .padding(.vertical, SETSpacing.x3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.setInk)
+        .overlay(alignment: .top) {
+            Rectangle().fill(.setHairline).frame(height: SETStroke.hairline)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("camera_coach_review_details")
+    }
+
+    private var findingsSection: some View {
+        let issues = review.findings.filter { $0.kind == .issue }
+        let strengths = review.findings.filter { $0.kind == .strength }
+        return VStack(alignment: .leading, spacing: SETSpacing.x2) {
+            if !issues.isEmpty {
+                section(header: .traceReasonProblematic, identifier: "camera_coach_review_findings") {
+                    ForEach(issues, id: \.id) { finding in
+                        reviewRow(finding.title,
+                                  detail: regionDescription(finding.area),
+                                  identifier: nil)
+                    }
+                }
+            }
+            if !strengths.isEmpty {
+                section(header: .traceReasonWorked, identifier: nil) {
+                    ForEach(strengths, id: \.id) { finding in
+                        reviewRow(finding.title,
+                                  detail: regionDescription(finding.area),
+                                  identifier: nil)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Each group is one choice: its options are compared side by side and are
+    /// never numbered or emitted as a sequence.
+    @ViewBuilder
+    private var alternativesSection: some View {
+        if !review.alternativeGroups.isEmpty {
+            section(header: .cameraReviewAlternatives, identifier: "camera_coach_review_alternatives") {
+                ForEach(review.alternativeGroups, id: \.groupID) { group in
+                    VStack(alignment: .leading, spacing: SETSpacing.x1) {
+                        ForEach(group.options, id: \.id) { option in
+                            Text(verbatim: option.title(locale: locale))
+                                .font(SETTypography.uiBodyFont())
+                                .foregroundStyle(.setTextSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var assessmentSection: some View {
+        if let assessment = review.userAssessment {
+            Text(verbatim: SETCopyKey.cameraReviewHumanInput.localizedString(locale: locale))
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+                .foregroundStyle(.setTextSecondary)
+                .accessibilityIdentifier("camera_coach_review_human_input")
+        } else if review.showsAssessmentRequest {
+            Text(verbatim: SETCopyKey.cameraReviewAssessmentRequest.localizedString(locale: locale))
+                .font(SETTypography.uiBodyFont())
+                .foregroundStyle(.setTextSecondary)
+                .accessibilityIdentifier("camera_coach_review_human_input")
+        }
+    }
+
+    @ViewBuilder
+    private func section<Content: View>(header: SETCopyKey,
+                                        identifier: String?,
+                                        @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: SETSpacing.x1) {
+            Text(verbatim: header.localizedString(locale: locale))
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+                .foregroundStyle(.setOrange)
+                .accessibilityIdentifier(identifier ?? "")
+            content()
+        }
+    }
+
+    private func reviewRow(_ title: String, detail: String?, identifier: String?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(verbatim: title)
+                .font(SETTypography.uiBodyFont())
+                .foregroundStyle(.setTextPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let detail {
+                Text(verbatim: detail)
+                    .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+                    .foregroundStyle(.setTextSecondary)
+            }
+        }
+        .accessibilityIdentifier(identifier ?? "")
+    }
+
+    private func regionDescription(_ region: NormalizedRect?) -> String? {
+        guard let region else { return nil }
+        return SETCopyKey.traceRegionCoordinates.localizedFormat(
+            locale: locale,
+            arguments: [
+                percentString(region.x),
+                percentString(region.y),
+                percentString(region.width),
+                percentString(region.height)
+            ]
+        )
+    }
+
+    private func percentString(_ value: CGFloat) -> String {
+        String(format: "%.0f%%", Double(value) * 100)
+    }
+}
+
 private struct SETAccessibilityIdentifierProbe: View {
     let identifier: String
 
@@ -2194,4 +2488,65 @@ private enum SETLiveMonitorFixtureMetric {
 
 private enum SETProductionPauseReviewMetric {
     static let headerOpacity = 0.62
+}
+
+
+/// CC-I05 prompt styling: the scrim opacity is chosen so the light question
+/// text keeps WCAG-AA contrast (>= 4.5) even over a pure-white camera scene.
+enum IntentPromptStyle {
+    static let scrimOpacity: Double = 0.85
+    static var panelOverWhiteLuminance: Double { 1.0 - scrimOpacity }
+}
+
+/// CC-I05 prompt: one localized yes/no question about an intentional style.
+/// Two 44pt targets, stable accessibility identifiers, no hidden state.
+struct SETCameraIntentClarificationPrompt: View {
+    let cue: CameraStyleCue
+    let onAnswer: (Bool) -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        let presentation = IntentClarificationPresentation.make(cue: cue, locale: locale)
+        VStack(spacing: 10) {
+            Text(presentation.question)
+                .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .caption))
+                .foregroundStyle(.setTextPrimary)
+                .multilineTextAlignment(.center)
+            // At accessibility text sizes the two answers stack so neither
+            // label has to wrap inside a narrow capsule.
+            let answersLayout: AnyLayout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: 10))
+                : AnyLayout(HStackLayout(spacing: 12))
+            answersLayout {
+                Button {
+                    onAnswer(true)
+                } label: {
+                    Text(presentation.confirmTitle)
+                        .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.micro, relativeTo: .caption2))
+                        .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                               minHeight: SETComponentMetric.minimumHitTarget)
+                }
+                .accessibilityIdentifier(presentation.confirmAccessibilityIdentifier)
+
+                Button {
+                    onAnswer(false)
+                } label: {
+                    Text(presentation.denyTitle)
+                        .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.micro, relativeTo: .caption2))
+                        .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                               minHeight: SETComponentMetric.minimumHitTarget)
+                }
+                .accessibilityIdentifier(presentation.denyAccessibilityIdentifier)
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(14)
+        // Dark scrim (same family as the direction arrows) keeps the light
+        // question text readable over bright camera scenes; a translucent
+        // material washes out against bright content.
+        .background(Color.black.opacity(IntentPromptStyle.scrimOpacity), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .contain)
+    }
 }

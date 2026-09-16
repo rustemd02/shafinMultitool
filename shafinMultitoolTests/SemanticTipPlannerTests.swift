@@ -65,10 +65,70 @@ final class SemanticTipPlannerTests: XCTestCase {
         XCTAssertEqual(output.livePrimaryTip?.linkedIssueIds, ["issue-look-space"])
     }
 
+    /// C05 item 1: the materializer builds the text of the SAME accepted
+    /// Action. It may not select an independent advice from raw evidence.
+    func testLivePrimaryTipIsBoundToTheAcceptedPlanAction() throws {
+        let critique = makeCritique(
+            frameId: "frame-single-owner",
+            mode: .live,
+            verdict: .mixed,
+            issues: [
+                FrameIssue(
+                    id: "issue-look-space",
+                    type: .insufficientLookSpace,
+                    severity: 0.72,
+                    confidence: 0.84,
+                    rationale: "По направлению взгляда тесно.",
+                    evidence: [EvidenceRef(source: .semantics, key: "readability.lookSpaceAdequate", value: "false", confidence: 0.84)],
+                    affectedRegion: NormalizedRect(x: 0.62, y: 0.15, width: 0.24, height: 0.46),
+                    suggestedFixTypes: [.reframing]
+                )
+            ]
+        )
+        let acceptedActionID = "action-move-left"
+        let plan = RecommendationPlan(
+            frameId: critique.frameId,
+            mode: .live,
+            inputVerdict: critique.verdict,
+            primaryAction: RecommendationAction(
+                id: acceptedActionID,
+                actionType: .moveFrameLeft,
+                priority: 1,
+                targetRegion: NormalizedRect(x: 0.62, y: 0.15, width: 0.24, height: 0.46),
+                linkedIssueIds: ["issue-look-space"],
+                expectedOutcome: "legacy",
+                guardrail: ActionGuardrail(requiresStillCamera: false, minConfidence: 0.4, suppressWhenMoving: false),
+                overlayHint: nil
+            ),
+            secondaryActions: [],
+            deferredActions: [],
+            noChangeRationale: nil,
+            planConfidence: 0.82
+        )
+
+        let output = planner.plan(
+            input: SemanticTipPlannerInput(
+                frameId: critique.frameId,
+                mode: .live,
+                critique: critique,
+                recommendationPlan: plan,
+                semantics: makeSemantics(frameId: critique.frameId, mode: .live, subjectKind: .person)
+            )
+        )
+
+        let tip = try XCTUnwrap(output.livePrimaryTip)
+        XCTAssertEqual(tip.primaryActionId, acceptedActionID,
+                       "the tip must materialize the accepted action, not a second one")
+        XCTAssertEqual(tip.linkedActionIds, [acceptedActionID])
+        XCTAssertEqual(output.allRankedCandidates.map(\.primaryActionId).allSatisfy { $0 == nil || $0 == acceptedActionID },
+                       true,
+                       "no ranked candidate may reference an action outside the accepted plan")
+    }
+
     func testPersonEdgeTipsUsePhysicalCameraDirectionAndVisualCopy() throws {
         let cases: [(action: ActionTypeV1, tip: SemanticTipType, direction: SemanticDirection, liveText: String, pauseText: String)] = [
-            (.moveFrameLeft, .moveSubjectOffLeftEdge, .left, "Смести героя чуть правее.", "Герой зажат слева. Смести его чуть правее."),
-            (.moveFrameRight, .moveSubjectOffRightEdge, .right, "Смести героя чуть левее.", "Герой зажат справа. Смести его чуть левее.")
+            (.moveFrameLeft, .moveSubjectOffLeftEdge, .left, "Направь камеру чуть левее, сохранив героя в превью.", "Герой зажат слева. Направь камеру чуть левее, сохранив его в превью."),
+            (.moveFrameRight, .moveSubjectOffRightEdge, .right, "Направь камеру чуть правее, сохранив героя в превью.", "Герой зажат справа. Направь камеру чуть правее, сохранив его в превью.")
         ]
 
         for (index, expected) in cases.enumerated() {
@@ -259,7 +319,7 @@ final class SemanticTipPlannerTests: XCTestCase {
                 priority: 1,
                 targetRegion: NormalizedRect(x: 0.72, y: 0.22, width: 0.20, height: 0.22),
                 linkedIssueIds: ["issue-object-edge"],
-                expectedOutcome: "Сдвинь предмет левее.",
+                expectedOutcome: "Передвинь предмет левее в превью.",
                 guardrail: ActionGuardrail(requiresStillCamera: false, minConfidence: 0.4, suppressWhenMoving: false),
                 overlayHint: nil
             ),
@@ -283,7 +343,7 @@ final class SemanticTipPlannerTests: XCTestCase {
         XCTAssertEqual(primary.tipType, .moveObjectOffRightEdge)
         XCTAssertEqual(primary.actionType, .moveObjectLeft)
         XCTAssertEqual(primary.targetEntityDisplayLabel, "предмет")
-        XCTAssertEqual(primary.liveText, "Сдвинь предмет левее.")
+        XCTAssertEqual(primary.liveText, "Передвинь предмет левее в превью.")
         XCTAssertNil(primary.targetEntityRef)
         XCTAssertTrue(output.fallbackUsed)
     }
@@ -316,7 +376,7 @@ final class SemanticTipPlannerTests: XCTestCase {
                 priority: 1,
                 targetRegion: NormalizedRect(x: 0.02, y: 0.22, width: 0.20, height: 0.22),
                 linkedIssueIds: ["issue-object-edge-left"],
-                expectedOutcome: "Сдвинь предмет правее.",
+                expectedOutcome: "Передвинь предмет правее в превью.",
                 guardrail: ActionGuardrail(requiresStillCamera: false, minConfidence: 0.4, suppressWhenMoving: false),
                 overlayHint: nil
             ),
@@ -592,7 +652,7 @@ final class SemanticTipPlannerTests: XCTestCase {
                 priority: 1,
                 targetRegion: NormalizedRect(x: 0.72, y: 0.22, width: 0.20, height: 0.22),
                 linkedIssueIds: ["issue-object-edge"],
-                expectedOutcome: "Сдвинь предмет левее.",
+                expectedOutcome: "Передвинь предмет левее в превью.",
                 guardrail: ActionGuardrail(requiresStillCamera: false, minConfidence: 0.4, suppressWhenMoving: false),
                 overlayHint: nil
             ),
@@ -614,7 +674,7 @@ final class SemanticTipPlannerTests: XCTestCase {
 
         XCTAssertEqual(semanticOutput.livePrimaryTip?.tipType, .moveObjectOffRightEdge)
         XCTAssertEqual(semanticOutput.livePrimaryTip?.actionType, .moveObjectLeft)
-        XCTAssertEqual(semanticOutput.livePrimaryTip?.liveText, "Сдвинь предмет левее.")
+        XCTAssertEqual(semanticOutput.livePrimaryTip?.liveText, "Передвинь предмет левее в превью.")
         XCTAssertTrue(semanticOutput.fallbackUsed)
 
         await MainActor.run {
@@ -750,6 +810,205 @@ final class SemanticTipPlannerTests: XCTestCase {
             semanticActionTypes: [.stepCloser],
             mode: .live,
             snapshot: staleSnapshot,
+            semantics: semantics
+        ))
+    }
+
+    func testLiveCoachQualityGateRejectsSceneObjectMoveWithoutGroundedLiveEvidence() {
+        let semantics = makeLiveCoachSemantics()
+        let staleSnapshot = makeLiveCoachSnapshot(
+            vision: .init(
+                available: true,
+                freshnessMs: LiveCoachQualityGate.maxVisionFreshnessMilliseconds + 1,
+                confidence: 0.90
+            ),
+            objectCount: 1,
+            objectLabels: ["lamp"]
+        )
+        let unavailableSnapshot = makeLiveCoachSnapshot(
+            vision: .init(available: false),
+            objectCount: 1,
+            objectLabels: ["lamp"]
+        )
+
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.moveObjectLeft],
+            mode: .live,
+            snapshot: staleSnapshot,
+            semantics: semantics
+        ))
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.repositionPropForBalance],
+            mode: .live,
+            snapshot: unavailableSnapshot,
+            semantics: semantics
+        ))
+    }
+
+    func testLiveCoachQualityGateRejectsObjectMoveWithoutDetectedObjectButKeepsSubjectMove() {
+        let semantics = makeLiveCoachSemantics()
+        let groundedSnapshotWithoutObjects = makeLiveCoachSnapshot()
+
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.moveObjectRight],
+            mode: .live,
+            snapshot: groundedSnapshotWithoutObjects,
+            semantics: semantics
+        ))
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.removeDistractingObject],
+            mode: .live,
+            snapshot: groundedSnapshotWithoutObjects,
+            semantics: semantics
+        ))
+        XCTAssertTrue(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.moveObjectRight],
+            mode: .live,
+            snapshot: makeLiveCoachSnapshot(objectCount: 2, objectLabels: ["lamp", "vase"]),
+            semantics: semantics
+        ))
+    }
+
+    /// CC-O02/O05: two tracked instances whose regions overlap make an
+    /// object-targeted move ambiguous — the advice cannot ground itself to one
+    /// of the two lamps. The gate must withhold the object-scoped correction
+    /// while frame-global corrections stay actionable.
+    /// CC-O02 tap-grounding: once the operator taps one of the merged
+    /// instances, the target is identified and the overlap refusal lifts.
+    func testLiveCoachQualityGateAllowsObjectMoveWhenTapGrounded() {
+        let semantics = makeLiveCoachSemantics()
+        let groundedSnapshot = makeLiveCoachSnapshot(objectCount: 2, objectLabels: ["lamp", "lamp"])
+
+        XCTAssertTrue(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.moveObjectRight],
+            mode: .live,
+            snapshot: groundedSnapshot,
+            semantics: semantics,
+            overlappingInstancePairCount: 1,
+            tapGroundedObjectTarget: true
+        ))
+
+        // Without the tap the refusal stands (guard against a silent lift).
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.moveObjectRight],
+            mode: .live,
+            snapshot: groundedSnapshot,
+            semantics: semantics,
+            overlappingInstancePairCount: 1,
+            tapGroundedObjectTarget: false
+        ))
+    }
+
+    func testRegistryTapAccessorResolvesNearestTrackedInstance() {
+        var registry = SubjectIdentityRegistry(generation: 7)
+        let observations = [
+            SubjectIdentityObservation(
+                region: NormalizedRect(x: 0.05, y: 0.05, width: 0.10, height: 0.10),
+                confidence: 0.9,
+                label: "lamp"
+            ),
+            SubjectIdentityObservation(
+                region: NormalizedRect(x: 0.75, y: 0.60, width: 0.12, height: 0.14),
+                confidence: 0.9,
+                label: "vase"
+            ),
+        ]
+        let events = registry.observe(detections: observations, frameId: "frame-tap-1")
+
+        // Tap inside the second instance's region resolves to a tracked
+        // instance whose region contains the tap.
+        let hit = registry.instance(atSceneX: 0.80, y: 0.66)
+        XCTAssertNotNil(hit)
+        if let hit {
+            XCTAssertTrue(hit.region.x <= 0.80 && 0.80 <= hit.region.x + hit.region.width)
+            XCTAssertTrue(hit.region.y <= 0.66 && 0.66 <= hit.region.y + hit.region.height)
+        }
+
+        // Tap far from every instance resolves to nothing.
+        XCTAssertNil(registry.instance(atSceneX: 0.45, y: 0.45))
+    }
+
+    func testLiveCoachQualityGateRejectsObjectMoveWhenTrackedInstancesOverlap() {
+        let semantics = makeLiveCoachSemantics()
+        let groundedSnapshot = makeLiveCoachSnapshot(objectCount: 2, objectLabels: ["lamp", "lamp"])
+
+        XCTAssertTrue(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.moveObjectRight],
+            mode: .live,
+            snapshot: groundedSnapshot,
+            semantics: semantics
+        ))
+
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.moveObjectRight],
+            mode: .live,
+            snapshot: groundedSnapshot,
+            semantics: semantics,
+            overlappingInstancePairCount: 1
+        ))
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.removeDistractingObject],
+            mode: .live,
+            snapshot: groundedSnapshot,
+            semantics: semantics,
+            overlappingInstancePairCount: 2
+        ))
+
+        // Frame-global corrections remain actionable: the ambiguity is about
+        // which instance, not about the frame.
+        XCTAssertTrue(LiveCoachQualityGate.allows(
+            action: .changeAngle,
+            mode: .live,
+            snapshot: groundedSnapshot,
+            semantics: semantics,
+            overlappingInstancePairCount: 1
+        ))
+
+        // No evidence yet (nil) must not suppress: absence of evidence is not
+        // evidence of overlap.
+        XCTAssertTrue(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.moveObjectRight],
+            mode: .live,
+            snapshot: groundedSnapshot,
+            semantics: semantics,
+            overlappingInstancePairCount: nil
+        ))
+    }
+
+    func testLiveCoachQualityGateKeepsSubjectMoveGroundedWithoutObjectPresenceRequirement() {
+        let semantics = makeLiveCoachSemantics()
+        let staleSnapshot = makeLiveCoachSnapshot(
+            vision: .init(
+                available: true,
+                freshnessMs: LiveCoachQualityGate.maxVisionFreshnessMilliseconds + 1,
+                confidence: 0.90
+            )
+        )
+        let groundedSnapshotWithoutObjects = makeLiveCoachSnapshot()
+
+        XCTAssertFalse(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.moveSubjectLeft],
+            mode: .live,
+            snapshot: staleSnapshot,
+            semantics: semantics
+        ))
+        XCTAssertTrue(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.moveSubjectLeft],
+            mode: .live,
+            snapshot: groundedSnapshotWithoutObjects,
             semantics: semantics
         ))
     }
@@ -1041,7 +1300,9 @@ final class SemanticTipPlannerTests: XCTestCase {
         vision: SourceState = .init(available: true, freshnessMs: 80, confidence: 0.88),
         primaryRegion: NormalizedRect? = .init(x: 0.22, y: 0.16, width: 0.34, height: 0.48),
         primaryConfidence: Double? = 0.86,
-        capturedAt: Date = Date(timeIntervalSince1970: 1_772_000_300)
+        capturedAt: Date = Date(timeIntervalSince1970: 1_772_000_300),
+        objectCount: Int = 0,
+        objectLabels: [String] = []
     ) -> FrameFeatureSnapshot {
         FrameFeatureSnapshot(
             frameId: "live-quality",
@@ -1072,7 +1333,7 @@ final class SemanticTipPlannerTests: XCTestCase {
             lighting: .init(exposureBiasHint: 0, backlightIndex: 0, keyToFillRatio: nil),
             motion: .init(state: .still, shakeLevel: 0),
             aesthetics: .init(),
-            objects: .init(totalCount: 0, topKLabels: []),
+            objects: .init(totalCount: objectCount, topKLabels: objectLabels),
             technicalFlags: []
         )
     }

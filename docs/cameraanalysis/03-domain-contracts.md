@@ -4,6 +4,8 @@
 
 Дата: 2026-04-19
 
+Дополнение 2026-09-11: [следующий контракт Camera Coach](#camera-coach-domain-v3--проект-контракта-для-фото-и-видео) описан в конце этого документа по каталогу из 68 сценариев. Версия `camera-coach.domain.v3-draft.1` — спецификация для реализации; она ещё не декодируется приложением. Исторические PR-002 разделы выше дополнения и действующие Swift/ML v1/v2 контракты автоматически не заменяются.
+
 Связанные документы:
 - [README.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/README.md)
 - [02-pipeline-architecture.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/02-pipeline-architecture.md)
@@ -573,3 +575,365 @@ Verdict readiness:
 - перечислены invariants и примеры;
 - есть test plan для следующей implementation-wave;
 - ограниченный scene catalog `v1` и deterministic-first policy явно зафиксированы.
+
+## Camera Coach Domain v3 — проект контракта для фото и видео
+
+Дата: 2026-09-11. Версия спецификации: `camera-coach.domain.v3-draft.1`. Статус: `design_spec`; реализация, машинная схема, runtime-conformance и release qualification отсутствуют. Пользователь поручил спроектировать контракт после [каталога требований §23](camera-analysis-requirements-draft.md#23-camera-coach-для-фото-и-видео-каталог-сценариев-следующего-контракта). Термин v3 выбран, поскольку `CameraCoachContractV2` уже занят; это не версия нейросети.
+
+### N1. Область, решения и существующие владельцы
+
+Research continuation (2026-09-11): [Polza probe и ограниченный DEBUG ingress](eval/POLZA_RESEARCH_PROBE.md). Двухпредметный observation-only профиль не реализует весь s2/v3 и не подключён к production camera/planner; результаты probe не являются conformance-тестом этого Swift профиля.
+
+Спецификация охватывает все 68 случаев как целевой продуктовый домен. Рекомендованная первая реализация — полный эпизод с несколькими предметами; временные видеосценарии используют тот же домен и отдельные требования к evidence. Возможность выразить кейс не означает его квалификацию для выпуска.
+
+Принятые для проектирования значения: базовый live-путь локальный; подробный облачный анализ опционален и требует явного запроса; во время записи допустимы только ненавязчивые локальные подсказки; импорт выбранного фото/фрагмента представим, но не создаёт автоматического доступа к медиатеке. Эти решения конкретизируют контракт и не разрешают deployment, camera egress или изменение App Store 1.0 scope.
+
+Сравнены три подхода: расширить 26 старых action strings (недостаточно для независимых объектов и времени); передать VLM свободное создание советов (нет проверяемой семантики действий); расширить существующий evidence → planner → verifier типизированными сущностями, операциями и целями (выбранный вариант). Второй planner, отдельная база графов сцены и новая ML-голова на каждый сценарий не нужны.
+
+| Ответственность | Текущий владелец/источник | Изменение следующего контракта |
+|---|---|---|
+| Кадр, геометрия | `AcceptedFrameEnvelope`, `CameraCoordinateSpaceV2`, geometry в `CameraAnalysisDomainContracts.swift` | Явная привязка каждого региона к кадру и преобразованию |
+| Главная цель и tracking | `SubjectResolver`, `SubjectTracker`, `SubjectTrackIdentity`, `SubjectResolutionContracts.swift` | Несколько независимых предметов и группы; одна authority идентичности |
+| Evidence | `FrameFeatureSnapshot`, `SceneSemanticsReport`, `AnalysisPipeline`, VLM contracts `25` | Наблюдения и отношения с несколькими концами; временной scope |
+| Допуск и выбор | `CameraAdviceSafetyGate`, `CameraBoundedActionPlanner`, `AdviceStabilizer` | Допуск проверяется для каждого кандидата, одно активное действие |
+| Текст и overlay | `SemanticTipPlanner`, существующие presentation/trace owners | Проекция принятого решения, без второго независимого ранжирования |
+| Эпизод и результат | `CoachingEpisodeCoordinator`, `UserMovementObserver`, `ActionVerifier` | Привязка к изменяемому предмету и защищаемой цели; action-specific сравнимость |
+| Нейросеть | `ml/camera_coach/contracts/set_composition_net_v1.json` | Остаётся отдельным числовым evidence-контрактом; tensor order не менять |
+
+Baseline: HEAD `0733df2cb83c8e3687c31251e11e5d0747052602`, `store`, с незакоммиченными research/docs предыдущих этапов. Главная release-authority — [master plan v2](../aegis/work/2026-09-03-gpt-5-6-pro-guidance/SET_OS_APP_STORE_1_0_CODEX_MASTER_PLAN_v2.md), §§3.1, 6.3, 7, 9. Исторические каталоги `03/24/25/26` не выше этой authority.
+
+### N2. Конвенции типов и единиц
+
+Далее описан нормативный логический формат draft, а не готовые Swift structs. Поля без `?` обязательны; optional-поле отсутствует, когда неизвестно, а не заполняется нулём/пустым ID. Для явно неизвестных результатов используется `status=unknown` с причиной. Списки могут быть пустыми только по указанным правилам. Неизвестные enum, поля и неподдерживаемая точная версия отвергаются на границе draft; расширение требует новой версии и явного допуска consumer.
+
+- `ID`: непустой непрозрачный локальный идентификатор, уникальный внутри соответствующего envelope/session; без имён людей, путей, email и внешних URL.
+- Числа конечны. Confidence находится в `[0,1]`, но score поставщика не означает калиброванную вероятность. Некорректные внешние значения отвергаются; clamping не превращает плохой payload в правильный.
+- `Rect`: `{x,y,width,height}`, начало сверху слева, X вправо, Y вниз; `width,height>0`, весь прямоугольник внутри `[0,1]²`. Неизвестный/полностью невидимый объект не получает нулевой Rect.
+- `Region`: `{frameRef, space:oriented_frame|preview|output, transformRef, rect}`. `oriented_frame` — полный ориентированный растр источника с явно указанной зеркальностью. `preview` и `output` имеют отдельные crop/transform; sensor/Vision/model coordinates сначала конвертируются владельцем геометрии.
+- `Transform`: `{id, sourceFrameRef, destinationSpace, sourcePixelSize, destinationPixelSize, matrix3x3, orientation, mirrored, validSourceRect, preprocessingVersion}`. Матрица переводит нормализованные координаты исходного ориентированного растра в указанное пространство; finite, invertible для используемой области. Обрезанный/невидимый target блокируется, а не прижимается к краю. `matrix3x3` не является оценкой глубины.
+- `MediaTime`: `{value,timescale}` — целые значения по семантике CMTime, `timescale>0`; сериализация `value` как десятичной строки Int64 без потери точности. В live порядок задаёт PTS одной session, в файле — timeline одного asset. UTC используется для журнала, не для упорядочения кадров.
+- `Measure`: `{metricID, value, unit, policyVersion}`. Происхождение задаёт содержащая запись Evidence; measurement не ссылается на самого себя. Единица фиксирована registry: `normalized_ratio`, `degrees`, `seconds`, `pixels`, `ev`, `kelvin`, `meters` или `boolean`; value — конечное число, а для boolean — Bool, не число 0/1. Порог/направление улучшения берётся из квалифицированной политики данной метрики, не из ответа VLM.
+
+### N3. Envelope и цель пользователя
+
+```text
+CameraCoachAnalysis
+  schemaVersion = camera-coach.domain.v3-draft.1
+  catalogVersion: ID
+  policyVersion: ID
+  analysisID: ID
+  context: AnalysisContext
+  intent: CaptureIntent
+  entities: Entity[]
+  evidence: Evidence[]
+  relations: Relation[]
+  findings: Finding[]
+  decision: CoachDecision
+  review: ReviewReport?
+```
+
+| Тип | Обязательное содержание и инварианты |
+|---|---|
+| `AnalysisContext` | `sessionID`, `generation`, `sceneID`, `intentRevision`, `mediaKind:photo\|video`, `phase:setup\|preview\|recording\|review`, `sourceKind:live_capture\|selected_asset`, `frames:FrameRef[]`, `anchorFrameRef`, `transforms:Transform[]`, `coverage:Coverage`. Для selected_asset обязателен `assetID`; live не содержит assetID. `generation` меняется на смене камеры/линзы/orientation/route; frame list непустой |
+| `FrameRef` | `id`, `pixelSize`, `orientation`, `mirrored`, `contentRevision`; `pts:MediaTime` обязателен для video/live, отсутствует у отдельного фото; `captureMetadataRef?` указывает на M-evidence этого кадра. `contentRevision` связывает конкретную обработанную версию пикселей, а не только имя файла |
+| `Coverage` | `kind:single_frame\|sampled_frames\|continuous_interval`, `frameRefs`, `examinedInterval?`, `maxSampleGap?`, `sourceDuration?`. Для video-интервала начало/конец включают все frameRefs на одной timeline; max gap измерен из PTS. `continuous_interval` означает coverage квалифицированного временного extractor, а не гарантию, что сеть посмотрела каждый пиксель всех кадров. Общий вывод не распространяется на непроверенные интервалы |
+| `CaptureIntent` | `selection:unknown\|automatic\|user\|group`, `subjectRefs:ID[]`, `styles:(natural\|silhouette\|low_key\|symmetry\|negative_space\|dutch_angle\|intentional_motion_blur\|handheld)[]`, `constraints:UserConstraint[]`, `output:OutputIntent?`. Пустой styles означает неизвестное намерение; несколько явно выбранных стилей сохраняются вместе. При unknown subjects пусты; group содержит не менее двух членов. Смена выбора/стиля/ограничений увеличивает intentRevision |
+| `UserConstraint` | `kind:do_not_move\|do_not_remove\|preserve_light\|preserve_region\|unavailable_resource`, `entityRef?`, `region?`, `resourceID?`; ровно тот target, который нужен kind. Именованный ресурс — только `additional_light\|tripod\|reflector`. Ограничение устанавливает пользователь, VLM не может снять его |
+| `OutputIntent` | `aspectRatio`, `crop:Region`, `reservedRegions:Region[]`; `crop.space=oriented_frame` задаёт конечную область исходного кадра, reservedRegions находятся в output coordinates. Всё относится к одной версии output transform; смена output увеличивает intentRevision |
+
+Для выбора предпочтительной стороны упаковки или стилевого нюанса вне enum пользователь указывает защищаемую область/субъект; расширение стилей не выполняется произвольной строкой VLM. Формат, стиль и физическая перестановка могут быть неизвестны: это ограничивает советы, но не блокирует независимые локальные проверки.
+
+Все frameRefs внутри analysis резолвятся в context.frames; coverage.frameRefs — уникальное подмножество этих кадров в PTS-порядке, anchor входит в него. Жёсткие пределы размеров коллекций и текста задаёт обязательный локальный policyVersion; payload сверх лимита отвергается до планирования, а не обрезается с потерей ссылок. У group subjectRefs перечисляют членов; Entity kind=group может использоваться как агрегатный target, но не подменяет список защищаемых членов.
+
+### N4. Сущности: наблюдение отдельно от идентичности
+
+```text
+Entity
+  entityID: ID
+  kind: person | face | object | group | background_region | light_region | unknown
+  roles: (primary_subject | secondary_subject | prop | foreground | background | light_source)[]
+  observations: {frameRef, region, visibility:visible|partial, evidenceRefs}[]
+  track: {trackID, generation, firstFrameRef, status:active|ambiguous|lost}?
+  display: {labelID, vocabularyVersion, evidenceRefs}
+  groupMemberRefs: ID[]?
+  manipulation: unknown | user_allowed | user_forbidden
+```
+
+`entityID` действует внутри analysis; `trackID` выдаётся только локальным владельцем tracking и живёт в пределах session/generation. Ссылки действия резолвятся к entityID, эпизод замораживает соответствующий track tuple. Детектор и VLM не назначают устойчивый trackID. Для независимых stills наличие одинаковой подписи «лампа» не устанавливает одну физическую лампу.
+
+Наблюдения visible/partial содержат положительную валидную область на конкретном кадре. У lost track текущая область отсутствует; прошлые observations не становятся текущими. Group имеет groupMemberRefs, остальные kinds — нет; граф членства без циклов. Face связывается с person через `part_of`; лицо не считается вторым независимым участником группы.
+
+Label допускается только из versioned safe vocabulary. Начальный предметный словарь переиспользует `24`: цветок, ваза, книга, чашка, бутылка, лампа, стул, телефон; остальные — generic labels с подсвеченной областью. Новые слова добавляются в словарь с evidence, а не становятся новыми действиями. Различие «левая/правая» формируется по показанному кадру; при перестановке местами trackID сохраняет объект, а не координату. Reflection — relation, не автоматически физически перемещаемая сущность.
+
+`user_allowed` разрешает рассматривать перестановку, но не удостоверяет электрическую/температурную безопасность предмета или свободное место назначения. При unknown допустим вопрос/условное предложение в review; активная физическая перестановка требует подтверждения применимости. Экранное reframe этого разрешения не требует.
+
+### N5. Evidence, отношения и выводы
+
+| Тип | Содержание |
+|---|---|
+| `Evidence` | `id`, `kind:G\|A\|T\|M\|D\|U`, `source:vision\|geometry\|local_model\|vlm\|camera_metadata\|user`, `producerVersion`, `frameRefs`, `entityRefs`, `status:observed\|hypothesis\|unknown`, `reasonCode?`, `measurements:Measure[]`, `providerConfidence?`, `calibrationRef?`, `requestID?`. Unknown требует reasonCode и пустые measurements; calibratedRef — локальная policy, не заверение поставщика. User evidence допускает отсутствие frameRefs только для session-intent |
+| `Relation` | `id`, `type`, `sourceEntityRef`, `targetEntityRef`, `frameRefs`, `evidenceRefs`, `status:observed\|hypothesis`. Оба конца обязательны, различны и существуют. Фон с отношениями представлен отдельной областью, а не nil с неизвестным смыслом |
+| `Finding` | `id`, `polarity:issue\|strength\|uncertain`, `caseRefs:CC-*[]`, `entityRefs`, `relationRefs`, `evidenceRefs`, `severity:low\|medium\|high`, `interpretation:observed\|hypothesis`, `protectedByIntent:boolean`. CaseRefs не заменяют evidence; uncertain не превращается в strength |
+
+Закрытые relation types draft: `overlaps_2d`, `contour_tangent_2d`, `occludes_visible_region`, `competes_for_attention`, `separated_2d`, `in_front_of_3d`, `behind_3d`, `illuminates`, `reflects`, `part_of`, `same_subject_across_media`.
+
+2D overlap прямоугольников не доказывает occlusion контуров: `occludes_visible_region` требует соответствующего визуального evidence. `in_front_of_3d/behind_3d` требуют D; `illuminates` без подтверждения остаётся гипотезой. `same_subject_across_media` требует подтверждённого сопоставления и не является биометрической идентификацией; неизвестность запрещает автоматический до/после verdict.
+
+Measure.metricID приходит из локального registry. Начальный набор для расширения: `target_distance`, `edge_clearance`, `subject_area_ratio`, `contour_gap`, `visible_fraction`, `horizon_error`, `subject_readability`, `subject_clipped_ratio`, `hotspot_ratio`, `focus_readability`, `motion_shake`, `tracking_zone_error`, `motion_jerk`, `flicker_amplitude`, `exposure_variation`, `white_balance_variation`, `endpoint_hold_duration`, `reserved_region_overlap`, `human_preference`. Где существуют текущие аналогичные метрики, использовать их владельца и явно сопоставить единицы. `human_preference` никогда не измеряется VLM.
+
+Не создаётся универсальный числовой «процент красоты». Порог, минимальная длина окна и допустимый gap каждой T-метрики фиксируются в versioned policy при её квалификации; до этого соответствующий T-case не даёт production-совет. Разреженные ключевые кадры могут подтвердить положение объекта в этих кадрах, но не отсутствие мерцания/рывков между ними.
+
+M-evidence может дополнительно содержать `capture:CaptureMetadata`: `deviceLensID`, `zoomFactor`, `exposureBiasEV`, `exposureSettled`, `focusSettled`, `whiteBalanceKelvin`, `shutterSeconds`, `supportedParameters`, `availableLensIDs`, `parameterRanges` — каждое значение optional, кроме реально проверенных списков возможностей, которые могут быть пустыми. В M с unknown status capture отсутствует. Диапазоны содержат parameter/min/max/unit; единицы совпадают с N6.1. Наличие поля «не поддерживается» отличается от отсутствия сведений. D-evidence для measured spatial guidance включает измеренную `distance_meters`/`relative_depth_meters` и систему отсчёта, внесённые в тот же qualified registry. User evidence отсылается к CaptureIntent/constraints этой intentRevision; поставщик не объявляет своё предположение пользовательским выбором.
+
+### N6. Решение, действие и цель
+
+```text
+CoachDecision
+  state: KEEP | CORRECT | SELECT_SUBJECT | WAIT | ABSTAIN
+  anchorFrameRef: ID
+  reasonCodes: ReasonCode[]
+  findingRefs: ID[]
+  activeAction: Action?
+  selectionCandidates: ID[]
+
+Action
+  actionID: ID
+  operation: Operation
+  executor: camera_operator | subject_participant | scene_arranger
+  targetRefs: ID[]
+  protectedRefs: ID[]
+  findingRefs: ID[]
+  evidenceRefs: ID[]
+  payload: operation-specific typed value
+  effectGoal: EffectGoal
+  qualificationRef: ID
+  scope: now | next_capture
+  baseline: {analysisID, sessionID, generation, sceneID, intentRevision, frameRef, trackBindings}
+  verification: VerificationSpec
+  presentation: {templateID, targetLabelRefs, highlightRegions, goalRegion?}
+```
+
+CORRECT содержит ровно одно activeAction; остальные состояния — ни одного. SELECT_SUBJECT имеет непустые реальные selectionCandidates, прочие состояния — пустой список. Если цель не найдена, сообщать ABSTAIN/no_subject, не показывать пустой выбор. KEEP требует положительных evidence по выбранной цели и отсутствия активного запрещающего условия. WAIT применяется только к временно устранимому ожиданию, ABSTAIN — к неподдержанному/недостаточному сигналу. Закрытые ReasonCode: `ready`, `correction_available`, `ambiguous_subject`, `no_subject`, `acquiring`, `unstable`, `stale`, `identity_lost`, `unsupported_case`, `unqualified`, `missing_evidence`, `conflicting_evidence`, `protected_intent`, `infeasible`, `network_unavailable`, `quota_exhausted`, `invalid_payload`, `scope_changed`.
+
+EffectGoal — наблюдаемая цель: `{metricID, targetEntityRefs, relationRef?, desired:increase|decrease|inside_region|preserve, targetRegion?, policyRef}`. Для inside_region targetRegion обязателен, иначе отсутствует. EffectGoal не кодирует физическую причину и не даёт permission. Цель «увеличить зазор между лампой и головой» не равна «увеличить confidence модели».
+
+#### N6.1. Закрытые операции draft и payload
+
+Операции — параметризованные смысловые семейства. Это проект нового каталога, без автоматического добавления значений в существующий `SemanticActionType`.
+
+| Operation | Payload и цель | Исполнитель / допустимый режим |
+|---|---|---|
+| `reframe_subject` | `{targetRegion:Region}` для selected subject/group; экранная цель, без направления перемещения камеры | camera_operator; setup/preview, review→next_capture |
+| `change_subject_scale` | `{method:camera_distance\|zoom, desired:larger\|smaller, targetAreaRatio}`; ratio `(0,1]`, метод известен; M для zoom | camera_operator; setup/preview, review→next_capture |
+| `level_frame` | `{rotation:clockwise\|counterclockwise, targetHorizonDegrees}` относительно preview, с horizon evidence | camera_operator; setup/preview, review→next_capture |
+| `reposition_entity` | `{destination:screen_goal\|relative_depth, region?, relationRef?}`; screen_goal требует region и фиксированной камеры; relative_depth требует D relationRef и определённой точки отсчёта | scene_arranger для object, subject_participant для person; setup/стабильный preview, review→next_capture |
+| `rotate_entity` | `{towardEntityRef?, revealRegion?, turn:small_probe\|measured, angleDegrees?}`; ровно один toward/reveal; measured требует D+angle, small_probe запрещает число | scene_arranger/subject_participant; setup/стабильный preview, review→next_capture |
+| `exclude_entity` | `{fromRegion:Region}`; физически убрать только выбранный доступный предмет, не генеративное удаление | scene_arranger; setup/стабильный preview, review→next_capture |
+| `reposition_camera` | `{change:raise\|lower\|lateral_probe, lateralDirection:left\|right?, goalRegion:Region, step:small_probe}`; lateralDirection обязателен только для lateral_probe и означает физическое перемещение в системе камеры. Он требует квалифицированной пространственной геометрии; одной экранной цели недостаточно для выбора физической стороны | camera_operator; setup/стабильный preview, review→next_capture |
+| `adjust_light` | `{change:dim\|brighten\|switch_off\|add_fill\|add_background, sourceEntityRef?, receiverEntityRef}`; dim/brighten/switch_off требуют sourceRef, add требует подтверждённого ресурса | scene_arranger; setup/стабильный preview, review→next_capture |
+| `adjust_exposure` | `{change:increase\|decrease, parameter:exposure_bias, suggestedEV?}`; число только из доступного диапазона M и qualified policy | camera_operator; setup/preview, review→next_capture |
+| `refocus_subject` | `{focusRegion:Region}` на selected subject; M/focus evidence | camera_operator; setup/preview, review→next_capture |
+| `hold_steady` | `{windowPolicyRef}`; уменьшить непреднамеренное движение в измеренном окне | camera_operator; setup/preview/recording, review→next_capture |
+| `set_capture_parameter` | `{parameter:exposure_lock\|focus_lock\|white_balance_lock\|white_balance_kelvin\|shutter_seconds, value:boolean\|number}`; boolean только locks; иначе положительное число в M диапазоне, предикат определяет единицу | camera_operator; setup/preview, review→next_capture |
+| `change_lens` | `{deviceLensID}` из фактически discovered hardware; смена линзы завершает эпизод как incomparable | camera_operator; setup/preview, review→next_capture |
+| `reserve_output_region` | `{region:Region}` в output space по выбранному шаблону, связанная экранная цель для субъекта | camera_operator; setup/preview, review→next_capture |
+| `wait_for_clearance` | `{region:Region, blockerRefs:ID[]}`; цель/блокер различны, T для освобождения | camera_operator; setup/preview, review→next_capture |
+| `select_capture_moment` | `{frameRef}` из просмотренной серии; предложение выбрать/переснять момент, без автоспуска | camera_operator; review; отдельный выбранный снимок, не смена текущей live-сцены |
+| `maintain_subject_zone` | `{region:Region, windowPolicyRef}`; неизменная целевая зона на интервале | camera_operator; video preview/recording, review→next_capture |
+| `smooth_camera_motion` | `{windowPolicyRef}`; уменьшить рывки, сохранив выбранное движение | camera_operator; video preview/recording, review→next_capture |
+| `plan_motion_endpoints` | `{startFrameRef, endFrameRef, holdPolicyRef}` из реальной репетиции/выбора; не создаёт невидимый маршрут | camera_operator; video setup, review→next_capture |
+| `clear_lens_obstruction` | `{obstructionRegion:Region}` для подтверждённого пальца/чехла у объектива; только освободить оптический путь, без диагноза загрязнения и команды чистить линзу | camera_operator; setup/preview, review→next_capture |
+
+targetRefs для single-object операций содержит ровно один object/person; для reframe/group/maintain допускается выбранная группа. Frame-global level/hold/clear_lens_obstruction могут иметь пустой targetRefs, но тогда обязателен непустой findingRefs с frame evidence. `protectedRefs` фиксирует главного субъекта и важные второстепенные цели, даже если двигать надо лампу. Все payload entity/frame/region references резолвятся в baseline context; ресурс/функция устройства проверяется отдельно.
+
+`qualificationRef` ссылается на локально установленную policy допуска именно operation × case × mode × device/evidence profile. Она содержит калибровку, prerequisites, обязательные измерения, guardrails, registry templates и поддерживаемый verifier. Запись research/unqualified может существовать для анализа, но не порождает production CORRECT. VLM не выдаёт qualificationRef.
+
+Для физической перестановки предусловие feasibility включает доступность предмета и допустимость места назначения на подтверждённой поверхности. Свободный прямоугольник в изображении не доказывает наличие опоры или свободного прохода; в таком случае нужен ввод пользователя/дополнительный сигнал, либо review proposal без исполнительной стрелки. Точный пространственный совет никогда не выводится только из label предмета.
+
+#### N6.2. Review, альтернативы и сборка текста
+
+`ReviewReport` содержит `coverage`, `findingRefs`, `suggestions:ActionProposal[0...3]`, `comparisons:MediaComparison[]`. Это разбор выбранного материала; он не открывает live-эпизод. `ActionProposal` сохраняет поля Action, кроме baseline; добавляет `admissibility:qualified|needs_user_input|unsupported`, `reasonCodes`, `alternativeGroupID?`. qualificationRef обязателен только при qualified; у остальных отсутствует. scope=next_capture, кроме select_capture_moment, у которого scope=now означает выбор просмотренного снимка. До допуска это гипотеза с условным текстом без исполнительной стрелки. В future live проецируется только qualified proposal после повторного анализа актуального кадра. Если context.phase=review, decision.activeAction отсутствует: findings/suggestions/comparisons находятся в ReviewReport, state=KEEP при положительном подтверждении, иначе ABSTAIN с соответствующей причиной; review не маскируется под live CORRECT.
+
+Несовместимые предложения получают один `alternativeGroupID?`; альтернативы не выводятся как последовательные шаги. Упорядоченный список — план обсуждения, не очередь автодействий: после любого действия новый анализ. В setup/preview подробный список показывается только при явном открытии разбора неподвижного кадра; в recording review не перекрывает запись.
+
+`MediaComparison` содержит `sourceAnalysisRefs`, `findingRefs`, `subjectMapping:Relation[]`, `preference:first|second|equal|undetermined`, `basis:technical|human`, `evidenceRefs`, `coverage`. `sourceAnalysisRefs` ссылаются на отдельные доступные analyses; их ID/frames не смешиваются с локальными. Technical preference относится только к названным метрикам; эстетическое «лучше» требует human basis. Different scene без сопоставимого намерения → undetermined.
+
+Текст и VoiceOver строятся по локальному templateID и безопасным меткам того же Action. Overlay указывает изменяемый предмет и цель, а protectedRefs объясняют, ради чего изменение. В запись не добавляются голосовые команды по умолчанию. «Почему?» содержит finding → observation/relation → evidence, краткую причину и границы уверенности; сырой prompt/free prose не заменяет эту цепочку.
+
+### N7. Эпизод и честная проверка результата
+
+Существующие этапы coordinator сохраняются: `idle → awaiting_movement → collecting_stable_after_frames → ready_for_verification`, с `cancelled/expired`. Расширение наблюдения допускает `action_relevant_change` параметра/света или освобождение области вместо обязательной физической трансляции; этот event принадлежит UserMovementObserver, не сообщению «готово» от пользователя. Для удержания движения оценивается временное окно, для review-only select_capture_moment live-эпизод не создаётся.
+
+```text
+VerificationSpec
+  kind: objective | user_assessed
+  metricIDs: ID[]
+  policyRef: ID
+  protectedEntityRefs: ID[]
+  requiredTrackBindings: {entityRef, trackID, generation}[]
+  comparability: same_capture | matched_media
+  expectedAbsenceRefs: ID[]
+  allowedChanges: (target_position | target_rotation | camera_pose | zoom |
+                   exposure_bias | light_state | focus | capture_parameter)[]
+
+VerificationResult
+  actionID: ID
+  outcome: improved | unchanged | worse | incomparable
+  reasonCode: verified | no_effect | regression | missing_evidence | identity_changed |
+              scene_changed | context_changed | metric_unqualified | unsupported_verifier
+  beforeAnalysisRef: ID
+  afterAnalysisRef: ID
+  measurements: {metricID, before, after, unit, policyRef}[]
+  assessmentSource: local_verifier | user
+  goalSatisfied: boolean?
+```
+
+Политика сравнения по порядку:
+
+1. Проверить scope/time/generation, identity выбранной цели **и изменяемого предмета**, необходимый sampling, качество signals и версии метрик. Для exclude_entity только перечисленные expectedAbsenceRefs могут отсутствовать в after-frame по специальному правилу ниже; у остальных операций этот список пуст. Нарушение → incomparable, даже если скаляр вырос. Дубликат after-frame не новое наблюдение.
+2. Убедиться, что не изменились intent/output, запрещённые settings, не возник scene cut. `allowedChanges` разрешает только изменения, которые конкретный verifier умеет учитывать; список не отключает provenance guards. Zoom/camera pose/свет сравниваются только специальным qualified verifier, а не обходом старого transform-equality guard.
+3. Если сравнимость установлена и нарушен protected guardrail → worse. Увеличение зазора не улучшение, если лицо обрезалось. При отсутствующем guardrail evidence → incomparable, не success.
+4. При положительном изменении выше квалифицированного deadband → improved; отрицательном → worse; иначе unchanged. `goalSatisfied` отвечает, достигнут ли критерий, отдельно от наличия частичного улучшения. При incomparable поле отсутствует.
+5. `user_assessed` сохраняет явно введённую оценку с assessmentSource=user. Она не становится объективной автоматической проверкой, калибровкой или human-gold голосом. Если автоматического verifier нет, показывается запрос оценки в review, а не автоматическое «стало лучше».
+
+`same_capture` требует стабильной session/generation/intent, согласованных преобразований и track bindings. `matched_media` доступен только в review с явным mapping выбранных материалов; это не основание продолжать live-эпизод после потери tracking. Смена линзы/orientation/route/background отменяет текущий эпизод; следующий начинается с новой baseline. Для exclude_entity expectedAbsenceRefs равны targetRefs: baseline track должен существовать и быть наблюдён до выхода из нужной области, protected tracks сохраняются, свободная область подтверждена после движения и нет необъяснённой потери ассоциации. Просто ненайденный детектором предмет не считается удалённым. Без этого специального evidence результат incomparable.
+
+SceneID обозначает устойчивый контекст сцены, а не hash пикселей или геометрии всех предметов. Ожидаемое перемещение лампы не должно автоматически считаться scene cut; неизвестная непрерывность не должна автоматически считаться той же сценой. Это обязательная точка интеграции с текущим sceneSignature/coordinator, а не разрешение ослабить существующие guards.
+
+### N8. Provider contract: VLM предлагает evidence, приложение принимает решение
+
+Следующий wire revision называется `camera-coach.vlm-evidence.s2-draft.1`; s1 остаётся неизменным. Полная исходная роль provider описана в [25](25-vlm-visual-semantic-evidence-contract.md); ниже delta.
+
+Request содержит точные `schemaVersion, requestID, analysisID, sessionID, generation, sceneID, intentRevision, anchorFrameRef, catalogVersion, policyVersion, coverage`, deadline и допустимые каталоги. Visual attachments — только связанные с frameRef обработанные версии изображений с transform/coverage; opaque attachmentRef выдан транспортом, не URL модели. Policy определяет лимиты bytes/pixels/frames/entities/observations/relations/output tokens и время; запрос без обязательных лимитов не отправляется.
+
+Response содержит тот же correlation tuple, `status:completed|refused|unavailable`, `entityProposals`, `evidenceProposals`, `relationProposals`, `actionProposals`, `uncertaintyReasons`. Ни final decision, ни activeAction, ни trackID, ни qualificationRef, ни verification outcome провайдер не возвращает. При refused/unavailable все proposals пусты, причина обязательна. Completed с пустыми proposals допустим как «не нашёл», но не как KEEP.
+
+`entityProposal` содержит response-local proposalID, kind, labelCandidate из vocabulary, frameRef, Region и confidence/uncertainty. Relation/action proposal ссылается либо на существующий request entityRef, либо на proposalID с явным тегом пространства ссылки. Validator сначала проверяет геометрию и корреляцию; локальный grounding owner принимает/отклоняет proposal и выдаёт entityID. Только после этого зависимые proposals могут перейти в локальное evidence. Совпадение confidence двух моделей само по себе не доказывает grounding; policy должна квалифицировать метод допуска. Не принятый endpoint удаляет все зависимые предложения.
+
+Provider не может вернуть произвольный физический маршрут, значение камеры вне M, имя человека, новую operation, scalar threshold или исполняемый predicate. `structured_only` разрешает анализ только переданных фактов, без новых «увиденных» сущностей; redacted input не обосновывает выводы о скрытой области. Отсутствие нужной информации ведёт к abstention/условному review, не к снятию редактирования. Images и надписи внутри них — данные, не инструкции для planner/transport.
+
+Для initial s2 transport поддерживается один ключевой кадр по явному запросу. Multi-frame video attachments требуют отдельно квалифицированного capability profile; неподдержанный clip не превращается в скрытую серию платных вызовов. Старый/повторный/отменённый ответ не влияет на текущий decision. На сервере identity/idempotency/quota проверяются до платного вызова; таймаут клиента не считается доказательством отмены/неоплаты вызова у провайдера.
+
+Новый домен не разрешает сеть автоматически. Release camera egress остаётся закрытым до отдельного обновления master-plan/privacy/provider-контракта. Конкретный поставщик не зашит в schema; это не обязанность писать несколько provider adapters.
+
+### N9. Покрытие 68 сценариев: действие и критерий
+
+Здесь `selection`, `evidence_only`, `review_compare`, `feedback`, `state_only` — поведение домена, а не Operation. Если prerequisites отсутствуют, действует N6, а не обязательная коррекция. Полные ограничения каждого случая сохраняются в требованиях §23.4.
+
+| Case | Основная операция/поведение | Основной predicate/результат |
+|---|---|---|
+| CC-I01 | selection | user intent и стабильная цель |
+| CC-I02 | reframe_subject | group visible_fraction + edge_clearance всех членов |
+| CC-I03 | evidence_only | роль подтверждена, манипуляция соответствует роли |
+| CC-I04 | reframe_subject / wait_for_clearance | UserConstraint соблюдён |
+| CC-I05 | state_only | protected_intent, сохранён стиль |
+| CC-I06 | selection / state_only | safe label и валидный регион либо ABSTAIN |
+| CC-C01 | reframe_subject | edge_clearance |
+| CC-C02 | change_subject_scale | subject_area_ratio |
+| CC-C03 | reframe_subject | target_distance к зоне с пространством взгляда/движения |
+| CC-C04 | reframe_subject | target_distance; human_preference при субъективном акценте |
+| CC-C05 | reframe_subject | target_distance к выбранной симметрии |
+| CC-C06 | level_frame | horizon_error |
+| CC-C07 | reposition_camera | visible_fraction выбранной поверхности |
+| CC-C08 | reposition_camera / change_subject_scale | human_preference + сохранение цели |
+| CC-O01 | reposition_entity | contour_gap до защищённого лица |
+| CC-O02 | reposition_entity | отдельный contour_gap/goal для каждого шага |
+| CC-O03 | reposition_entity / reposition_camera | contour_gap |
+| CC-O04 | exclude_entity | visible_fraction отвлекающего объекта и сохранность целей |
+| CC-O05 | reposition_entity | contour_gap + visible_fraction обоих предметов |
+| CC-O06 | reposition_entity | target_distance + human_preference |
+| CC-O07 | reposition_entity / reposition_camera | subject_readability |
+| CC-O08 | reposition_entity | subject_readability + подтверждённая depth relation |
+| CC-L01 | rotate_entity / adjust_light | subject_readability + clipped guard |
+| CC-L02 | adjust_light | hotspot_ratio + readability guard |
+| CC-L03 | adjust_exposure | subject_clipped_ratio + readability guard |
+| CC-L04 | reposition_entity / adjust_light | subject_readability + intent |
+| CC-L05 | rotate_entity | hotspot_ratio в защищённой области |
+| CC-L06 | reposition_entity | subject_readability после пробного изменения света |
+| CC-L07 | adjust_light / set_capture_parameter | human_preference по выбранному цветовому ориентиру |
+| CC-L08 | adjust_light | subject_readability + human_preference |
+| CC-P01 | reposition_entity | visible_fraction всех выбранных лиц |
+| CC-P02 | rotate_entity | visible_fraction нужной области + intent |
+| CC-P03 | reposition_entity | visible_fraction лица/действия |
+| CC-P04 | reposition_entity / adjust_light | subject_readability всей группы |
+| CC-P05 | select_capture_moment | visible_fraction глаз; единичное фото только review finding о закрытых глазах |
+| CC-P06 | reframe_subject | selected regions + human_preference |
+| CC-S01 | rotate_entity | visible_fraction выбранной стороны |
+| CC-S02 | reposition_camera | visible_fraction деталей + intent |
+| CC-S03 | reposition_camera | contour_gap + protected geometry |
+| CC-S04 | reframe_subject | visible_fraction выбранного переднего плана |
+| CC-S05 | reframe_subject | edge_clearance верха здания |
+| CC-S06 | wait_for_clearance | visible_fraction цели после ухода blocker |
+| CC-S07 | reframe_subject / exclude_entity | edge_clearance / contour_gap, по одному шагу |
+| CC-S08 | change_subject_scale | subject_area_ratio и корректный mirrored transform |
+| CC-T01 | refocus_subject | focus_readability |
+| CC-T02 | hold_steady | motion_shake + focus_readability |
+| CC-T03 | adjust_light | subject_readability при сопоставимых настройках |
+| CC-T04 | change_subject_scale / change_lens | readability; lens switch → incomparable live, новый baseline |
+| CC-T05 | adjust_light / set_capture_parameter | flicker_amplitude на T-интервале |
+| CC-T06 | clear_lens_obstruction | visible_fraction перекрытия/цели; без диагноза грязи |
+| CC-V01 | maintain_subject_zone | tracking_zone_error |
+| CC-V02 | smooth_camera_motion | motion_jerk + protected intent |
+| CC-V03 | hold_steady | motion_shake на интервале |
+| CC-V04 | set_capture_parameter | exposure/white_balance_variation или focus_readability |
+| CC-V05 | plan_motion_endpoints | endpoint_hold_duration + target framing |
+| CC-V06 | plan_motion_endpoints / reposition_camera | subject_readability/visible_fraction на повторной репетиции |
+| CC-V07 | review_compare | relations между реальными выбранными планами, intent |
+| CC-V08 | evidence_only | явный временной scope finding |
+| CC-F01 | reframe_subject | target_distance внутри output crop |
+| CC-F02 | reserve_output_region | reserved_region_overlap |
+| CC-F03 | квалифицированная операция для обнаруженной проблемы | next_capture scope, исходный файл не изменён |
+| CC-F04 | review_compare | сопоставимые intent/цели и technical/human basis |
+| CC-R01 | state_only | положительные qualified evidence → KEEP |
+| CC-R02 | state_only | WAIT/SELECT_SUBJECT/ABSTAIN и удаление stale overlay |
+| CC-R03 | state_only | veto конфликтующего action до ранжирования |
+| CC-R04 | feedback | VerificationResult с provenance и goalSatisfied |
+| CC-R05 | feedback | UserConstraint + новая intentRevision |
+| CC-R06 | state_only | локальный доступный decision, отдельный статус cloud request |
+
+CC-T06 отделён от exclude_entity: освобождение объектива относится к оператору и оптическому пути, а не к перестановке реквизита. Неподтверждённая «грязная линза» не допускается ни этой операцией, ни generic cleanup. Конкретный экспертный совет без готового qualified predicate остаётся review proposal, не production CORRECT.
+
+### N10. Разобранные примеры и негативные ветви
+
+Ниже смысловые проекции записей, не полный wire JSON и не тестовые fixtures.
+
+**Две лампы.** analysis `a1`, session `s1`, generation `1`, intentRevision `1`: entity `person1`, `lampA`, `lampB`; track bindings соответственно `tp`, `ta`, `tb`. Finding `f1` связывает relation `contour_tangent_2d(lampA,person1)` с подтверждёнными областями. Action `moveA`: `reposition_entity`, executor `scene_arranger`, targetRefs `[lampA]`, protectedRefs `[person1,lampB]`, destination `screen_goal` справа от текущей lampA, EffectGoal `contour_gap/increase`, objective verification с фиксированной камерой. Presentation выделяет lampA; entityID главного человека не подменяет target действия.
+
+После пользовательского подтверждения применимости и квалифицированного допуска activeAction замораживается. Observer подтверждает изменение именно track `ta`; after-analysis `a2` содержит те же tracks. Если зазор вырос и guardrails соблюдены, improved; если цель достигнута, goalSatisfied=true. Следующий совет lampB формируется по `a2`, с новым actionID и baseline. При движении только `tb` первый шаг не завершается. При обмене trackID, смене crop, переносе телефона без допустимой компенсации или неоднозначной ассоциации → incomparable.
+
+**Хороший силуэт.** intent.styles содержит silhouette; darkness finding защищён intent. KEEP возможен только при других достаточных положительных проверках, иначе ABSTAIN/protected_intent. Автоматическое add_fill запрещено.
+
+**Проводка видео.** coverage содержит квалифицированное временное окно с реальными PTS. `maintain_subject_zone` сохраняет одну цель, preview transform и track; completion оценивает tracking_zone_error на окне. Один кадр внутри зоны не завершает эпизод. Scene cut/track loss отменяет текущую подсказку; облачный ответ на старый кадр не восстанавливает её.
+
+**Блик на стекле.** observed hotspot + hypothesis о направлении света → review proposal rotate_entity/small_probe; нет exact angle. При qualified predicate и подтверждённой применимости можно активировать ограниченное действие; verifier сравнивает hotspot в защищённой области, а не уверенность того же VLM в своём совете.
+
+**Граница inputs.** Неизвестная operation, NaN, Region с отрицательной шириной, ссылка на несуществующий endpoint или response другой intentRevision отвергаются. Ответ valid JSON без qualifiers не доходит до CORRECT. Внешний payload никогда не изменяет текущий subject selection или ограничения пользователя.
+
+### N11. Совместимость и обязательные интеграционные решения
+
+| Текущая поверхность | Правило перехода |
+|---|---|
+| `KEEP/CORRECT/SELECT_SUBJECT/WAIT/ABSTAIN` | Сохраняются значения; новая структура действия требует отдельного decoder/version, не подставляется в v2 payload |
+| `place_subject_*` из master plan | Проектируются в reframe_subject с вычисленной экранной целью; физическое направление камеры из строки не выводится |
+| 26 utility labels в SETCompositionNet | Индексы/имена/hash неизменны. Допускается только явное сопоставление evidence с новым кандидатом при наличии targets, calibrated policy и verifier. `move_object_*` logit без region/track не создаёт предмет |
+| `shift_frame_*`, `step_*`, `move_object_*`, `change_camera_angle` в старой runtime taxonomy | Не переименовывать массово. Каждый переход проверяет смысл и координаты; vague angle/simplify без цели отклоняется. Старый raw string недостаточен для v3 Action |
+| `targetEntityRef` s1 frame-local | Привязывается к entityID конкретного analysis; никогда не становится trackID без tracking evidence |
+| M2 geometry vs ML preprocessing | `CameraCoordinateSpaceV2.modelInput` описан как aspect-fill, ML v1 preprocessing — independent scale. Нельзя молча использовать одно преобразование для обоих; соответствие доказывается по actual tensor recipe/crop/orientation, иначе geometry-dependent результат отклоняется |
+| Existing ActionVerifier | Текущие сравнимость/transform/calibration guards остаются; новые операции требуют поддержанного verifier. Неизвестная operation → incomparable/unsupported_verifier |
+| Existing planner и SemanticTipPlanner | Финальный decision один. Presentation не выбирает второе действие из сырого VLM/legacy score; новые targets не теряются при проекции |
+| Current Stage-2 artifact | Research-only, три обученные головы. Не объявлять v3 моделью и не использовать untrained good/risk/abstention для допуска |
+| Current recording/Photo/media | Новые сообщения не меняют capture/recording/persistence lifecycle. Анализ selected_asset не перезаписывает медиа и не запускает импорт всей библиотеки |
+
+Особо проверить при реализации: `CameraCoachContractV2.production.approvedActionIDs` сейчас перечисляет все SemanticActionType, а master plan задаёт другой bounded operational catalog; это различие authority/representation требует явного mapping и аудита фактического пути допуска. Эта спецификация не исправляет код и не утверждает, что enum сам по себе открывает все действия в UI.
+
+Version policy: draft меняется с увеличением suffix; stable v3 объявляется только после schema/Swift/Python conformance и конкретного action registry. Новая операция/поле/единица требует нового согласованного каталога или schema version; unknown version не downgrade-ится посредством угадывания. Документы `03` (домен), `24` (presentation), `25` (provider), `26` (fusion) сохраняют свои роли; существующие v1/v2 данные остаются читаемыми своими decoder. Автоматической миграции checkpoint/голов или старых gold-labels нет.
+
+### N12. Готовность к реализации и проверка
+
+Завершён текущий шаг: определены предметные типы, действия/цели, режимы, provenance, жизненный цикл, mapping всех 68 требований и совместимость. Это design deliverable, а не проверенная реализация схемы. Отсутствующие calibrated thresholds и provider qualification не заменяются числами из примеров.
+
+Порядок дальнейших изменений: (1) машинная schema и типы для базового entity/action/evidence эпизода, (2) локальная identity/geometry и planner projection с двумя предметами, (3) episode/verifier, (4) VLM s2 только в разрешённом исследовательском режиме, (5) временные и review profiles. Расширять существующих владельцев; перед кодом согласовать qualified action registry и отдельно production границу облака. Изменение scope App Store 1.0 должно быть явным, а не побочным эффектом нового enum.
+
+Самая узкая последующая conformance-проверка должна покрыть: отличимые две лампы и одинаковые labels; неверный endpoint; отрицательный/NaN region; portrait/landscape/mirroring/output crop; same-label track swap; неизвестную operation; stale response/intentRevision; qualified/unknown evidence; неизменившийся/ухудшившийся результат; защита лица при улучшенном зазоре; sampled-still без T; неизменность записи; research artifact без release admission. Это требования к будущей проверке, не созданные в этой задаче тесты.
+
+Для полного релиза остаются human-gold данные/оценка полезности, калибровка, action-specific physical/runtime qualification и существующие M3/M4 gates. Смена контракта не закрывает их и не требует переобучать текущий Stage 2 до решения о новой модели.

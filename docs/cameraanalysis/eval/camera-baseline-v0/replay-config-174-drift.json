@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "config_id": "m4-001-fullruntime-174-drift-r1",
+  "labels_path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/camera_full_labels.jsonl",
+  "images_root_path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images",
+  "output_path": "<EXTERNAL_OUTPUT_PATH>",
+  "output_contract": "The runner must replace <EXTERNAL_OUTPUT_PATH> with a writable path outside the repository before invoking the replay test.",
+  "runtime": "real_runtime_still_replay",
+  "limit": 174,
+  "delete_after_read": false,
+  "working_directory_contract": "Resolve labels_path and images_root_path relative to the repository root; do not embed a checkout, worktree, home, or temporary-directory path.",
+  "expected_records": 174,
+  "expected_rows": 348,
+  "lane_note": "Label-drift lane over the bundled 174-record Camera Coach benchmark labels. This is the same label schema as the 107-record M4-001 lane and exists so the canonical semantic label evaluator can be run on the full bundled pack instead of the earlier temporary drift-forensics test."
+}

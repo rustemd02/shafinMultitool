@@ -1,0 +1,17 @@
+{
+  "artifacts": [
+    {
+      "bytes": 6793,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-confidence-gate/confidence-gate.json",
+      "sha256": "554900047861fef2745b2fa6143cb9fe1966be7a07384a5275b3f42702b462b4"
+    }
+  ],
+  "captured_at": "2026-09-13T01:30:00+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Confidence-gate sweep and negative decision only; no release measurement.",
+  "lane_id": "camera-label-drift-174-confidence-gate",
+  "purpose": "Decide whether a pause-verdict confidence gate (silence below threshold) repairs the good-frame overcorrections, measured through the canonical scorer over the committed technical-override lane rows.",
+  "schema_version": 1,
+  "source_rows": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/m4-001-fullruntime-174-drift-r1-technical-override.jsonl (pinned by its own manifest)",
+  "source_change": "none: no Swift source changed, so the last control run (phase A 18/17/1, phase B 177/142/35) covers the current source.",
+  "status": "confidence_gate_negative_decision_research_only"
+}

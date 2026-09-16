@@ -1,0 +1,4418 @@
+{
+  "candidate_id": "m4-001-fullruntime-174-drift-r1-edge-neutral",
+  "full_set": {
+    "drift": {
+      "by_disposition": {
+        "correct": 51,
+        "keep": 88,
+        "silence": 35
+      },
+      "by_quality_label": {
+        "bad": 79,
+        "good": 81,
+        "mixed": 14
+      },
+      "expected_miss_count": 61,
+      "false_keep_on_non_good_count": 26,
+      "false_keep_on_non_good_rate": 0.149425,
+      "forbidden_hit_count": 27,
+      "forbidden_hit_records": [
+        {
+          "actions": [
+            "simplify_background"
+          ],
+          "record_id": "ca_img_020"
+        },
+        {
+          "actions": [
+            "add_front_fill_light"
+          ],
+          "record_id": "ca_img_036"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_074"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_077"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_083"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_090"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_097"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_101"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_104"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_107"
+        },
+        {
+          "actions": [
+            "change_camera_angle",
+            "remove_background_hotspot",
+            "simplify_background"
+          ],
+          "record_id": "ca_img_123"
+        },
+        {
+          "actions": [
+            "add_front_fill_light",
+            "change_camera_angle",
+            "step_closer"
+          ],
+          "record_id": "ca_img_128"
+        },
+        {
+          "actions": [
+            "change_camera_angle",
+            "remove_background_hotspot",
+            "simplify_background"
+          ],
+          "record_id": "ca_img_130"
+        },
+        {
+          "actions": [
+            "simplify_background"
+          ],
+          "record_id": "ca_img_138"
+        },
+        {
+          "actions": [
+            "change_camera_angle",
+            "remove_background_hotspot",
+            "simplify_background",
+            "wait_for_background_clearance"
+          ],
+          "record_id": "ca_img_145"
+        },
+        {
+          "actions": [
+            "simplify_background"
+          ],
+          "record_id": "ca_img_156"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_210"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_212"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_215"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_216"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_220"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_221"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_227"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_230"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_231"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_233"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_238"
+        }
+      ],
+      "good_frame_overcorrection_count": 13,
+      "good_overcorrection_rate": 0.074713,
+      "record_count": 174,
+      "silence_on_non_good_count": 32,
+      "silence_on_non_good_rate": 0.183908,
+      "strict_drift_count": 95,
+      "strict_drift_rate": 0.545977
+    },
+    "drift_rows": [
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "move_object_back"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "good_frame_overcorrection",
+          "missing_positive_confirmation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "001.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_001",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "shift_frame_right",
+          "simplify_background"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "002.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_002",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "003.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_003",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "004.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_004",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "005.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_005",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "add_front_fill_light"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "add_front_fill_light"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "006.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_006",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "add_front_fill_light",
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "add_front_fill_light"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": true,
+        "filename": "007.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_007",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "008.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_008",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "009.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_009",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "010.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_010",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "add_front_fill_light",
+          "change_camera_angle",
+          "rotate_subject_toward_light",
+          "step_closer"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "good_frame_overcorrection",
+          "missing_positive_confirmation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "011.jpeg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_011",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "012.jpeg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_012",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "shift_frame_right",
+          "step_back"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "shift_frame_right",
+          "simplify_background"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "013.jpeg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_013",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "014.jpeg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_014",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "015.jpeg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_015",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "016.jpeg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_016",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "017.jpeg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_017",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "018.jpeg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_018",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "shift_frame_left",
+          "step_back"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "good_frame_overcorrection",
+          "missing_positive_confirmation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "019.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_019",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation",
+          "good_frame_overcorrection",
+          "missing_positive_confirmation"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "020.jpg",
+        "forbidden_hit": [
+          "simplify_background"
+        ],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_020",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "021.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_021",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "move_object_back"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "add_front_fill_light"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "022.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_022",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "023.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_023",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [],
+        "disposition": "silence",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "024.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_024",
+        "silence_on_non_good": true,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "025.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_025",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "026.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_026",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "027.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_027",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "028.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_028",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "029.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_029",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "030.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_030",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "031.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_031",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [],
+        "disposition": "silence",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "032.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_032",
+        "silence_on_non_good": true,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "simplify_background"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "simplify_background"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "033.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_033",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "shift_frame_down",
+          "shift_frame_up"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "good_frame_overcorrection",
+          "missing_positive_confirmation"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "034.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_034",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "add_front_fill_light",
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "add_background_light",
+          "add_front_fill_light"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": true,
+        "filename": "035.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_035",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "add_front_fill_light",
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "forbidden_action_violation",
+          "good_frame_overcorrection",
+          "missing_positive_confirmation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "036.jpg",
+        "forbidden_hit": [
+          "add_front_fill_light"
+        ],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_036",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "037.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_037",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [],
+        "disposition": "silence",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "038.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_038",
+        "silence_on_non_good": true,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "039.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_039",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "040.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_040",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "041.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_041",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "042.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_042",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "043.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_043",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action",
+          "missing_positive_confirmation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "044.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_044",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action",
+          "missing_positive_confirmation"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "045.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_045",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "046.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_046",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "047.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_047",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "048.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_048",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "049.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_049",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup",
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "good_frame_overcorrection",
+          "missing_positive_confirmation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "050.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_050",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "051.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_051",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "052.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_052",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "053.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_053",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "054.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_054",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "055.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_055",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "056.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_056",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "057.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_057",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "058.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_058",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": true,
+        "filename": "059.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_059",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [],
+        "disposition": "silence",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "060.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_060",
+        "silence_on_non_good": true,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [],
+        "disposition": "silence",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "061.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_061",
+        "silence_on_non_good": true,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "062.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_062",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [],
+        "disposition": "silence",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "063.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_063",
+        "silence_on_non_good": true,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_background_hotspot"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "064.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_064",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "change_camera_angle"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "065.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_065",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [],
+        "disposition": "silence",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "066.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_066",
+        "silence_on_non_good": true,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "simplify_background"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "067.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_067",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [],
+        "disposition": "silence",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "068.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_068",
+        "silence_on_non_good": true,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_background_hotspot"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "069.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_069",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "shift_frame_right",
+          "step_back"
+        ],
+        "canonical_failures": [
+          "semantic_overreach_on_technical_failure",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "070.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_070",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "071.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_071",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "change_camera_angle"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "072.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_072",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_background_hotspot"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "073.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_073",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "level_horizon"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "074.bmp",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_074",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "change_camera_angle"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "075.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_075",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "wait_for_background_clearance"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "076.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_076",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "simplify_background"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "077.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_077",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "move_object_back"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "078.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_078",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [],
+        "disposition": "silence",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "079.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_079",
+        "silence_on_non_good": true,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_background_hotspot",
+          "step_closer"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "080.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_080",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": true,
+        "filename": "081.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_081",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "simplify_background"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "082.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_082",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "add_front_fill_light"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "083.bmp",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_083",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "wait_for_background_clearance"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "084.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_084",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "move_object_back"
+        ],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "simplify_background",
+          "step_closer"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "085.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_085",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [],
+        "disposition": "silence",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "086.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_086",
+        "silence_on_non_good": true,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_background_hotspot"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "087.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_087",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "change_camera_angle"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "088.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_088",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "remove_background_hotspot"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "089.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_089",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": true,
+        "filename": "090.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_090",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_background_hotspot"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "091.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_091",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "step_back"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "092.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_092",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "add_front_fill_light",
+          "step_closer"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "093.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_093",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [],
+        "disposition": "silence",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "094.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_094",
+        "silence_on_non_good": true,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "step_back"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "095.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_095",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "step_closer"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "096.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_096",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "missing_future_action",
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "097.bmp",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_097",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "simplify_background"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "098.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_098",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "099.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_099",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [],
+        "disposition": "silence",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "100.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_100",
+        "silence_on_non_good": true,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "missing_future_action",
+          "forbidden_action_violation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "add_front_fill_light"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "101.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "mixed",
+        "record_id": "ca_img_101",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_background_hotspot"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "102.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_102",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "shift_frame_down",
+          "shift_frame_up"
+        ],
+        "canonical_failures": [
+          "semantic_overreach_on_technical_failure",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "103.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_103",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "104.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_104",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [],
+        "expected_miss": false,
+        "false_keep_on_non_good": true,
+        "filename": "105.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_105",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_background_hotspot"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "106.bmp",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_106",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup",
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "forbidden_action_violation"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": true,
+        "filename": "107.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_107",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "108.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_108",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "109.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_109",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "111.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_111",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "112.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_112",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "116.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_116",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "117.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_117",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "119.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_119",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "121.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_121",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "122.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_122",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation",
+          "good_frame_overcorrection",
+          "missing_positive_confirmation"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "123.jpg",
+        "forbidden_hit": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_123",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "125.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_125",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "127.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_127",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "add_front_fill_light",
+          "change_camera_angle",
+          "rotate_subject_toward_light",
+          "step_closer"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation",
+          "good_frame_overcorrection",
+          "missing_positive_confirmation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "128.jpg",
+        "forbidden_hit": [
+          "add_front_fill_light",
+          "change_camera_angle",
+          "step_closer"
+        ],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_128",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation",
+          "good_frame_overcorrection",
+          "missing_positive_confirmation"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "130.jpg",
+        "forbidden_hit": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_130",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "131.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_131",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "132.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_132",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "133.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_133",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "134.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_134",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "135.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_135",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "136.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_136",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "137.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_137",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation",
+          "good_frame_overcorrection",
+          "missing_positive_confirmation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "138.jpg",
+        "forbidden_hit": [
+          "simplify_background"
+        ],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_138",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "141.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_141",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "142.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_142",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "143.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_143",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "144.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_144",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation",
+          "good_frame_overcorrection",
+          "missing_positive_confirmation"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "145.jpg",
+        "forbidden_hit": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_145",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "146.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_146",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "147.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_147",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "148.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_148",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action",
+          "missing_positive_confirmation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "150.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_150",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "151.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_151",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "154.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_154",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [],
+        "disposition": "keep",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "155.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "good",
+        "record_id": "ca_img_155",
+        "silence_on_non_good": false,
+        "strict_drift": false
+      },
+      {
+        "candidate_actions": [
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation",
+          "good_frame_overcorrection",
+          "missing_positive_confirmation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "keep_current_setup"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "156.jpg",
+        "forbidden_hit": [
+          "simplify_background"
+        ],
+        "good_frame_overcorrection": true,
+        "quality_label": "good",
+        "record_id": "ca_img_156",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "move_object_back"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_distracting_object",
+          "simplify_background",
+          "step_closer"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "208.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_208",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "remove_distracting_object",
+          "shift_frame_left",
+          "step_back"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "209.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_209",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "add_front_fill_light",
+          "change_camera_angle",
+          "remove_background_hotspot"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "210.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_210",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "add_front_fill_light",
+          "rotate_subject_toward_light"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "211.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_211",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "simplify_background",
+          "step_closer"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "212.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_212",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action",
+          "missing_future_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "remove_distracting_object",
+          "shift_frame_right",
+          "step_back"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "213.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_213",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "move_object_back",
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_distracting_object",
+          "simplify_background",
+          "wait_for_background_clearance"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "214.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_214",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "shift_frame_down",
+          "step_back"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "215.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_215",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "remove_distracting_object",
+          "shift_frame_left",
+          "step_back"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "216.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_216",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "add_front_fill_light",
+          "change_camera_angle",
+          "remove_background_hotspot"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "217.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_217",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "add_front_fill_light",
+          "rotate_subject_toward_light"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "218.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_218",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "shift_frame_down",
+          "shift_frame_up"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_distracting_object",
+          "simplify_background"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "219.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_219",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "shift_frame_down",
+          "step_closer"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "220.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_220",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "missing_future_action",
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "remove_distracting_object",
+          "shift_frame_left",
+          "wait_for_background_clearance"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "221.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_221",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "add_front_fill_light",
+          "rotate_subject_toward_light",
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "missing_future_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_distracting_object",
+          "simplify_background",
+          "step_back"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "222.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_222",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action",
+          "missing_future_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "223.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_223",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "add_front_fill_light",
+          "rotate_subject_toward_light"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "224.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_224",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "missing_future_action"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "shift_frame_right",
+          "step_back"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "225.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_225",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "simplify_background"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "remove_distracting_object",
+          "shift_frame_left",
+          "step_back"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "226.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_226",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "remove_distracting_object",
+          "simplify_background"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "227.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_227",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "step_closer"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "228.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_228",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "add_front_fill_light",
+          "change_camera_angle",
+          "remove_background_hotspot"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "229.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_229",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "missing_future_action",
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "shift_frame_down",
+          "step_back"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "230.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_230",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "remove_distracting_object",
+          "wait_for_background_clearance"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "231.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_231",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "remove_distracting_object",
+          "simplify_background"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "232.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_232",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "add_front_fill_light",
+          "rotate_subject_toward_light"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "233.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_233",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "234.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_234",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "shift_frame_right",
+          "step_back"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "235.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_235",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "shift_frame_down",
+          "shift_frame_up"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "confidence_band_mismatch"
+        ],
+        "disposition": "correct",
+        "expected_actions": [
+          "step_closer"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "236.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_236",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [],
+        "canonical_failures": [
+          "missing_expected_action"
+        ],
+        "disposition": "silence",
+        "expected_actions": [
+          "remove_distracting_object",
+          "simplify_background"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": false,
+        "filename": "237.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_237",
+        "silence_on_non_good": true,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "keep_current_setup"
+        ],
+        "canonical_failures": [
+          "missing_expected_action",
+          "forbidden_action_violation"
+        ],
+        "disposition": "keep",
+        "expected_actions": [
+          "add_front_fill_light",
+          "rotate_subject_toward_light"
+        ],
+        "expected_miss": true,
+        "false_keep_on_non_good": true,
+        "filename": "238.jpg",
+        "forbidden_hit": [
+          "keep_current_setup"
+        ],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_238",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      },
+      {
+        "candidate_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot",
+          "simplify_background"
+        ],
+        "canonical_failures": [],
+        "disposition": "correct",
+        "expected_actions": [
+          "change_camera_angle",
+          "remove_background_hotspot"
+        ],
+        "expected_miss": false,
+        "false_keep_on_non_good": false,
+        "filename": "239.jpg",
+        "forbidden_hit": [],
+        "good_frame_overcorrection": false,
+        "quality_label": "bad",
+        "record_id": "ca_img_239",
+        "silence_on_non_good": false,
+        "strict_drift": true
+      }
+    ],
+    "quality_label_buckets": {
+      "bad": {
+        "confidence_band_accuracy": 0.708861,
+        "expected_action_hit_rate": 0.468354,
+        "failure_counts": {
+          "confidence_band_mismatch": 23,
+          "forbidden_action_violation": 18,
+          "missing_expected_action": 42,
+          "missing_future_action": 7,
+          "semantic_overreach_on_technical_failure": 2
+        },
+        "forbidden_action_violation_rate": 0.227848,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.316456,
+        "positive_confirmation_rate": null,
+        "record_count": 79,
+        "technical_failure_gate_rate": 0.894737
+      },
+      "good": {
+        "confidence_band_accuracy": 0.777778,
+        "expected_action_hit_rate": 0.82716,
+        "failure_counts": {
+          "confidence_band_mismatch": 18,
+          "forbidden_action_violation": 8,
+          "good_frame_overcorrection": 13,
+          "missing_expected_action": 14,
+          "missing_positive_confirmation": 16
+        },
+        "forbidden_action_violation_rate": 0.098765,
+        "good_frame_preservation_rate": 0.839506,
+        "pass_rate": 0.703704,
+        "positive_confirmation_rate": 0.802469,
+        "record_count": 81,
+        "technical_failure_gate_rate": null
+      },
+      "mixed": {
+        "confidence_band_accuracy": 0.428571,
+        "expected_action_hit_rate": 0.642857,
+        "failure_counts": {
+          "confidence_band_mismatch": 8,
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 5,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 0.071429,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.428571,
+        "positive_confirmation_rate": null,
+        "record_count": 14,
+        "technical_failure_gate_rate": 1.0
+      }
+    },
+    "set_metrics": {
+      "confidence_band_accuracy": 0.718391,
+      "demo_priority_pass_rate": 0.314815,
+      "expected_action_hit_rate": 0.649425,
+      "failure_counts": {
+        "confidence_band_mismatch": 49,
+        "forbidden_action_violation": 27,
+        "good_frame_overcorrection": 13,
+        "missing_expected_action": 61,
+        "missing_future_action": 8,
+        "missing_positive_confirmation": 16,
+        "semantic_overreach_on_technical_failure": 2
+      },
+      "forbidden_action_violation_rate": 0.155172,
+      "future_action_hit_rate": 0.887324,
+      "good_frame_preservation_rate": 0.839506,
+      "pass_rate": 0.505747,
+      "positive_confirmation_rate": 0.802469,
+      "record_count": 174,
+      "technical_failure_gate_rate": 0.9
+    }
+  },
+  "inputs": {
+    "images_root": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images",
+    "label_records": 174,
+    "labels_path": "shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/camera_full_labels.jsonl",
+    "labels_sha256": "c1dba72a21551b70cc8edc4bbe9f3484c95776b24b84e8fe5d659f3a4cb0eefc",
+    "output_rows": 348,
+    "outputs_path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/m4-001-fullruntime-174-drift-r1-edge-neutral.jsonl",
+    "outputs_sha256": "787b4045712d7368fce5a8992cc9924fffeea04293d5fd60b6aef04cab536e94"
+  },
+  "integrity": {
+    "scope_note": "Unverified bindings mean the label sha256 does not match the image bytes that were replayed. Metrics restricted to verified bindings are reported separately so the drift numbers can be read on byte-bound records only.",
+    "unverified": [
+      {
+        "actual_sha256": "4acd9e0790f8a78a0cfef1029cfbd1cdefbf6adaa68f88824c88d9def30f6274",
+        "declared_sha256": "",
+        "filename": "108.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_108"
+      },
+      {
+        "actual_sha256": "644e6db1b9444615554000e14dcb90e403a374a0333dc58627f052dd5d967b5b",
+        "declared_sha256": "",
+        "filename": "109.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_109"
+      },
+      {
+        "actual_sha256": "7d4310a7e291fe012ab512e26a5488a0883a615215a6fd9c9a4e9dffe70a49d8",
+        "declared_sha256": "",
+        "filename": "111.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_111"
+      },
+      {
+        "actual_sha256": "d6f1504650cc2d0944485bdf9d4d665c301140cea51d3f1dcd2bcb22c3cb9899",
+        "declared_sha256": "",
+        "filename": "112.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_112"
+      },
+      {
+        "actual_sha256": "e5188dec549494ff6da4d349456c573f18eae070a59272db92c8ccc1992e6d06",
+        "declared_sha256": "",
+        "filename": "116.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_116"
+      },
+      {
+        "actual_sha256": "6f44befd339e084e0ecc4d1d8fd864780f178749657828d71ccde77cf275d5d8",
+        "declared_sha256": "",
+        "filename": "117.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_117"
+      },
+      {
+        "actual_sha256": "bee5832a00e8aba6d55fc0905ffe8177ba76e6ff2f48dc8c2d85f86c4120e920",
+        "declared_sha256": "",
+        "filename": "119.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_119"
+      },
+      {
+        "actual_sha256": "24824e0ec1b4931e3cc82b3f58008c3e1b4b9784b42277a72c37e8e3d1acace1",
+        "declared_sha256": "",
+        "filename": "121.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_121"
+      },
+      {
+        "actual_sha256": "f07f8b9ca7e935db837fa40c73d5ef8449021090f3bd5b2c031579fd2165ad3a",
+        "declared_sha256": "",
+        "filename": "122.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_122"
+      },
+      {
+        "actual_sha256": "03529dc01343d7ae74f717e6b9de9af3cdea6219e9e3238692f8da8f4579d380",
+        "declared_sha256": "",
+        "filename": "123.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_123"
+      },
+      {
+        "actual_sha256": "ac9aeadb6aeeced07a6f62e607ef3381ec419deb22d1ce6e2a65511f6af9bbf6",
+        "declared_sha256": "",
+        "filename": "125.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_125"
+      },
+      {
+        "actual_sha256": "7744a689b6a3ac1b7dcd741e79948a6516b8da6cbbace058ff9d4db17330827a",
+        "declared_sha256": "",
+        "filename": "127.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_127"
+      },
+      {
+        "actual_sha256": "5411033a774cadb8d53db71ec62b20b5ccb6225c4b816dabb8c95e7b3df7154f",
+        "declared_sha256": "",
+        "filename": "128.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_128"
+      },
+      {
+        "actual_sha256": "f96448cc6112c30b152a06132990612ebd00b256b6638b9119fbd3346ef2d0ab",
+        "declared_sha256": "",
+        "filename": "130.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_130"
+      },
+      {
+        "actual_sha256": "626a37cd9e753d6e5b78ec66c0ab5a1692a12175c4fa2502b4d54067e1a60130",
+        "declared_sha256": "",
+        "filename": "131.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_131"
+      },
+      {
+        "actual_sha256": "9511783bd32747f5b267a65dfcf266777adf04ed1d5cfcf901f2c2e9a720ca26",
+        "declared_sha256": "",
+        "filename": "132.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_132"
+      },
+      {
+        "actual_sha256": "826bfc7f3fca98e31181eb82fc8d3ecbbabdd230a076e450e6f2a01ee48dddda",
+        "declared_sha256": "",
+        "filename": "133.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_133"
+      },
+      {
+        "actual_sha256": "507c40443a262ff7c2bba95eb4fc08d874c1c28d2d40080df5db5694622bd322",
+        "declared_sha256": "",
+        "filename": "134.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_134"
+      },
+      {
+        "actual_sha256": "67990fef3d8df2a2696aa9f44975158919db9b0b7b71d36c10e5b67b82413d54",
+        "declared_sha256": "",
+        "filename": "135.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_135"
+      },
+      {
+        "actual_sha256": "5e3fa61204cf2d1a0aa807675a4224a41dd14d794d02277dc5b56d7ca1423579",
+        "declared_sha256": "",
+        "filename": "136.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_136"
+      },
+      {
+        "actual_sha256": "56b348ebfd0c2fed94378d808376ea137addbb0649e793bb90ece6990e37b109",
+        "declared_sha256": "",
+        "filename": "137.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_137"
+      },
+      {
+        "actual_sha256": "525eac0110d8c62cc4057ef0f575e00e7374cc3dc011306bd83f244701b195f2",
+        "declared_sha256": "",
+        "filename": "138.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_138"
+      },
+      {
+        "actual_sha256": "fdf11cedefb054641d1cb0db26558523cf1f10c1839c7339e6d01e3bed3db297",
+        "declared_sha256": "",
+        "filename": "141.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_141"
+      },
+      {
+        "actual_sha256": "dc739a2934f27768fb35d1d30a6829dfdb56c024cf6b3393aad5d600c66ba76c",
+        "declared_sha256": "",
+        "filename": "142.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_142"
+      },
+      {
+        "actual_sha256": "d3b6e54f1df604ac4b556d495245a8c7b5175c9257fb03948f59619b0c53b29f",
+        "declared_sha256": "",
+        "filename": "143.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_143"
+      },
+      {
+        "actual_sha256": "3c290014a893e814da6e3c765d9cce5fe572e1907320fefa694bf93715218b1f",
+        "declared_sha256": "",
+        "filename": "144.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_144"
+      },
+      {
+        "actual_sha256": "5f030acda4fa30f5e357c22cbf6b964e4cecdb7bfd4ba2fb76489358ce49f733",
+        "declared_sha256": "",
+        "filename": "145.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_145"
+      },
+      {
+        "actual_sha256": "0daf439c10b4aa8c6d9bb7dc0d916b154f23fb1f34fce3872bbd6d4bda319935",
+        "declared_sha256": "",
+        "filename": "146.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_146"
+      },
+      {
+        "actual_sha256": "8d22bea575d5099d938d8607f4184fce321b570b5d81f82c2499446e8619084f",
+        "declared_sha256": "",
+        "filename": "147.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_147"
+      },
+      {
+        "actual_sha256": "86da28f36f598c02aac9731968d76fa3c2165cecbb06886553529511d98f8e6f",
+        "declared_sha256": "",
+        "filename": "148.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_148"
+      },
+      {
+        "actual_sha256": "40180bd9531008700dce28221c8ab1f2abf91cf98b6569b2142fc15bd0582a63",
+        "declared_sha256": "",
+        "filename": "150.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_150"
+      },
+      {
+        "actual_sha256": "f3311f1e10ed4f27d66094329fa4e6ee0a2c0b6323af14a9f7e54ba61c73624d",
+        "declared_sha256": "",
+        "filename": "151.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_151"
+      },
+      {
+        "actual_sha256": "923c35b82b189b8c40a16cce4437bd3acd30b84604344c26eeec9c53f3c36f86",
+        "declared_sha256": "",
+        "filename": "154.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_154"
+      },
+      {
+        "actual_sha256": "eefb9052906500b471e2a242dd4bb68f9e85780579a046ca51257231504dab89",
+        "declared_sha256": "",
+        "filename": "155.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_155"
+      },
+      {
+        "actual_sha256": "02fc5d29b12c0f63cd5f87c9cd5116505c700d9cde69aca279850ed0f44ce90a",
+        "declared_sha256": "",
+        "filename": "156.jpg",
+        "reason": "sha256_mismatch",
+        "record_id": "ca_img_156"
+      }
+    ],
+    "unverified_binding_records": 35,
+    "verified_binding_records": 139
+  },
+  "report_id": "m4-001-fullruntime-174-drift-r1-edge-neutral-label-drift",
+  "verified_binding_subset": {
+    "drift": {
+      "by_disposition": {
+        "correct": 45,
+        "keep": 60,
+        "silence": 34
+      },
+      "by_quality_label": {
+        "bad": 79,
+        "good": 46,
+        "mixed": 14
+      },
+      "expected_miss_count": 54,
+      "false_keep_on_non_good_count": 26,
+      "false_keep_on_non_good_rate": 0.18705,
+      "forbidden_hit_count": 21,
+      "forbidden_hit_records": [
+        {
+          "actions": [
+            "simplify_background"
+          ],
+          "record_id": "ca_img_020"
+        },
+        {
+          "actions": [
+            "add_front_fill_light"
+          ],
+          "record_id": "ca_img_036"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_074"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_077"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_083"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_090"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_097"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_101"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_104"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_107"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_210"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_212"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_215"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_216"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_220"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_221"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_227"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_230"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_231"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_233"
+        },
+        {
+          "actions": [
+            "keep_current_setup"
+          ],
+          "record_id": "ca_img_238"
+        }
+      ],
+      "good_frame_overcorrection_count": 7,
+      "good_overcorrection_rate": 0.05036,
+      "record_count": 139,
+      "silence_on_non_good_count": 32,
+      "silence_on_non_good_rate": 0.230216,
+      "strict_drift_count": 88,
+      "strict_drift_rate": 0.633094
+    },
+    "quality_label_buckets": {
+      "bad": {
+        "confidence_band_accuracy": 0.708861,
+        "expected_action_hit_rate": 0.468354,
+        "failure_counts": {
+          "confidence_band_mismatch": 23,
+          "forbidden_action_violation": 18,
+          "missing_expected_action": 42,
+          "missing_future_action": 7,
+          "semantic_overreach_on_technical_failure": 2
+        },
+        "forbidden_action_violation_rate": 0.227848,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.316456,
+        "positive_confirmation_rate": null,
+        "record_count": 79,
+        "technical_failure_gate_rate": 0.894737
+      },
+      "good": {
+        "confidence_band_accuracy": 0.76087,
+        "expected_action_hit_rate": 0.847826,
+        "failure_counts": {
+          "confidence_band_mismatch": 11,
+          "forbidden_action_violation": 2,
+          "good_frame_overcorrection": 7,
+          "missing_expected_action": 7,
+          "missing_positive_confirmation": 9
+        },
+        "forbidden_action_violation_rate": 0.043478,
+        "good_frame_preservation_rate": 0.847826,
+        "pass_rate": 0.695652,
+        "positive_confirmation_rate": 0.804348,
+        "record_count": 46,
+        "technical_failure_gate_rate": null
+      },
+      "mixed": {
+        "confidence_band_accuracy": 0.428571,
+        "expected_action_hit_rate": 0.642857,
+        "failure_counts": {
+          "confidence_band_mismatch": 8,
+          "forbidden_action_violation": 1,
+          "missing_expected_action": 5,
+          "missing_future_action": 1
+        },
+        "forbidden_action_violation_rate": 0.071429,
+        "good_frame_preservation_rate": null,
+        "pass_rate": 0.428571,
+        "positive_confirmation_rate": null,
+        "record_count": 14,
+        "technical_failure_gate_rate": 1.0
+      }
+    },
+    "set_metrics": {
+      "confidence_band_accuracy": 0.697842,
+      "demo_priority_pass_rate": 0.26087,
+      "expected_action_hit_rate": 0.611511,
+      "failure_counts": {
+        "confidence_band_mismatch": 42,
+        "forbidden_action_violation": 21,
+        "good_frame_overcorrection": 7,
+        "missing_expected_action": 54,
+        "missing_future_action": 8,
+        "missing_positive_confirmation": 9,
+        "semantic_overreach_on_technical_failure": 2
+      },
+      "forbidden_action_violation_rate": 0.151079,
+      "future_action_hit_rate": 0.887324,
+      "good_frame_preservation_rate": 0.847826,
+      "pass_rate": 0.453237,
+      "positive_confirmation_rate": 0.804348,
+      "record_count": 139,
+      "technical_failure_gate_rate": 0.9
+    }
+  }
+}

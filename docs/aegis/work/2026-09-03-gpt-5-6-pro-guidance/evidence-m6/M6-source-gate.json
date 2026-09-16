@@ -44,8 +44,10 @@
   "open_items": [
     {
       "id": "M6-010",
-      "status": "OPEN (feature)",
-      "note": "live hints bound to planned action/entity IDs is an unimplemented feature; not a gate dependency (P1)"
+      "status": "CLOSED (feature) — reconciled 2026-09-13",
+      "note": "live hints bound to planned action/entity IDs — closed in b6270ed (\"state: close M6-010 planned-action hint binding\", added SceneHintSceneBinding.swift) and hardened in e674b77 (hint binding UI consumer); re-verified live on 2026-09-13 by package S04 with a new VM-level regression test (SceneHintSceneBindingTests). The original entry below was written ~1h before the closing commit and is preserved unchanged.",
+      "original_note": "live hints bound to planned action/entity IDs is an unimplemented feature; not a gate dependency (P1)",
+      "reconciled_by": "orchestrator, 2026-09-13, after S04 re-verification"
     },
     {
       "id": "M13",
@@ -53,5 +55,6 @@
       "note": "physical AR qualification executes ar-workspace-v1 on locked devices"
     }
   ],
-  "claim_boundary": "No world-tracking correctness or relocalization-quality claim is made until M13 executes the locked script."
+  "claim_boundary": "No world-tracking correctness or relocalization-quality claim is made until M13 executes the locked script.",
+  "reconciliation_note": "open_items was written 2026-09-07 19:41; M6-010 was closed at 20:48 the same day. History is preserved: the pre-reconciliation note is kept in original_note."
 }

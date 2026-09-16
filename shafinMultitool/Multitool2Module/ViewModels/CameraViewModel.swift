@@ -154,6 +154,8 @@ final class CameraViewModel: ObservableObject {
     @Published var isPaused: Bool = false
     @Published var previewSuggestions: [Suggestion] = []
     @Published var liveHint: LiveHintPresentation?
+    /// CC-I05: style cue awaiting the user's yes/no answer (nil when none).
+    @Published private(set) var pendingIntentClarificationCue: CameraStyleCue?
     /// Bounded domain outputs consumed by CameraOverlayUXPresentation. Raw
     /// model confidence/debug values never enter this projection.
     @Published private(set) var plannerDecision: CameraCoachDecisionV2?
@@ -198,27 +200,22 @@ final class CameraViewModel: ObservableObject {
         coachingEpisodeState.token?.rawValue.uuidString
     }
 
+    var coachingEpisodePreviewGeometry: CoachingEpisodePreviewGeometry {
+        CoachingEpisodeCoordinator.previewGeometry(
+            for: coachingEpisodeState,
+            actionID: liveHint?.coachingEpisodeActionID,
+            subjectIdentity: liveHint?.subjectIdentity,
+            observedSourceRegion: liveHint?.observedSourceRegion,
+            targetRegion: liveHint?.targetRegion
+        )
+    }
+
     var coachingEpisodeSubjectRegion: NormalizedRect? {
-        coachingEpisodeState.baseline?.subjectRegion
+        coachingEpisodePreviewGeometry.subjectRegion
     }
 
     var coachingEpisodeTargetRegion: NormalizedRect? {
-        guard let baseline = coachingEpisodeState.baseline,
-              let subjectRegion = baseline.subjectRegion else {
-            return nil
-        }
-        if let semanticAction = SemanticActionType(rawValue: baseline.actionID) {
-            return semanticAction.subjectTargetRegion(from: subjectRegion)
-        }
-        if let legacyAction = ActionTypeV1(rawValue: baseline.actionID) {
-            if let targetRegion = legacyAction.subjectTargetRegion(from: subjectRegion) {
-                return targetRegion
-            }
-        }
-        if UserMovementObserver.actionFamily(for: baseline.actionID)?.requiresSubjectBinding == true {
-            return subjectRegion
-        }
-        return nil
+        coachingEpisodePreviewGeometry.targetRegion
     }
 
     var isPauseProjectionReady: Bool {
@@ -321,6 +318,10 @@ final class CameraViewModel: ObservableObject {
                 self?.applyLiveHint(hint)
             }
             .store(in: &cancellables)
+
+        analysisPipeline.$pendingIntentClarificationCue
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$pendingIntentClarificationCue)
 
         analysisPipeline.$currentCoachingEpisodeEvent
             .receive(on: DispatchQueue.main)
@@ -766,12 +767,59 @@ final class CameraViewModel: ObservableObject {
     /// stale and is discarded instead of changing the live presentation.
     @discardableResult
     func applyVerificationResult(_ result: ActionVerificationResult) -> Bool {
-        guard coachingEpisodeState.token == result.token else { return false }
+        guard coachingEpisodeState.phase == .readyForVerification,
+              coachingEpisodeState.token == result.token else { return false }
         verificationResult = result
         if case .incomparable = result.decision {
-            clearLiveAdviceForAnalysisBoundary()
+            // Incomparable is a terminal result for this episode, not a route
+            // boundary. Hide frame-local markers while retaining the token so
+            // the projection can offer an explicit next-cycle action.
+            liveHint = nil
+            plannerDecision = nil
+            overlayAnnotations = []
+            subjectRegions = []
             analysisStatus = effectivePerformance.isLimited ? .limited : .healthy
         }
+        return true
+    }
+
+    /// Starts the next bounded capture cycle only from the visible terminal
+    /// result that owns `token`. A stale button action, lifecycle transition or
+    /// newer pipeline baseline cannot clear the active capture transaction.
+    @discardableResult
+    /// CC-I05: records the user's answer for the pending style cue; a
+    /// confirmed intent suppresses the conflicting corrections for the session.
+    func answerIntentClarification(intended: Bool) {
+        analysisPipeline.answerIntentClarification(intended: intended)
+    }
+
+    func continueCoaching(after token: CoachingEpisodeToken) -> Bool {
+        guard !routeExitRequested,
+              lifecycleState == .running,
+              pausePresentationState == .idle,
+              lensSwitchPresentationState == .idle,
+              analysisStatus == .healthy,
+              !effectivePerformance.isLimited,
+              coachingEpisodeState.phase == .readyForVerification,
+              coachingEpisodeState.token == token,
+              let verificationResult,
+              verificationResult.token == token,
+              let baseline = coachingEpisodeState.baseline else {
+            return false
+        }
+
+        guard analysisPipeline.resetCoachingEpisodeAfterTerminal(
+            expectedBaselineFrameID: baseline.frameID,
+            expectedCaptureGeneration: baseline.captureGeneration
+        ) else {
+            return false
+        }
+
+        liveHint = nil
+        plannerDecision = nil
+        overlayAnnotations = []
+        subjectRegions = []
+        resetCoachingEpisodeForNewCapture()
         return true
     }
 
@@ -810,6 +858,13 @@ final class CameraViewModel: ObservableObject {
         plannerDecision = nil
         verificationResult = nil
         clearLiveAdviceForAnalysisBoundary()
+    }
+
+    /// CC-O02: the operator tapped the live preview at a scene-space point.
+    /// Forwards to the pipeline, which resolves the naming against tracked
+    /// instances when the next advice pass evaluates the quality gate.
+    func handleSceneTap(sceneX: Double, sceneY: Double) {
+        analysisPipeline.handleSceneTap(normalizedX: sceneX, normalizedY: sceneY)
     }
 
     func togglePause() {
@@ -1036,6 +1091,11 @@ final class CameraViewModel: ObservableObject {
         // reopen a terminal state and never replace the frozen advice.
         let previousPhase = coachingEpisodeCoordinator.phase
         let previousToken = coachingEpisodeCoordinator.episodeToken
+        // Capture the consumed baseline before the coordinator advances. The
+        // subscriber may run after a newer baseline has already been prepared
+        // by the capture owner, so reading coachingEpisodeState afterwards
+        // would fence against the wrong transaction.
+        let consumedBaseline = coachingEpisodeState.baseline
         let nextState = coachingEpisodeCoordinator.consume(event)
         coachingEpisodeState = nextState
 
@@ -1083,7 +1143,15 @@ final class CameraViewModel: ObservableObject {
         // pipeline owner exactly once so its next admissible sample can be a
         // fresh baseline with a new token; lifecycle boundaries use their own
         // explicit cancellation/reset path above.
-        analysisPipeline.resetCoachingEpisodeAfterTerminal()
+        // The stream event may be deferred on the main queue. Fence the
+        // pipeline reset to the baseline that this coordinator transition
+        // consumed so an older terminal callback cannot clear a newer
+        // baseline already prepared by the capture owner.
+        guard let consumedBaseline else { return }
+        analysisPipeline.resetCoachingEpisodeAfterTerminal(
+            expectedBaselineFrameID: consumedBaseline.frameID,
+            expectedCaptureGeneration: consumedBaseline.captureGeneration
+        )
     }
 
     private func cancelCoachingEpisode(reason: CoachingEpisodeCancellationReason) {

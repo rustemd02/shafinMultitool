@@ -1,0 +1,20 @@
+{
+  "artifacts": [
+    {
+      "bytes": 520589,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-confidence-parity/m4-001-fullruntime-174-drift-r1-base-confidence.jsonl",
+      "sha256": "3d1dc8e86905b448f4e0fc8577b8c24550a6f4ca1bae696573330df763a5963a"
+    },
+    {
+      "bytes": 2754,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-confidence-parity/confidence-parity.json",
+      "sha256": "0f6c487fad76398865c4547d1c06223dbca634d7046a5fdd6086a02c316519a3"
+    }
+  ],
+  "captured_at": "2026-09-12T23:30:17+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Measurement and negative decision only; no release measurement.",
+  "lane_id": "camera-label-drift-174-confidence-parity",
+  "purpose": "Export the base subject confidence, test whether restoring the historical confidence weighting improves label-band alignment, and record the negative result plus the corrected parity reading.",
+  "schema_version": 1,
+  "status": "instrumentation_and_negative_decision_research_only"
+}

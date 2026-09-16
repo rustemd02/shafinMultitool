@@ -1,0 +1,762 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -workspace shafinMultitool.xcworkspace -scheme shafinMultitool -destination "platform=iOS Simulator,id=1F680A42-CEB3-43E8-9CED-52F874962A62" "-only-testing:shafinMultitoolTests/AnalysisPipelinePresentationTests/testTEMPDumpReplayVsLabelsForDriftForensics" -parallel-testing-enabled NO -resultBundlePath /private/tmp/shafin-drift-dump2.xcresult COMPILER_INDEX_STORE_ENABLE=NO
+
+Build settings from command line:
+    COMPILER_INDEX_STORE_ENABLE = NO
+
+2026-09-12 01:22:09.874 xcodebuild[27447:9264037]  DVTDeviceOperation: Encountered a build number "" that is incompatible with DVTBuildVersion.
+2026-09-12 01:22:09.967 xcodebuild[27447:9263993] [MT] DVTDeviceOperation: Encountered a build number "" that is incompatible with DVTBuildVersion.
+2026-09-12 01:22:09.968 xcodebuild[27447:9263993] [MT] DVTDeviceOperation: Encountered a build number "" that is incompatible with DVTBuildVersion.
+Writing result bundle at path:
+	/private/tmp/shafin-drift-dump2.xcresult
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (6 targets)
+    Target 'shafinMultitoolUITests' in project 'shafinMultitool'
+        ➜ Explicit dependency on target 'shafinMultitool' in project 'shafinMultitool'
+    Target 'shafinMultitoolTests' in project 'shafinMultitool'
+        ➜ Explicit dependency on target 'shafinMultitool' in project 'shafinMultitool'
+        ➜ Implicit dependency on target 'SnapKit' in project 'Pods' via options '-framework SnapKit' in build setting 'OTHER_LDFLAGS'
+    Target 'shafinMultitool' in project 'shafinMultitool'
+        ➜ Implicit dependency on target 'Pods-shafinMultitool' in project 'Pods' via file 'Pods_shafinMultitool.framework' in build phase 'Link Binary'
+        ➜ Implicit dependency on target 'SnapKit' in project 'Pods' via options '-framework SnapKit' in build setting 'OTHER_LDFLAGS'
+    Target 'Pods-shafinMultitool' in project 'Pods'
+        ➜ Explicit dependency on target 'SnapKit' in project 'Pods'
+    Target 'SnapKit' in project 'Pods'
+        ➜ Explicit dependency on target 'SnapKit-SnapKit_Privacy' in project 'Pods'
+    Target 'SnapKit-SnapKit_Privacy' in project 'Pods' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/ibtool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /usr/bin/what -q /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/coremlc
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/coremlc generate /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Models/CoreML/aesthetic_nima_mobilenet_fp16.mlpackage /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DerivedSources/CoreMLGenerated/aesthetic_nima_mobilenet_fp16 --dry-run yes --deployment-target 17.0 --sdkroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk --platform ios --output-partial-info-plist /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/aesthetic_nima_mobilenet_fp16-CoreMLPartialInfo.plist --container bundle-resources --language Swift --swift-version 5.0
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -x objective-c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/coremlc generate /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Models/CoreML/DETRResnet50SemanticSegmentationF16P8.mlpackage /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DerivedSources/CoreMLGenerated/DETRResnet50SemanticSegmentationF16P8 --dry-run yes --deployment-target 17.0 --sdkroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk --platform ios --output-partial-info-plist /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DETRResnet50SemanticSegmentationF16P8-CoreMLPartialInfo.plist --container bundle-resources --language Swift --swift-version 5.0
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/libtool -V
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Assets.xcassets /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Resources/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/xcstringstool compile --dry-run --output-directory /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Resources/InfoPlist.xcstrings
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/xcstringstool compile --dry-run --output-directory /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Resources/Localizable.xcstrings
+
+Build description signature: 47098da6fa2c6fbe4560c2786b38d358
+Build description path: /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/XCBuildData/47098da6fa2c6fbe4560c2786b38d358.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk /Users/unterlantas/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -o /Users/unterlantas/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache
+
+ProcessInfoPlistFile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/SnapKit/SnapKit_Privacy.bundle/Info.plist /Users/unterlantas/Documents/XCode/shafinMultitool/Pods/Target\ Support\ Files/SnapKit/ResourceBundle-SnapKit_Privacy-SnapKit-Info.plist (in target 'SnapKit-SnapKit_Privacy' from project 'Pods')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool/Pods
+    builtin-infoPlistUtility /Users/unterlantas/Documents/XCode/shafinMultitool/Pods/Target\ Support\ Files/SnapKit/ResourceBundle-SnapKit_Privacy-SnapKit-Info.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphonesimulator -o /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/SnapKit/SnapKit_Privacy.bundle/Info.plist
+
+ProcessInfoPlistFile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/SnapKit/SnapKit.framework/Info.plist /Users/unterlantas/Documents/XCode/shafinMultitool/Pods/Target\ Support\ Files/SnapKit/SnapKit-Info.plist (in target 'SnapKit' from project 'Pods')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool/Pods
+    builtin-infoPlistUtility /Users/unterlantas/Documents/XCode/shafinMultitool/Pods/Target\ Support\ Files/SnapKit/SnapKit-Info.plist -producttype com.apple.product-type.framework -expandbuildsettings -format binary -platform iphonesimulator -o /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/SnapKit/SnapKit.framework/Info.plist
+
+ProcessInfoPlistFile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/Pods_shafinMultitool.framework/Info.plist /Users/unterlantas/Documents/XCode/shafinMultitool/Pods/Target\ Support\ Files/Pods-shafinMultitool/Pods-shafinMultitool-Info.plist (in target 'Pods-shafinMultitool' from project 'Pods')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool/Pods
+    builtin-infoPlistUtility /Users/unterlantas/Documents/XCode/shafinMultitool/Pods/Target\ Support\ Files/Pods-shafinMultitool/Pods-shafinMultitool-Info.plist -producttype com.apple.product-type.framework -expandbuildsettings -format binary -platform iphonesimulator -o /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/Pods_shafinMultitool.framework/Info.plist
+
+warning: no rule to process file '/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Resources/Circle.rcproject' of type 'folder' for architecture 'arm64' (in target 'shafinMultitool' from project 'shafinMultitool')
+SwiftDriver shafinMultitool normal arm64 com.apple.xcode.tools.swift.compiler (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name shafinMultitool -Onone @/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.SwiftFileList -DDEBUG -D COCOAPODS -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator -F /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator -F /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/SnapKit -emit-localized-strings -emit-localized-strings-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64 -c -j14 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/unterlantas/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/unterlantas/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool_const_extract_protocols.json -Xcc -iquote -Xcc /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool-generated-files.hmap -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool-own-target-headers.hmap -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool-a1c01b3ce75f8e5380a862df35468f08-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool-project-headers.hmap -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/SnapKit/SnapKit.framework/Headers -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DerivedSources-normal/arm64 -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DerivedSources/arm64 -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DerivedSources -Xcc -DDEBUG\=1 -Xcc -DCOCOAPODS\=1 -emit-objc-header -emit-objc-header-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool-Swift.h -working-directory /Users/unterlantas/Documents/XCode/shafinMultitool -experimental-emit-module-separately -disable-cmo
+
+CompileXCStrings /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/ /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Resources/InfoPlist.xcstrings (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcstringstool compile --output-directory /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Resources/InfoPlist.xcstrings
+
+CopyStringsFile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/ru.lproj/InfoPlist.strings /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/ru.lproj/InfoPlist.strings (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-copyStrings --validate --outputencoding binary --outfilename InfoPlist.strings --outdir /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/ru.lproj -- /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/ru.lproj/InfoPlist.strings
+/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/ru.lproj/InfoPlist.strings:1:1: note: detected encoding of input file as Unicode (UTF-8) (in target 'shafinMultitool' from project 'shafinMultitool')
+
+CopyStringsFile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/en.lproj/InfoPlist.strings /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/en.lproj/InfoPlist.strings (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-copyStrings --validate --outputencoding binary --outfilename InfoPlist.strings --outdir /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/en.lproj -- /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/en.lproj/InfoPlist.strings
+/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/en.lproj/InfoPlist.strings:1:1: note: detected encoding of input file as Unicode (UTF-8) (in target 'shafinMultitool' from project 'shafinMultitool')
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ shafinMultitool (in target 'shafinMultitool' from project 'shafinMultitool')
+
+EmitSwiftModule normal arm64 (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift:159:30: warning: 'AVCaptureVideoOrientation' was deprecated in iOS 17.0: Use AVCaptureDeviceRotationCoordinator instead
+    init(captureOrientation: AVCaptureVideoOrientation) {
+                             ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift:187:29: warning: 'AVCaptureVideoOrientation' was deprecated in iOS 17.0: Use AVCaptureDeviceRotationCoordinator instead
+    var captureOrientation: AVCaptureVideoOrientation {
+                            ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift:258:60: warning: 'AVCaptureVideoOrientation' was deprecated in iOS 17.0: Use AVCaptureDeviceRotationCoordinator instead
+    static func imageOrientation(for requestedOrientation: AVCaptureVideoOrientation) -> CGImagePropertyOrientation {
+                                                           ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift:359:42: warning: 'AVCaptureVideoOrientation' was deprecated in iOS 17.0: Use AVCaptureDeviceRotationCoordinator instead
+    private var desiredVideoOrientation: AVCaptureVideoOrientation = .landscapeLeft
+                                         ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift:1371:45: warning: 'AVCaptureVideoOrientation' was deprecated in iOS 17.0: Use AVCaptureDeviceRotationCoordinator instead
+    func setVideoOrientation(_ orientation: AVCaptureVideoOrientation) {
+                                            ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift:1380:52: warning: 'AVCaptureVideoOrientation' was deprecated in iOS 17.0: Use AVCaptureDeviceRotationCoordinator instead
+    func setVideoOrientationAndWait(_ orientation: AVCaptureVideoOrientation) async {
+                                                   ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift:1390:45: warning: 'AVCaptureVideoOrientation' was deprecated in iOS 17.0: Use AVCaptureDeviceRotationCoordinator instead
+    func videoOrientationAndWait() async -> AVCaptureVideoOrientation {
+                                            ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift:1398:67: warning: 'AVCaptureVideoOrientation' was deprecated in iOS 17.0: Use AVCaptureDeviceRotationCoordinator instead
+    private func setVideoOrientationOnSessionQueue(_ orientation: AVCaptureVideoOrientation) {
+                                                                  ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Services/Camera/CameraManager.swift:1415:55: warning: 'AVCaptureVideoOrientation' was deprecated in iOS 17.0: Use AVCaptureDeviceRotationCoordinator instead
+    private func desiredVideoOrientationSnapshot() -> AVCaptureVideoOrientation {
+                                                      ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/UI/Overlay/OverlayView.swift:190:34: warning: 'AVCaptureVideoOrientation' was deprecated in iOS 17.0: Use AVCaptureDeviceRotationCoordinator instead
+    private var lastOrientation: AVCaptureVideoOrientation?
+                                 ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneGeneratorModule/Views/LegacySceneGeneratorCameraShell.swift:2398:14: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead.
+            .onChange(of: action.type) { newType in
+             ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneGeneratorModule/Views/LegacySceneGeneratorCameraShell.swift:2441:10: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead.
+        .onChange(of: action.actorId) { actorID in
+         ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/EditScriptModule/View/EditScriptViewController.swift:123:1: warning: extension declares a conformance of imported type 'UIViewController' to imported protocol 'UITextFieldDelegate'; this will not behave correctly if the owners of 'UIKit' introduce this conformance in the future
+extension UIViewController: UITextFieldDelegate {
+^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/SceneModules/EditScriptModule/View/EditScriptViewController.swift:123:1: note: add '@retroactive' to silence this warning
+extension UIViewController: UITextFieldDelegate {
+^                           ~~~~~~~~~~~~~~~~~~~
+                            @retroactive UITextFieldDelegate
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Services/Recording/RecordingArtifactStore.swift:462:123: warning: converting non-Sendable function value to '@Sendable (URL) -> (duration: TimeInterval?, hasAudio: Bool)' (aka '@Sendable (URL) -> (duration: Optional<Double>, hasAudio: Bool)') may introduce data races
+        mediaMetadata: (@Sendable (URL) -> (duration: TimeInterval?, hasAudio: Bool))? = AppleRecordingMediaMetadataProbe.probe
+                                                                                                                          ^
+/Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Services/Recording/RecordingArtifactStore.swift:522:123: warning: converting non-Sendable function value to '@Sendable (URL) -> (duration: TimeInterval?, hasAudio: Bool)' (aka '@Sendable (URL) -> (duration: Optional<Double>, hasAudio: Bool)') may introduce data races
+        mediaMetadata: (@Sendable (URL) -> (duration: TimeInterval?, hasAudio: Bool))? = AppleRecordingMediaMetadataProbe.probe
+                                                                                                                          ^
+
+SwiftCompile normal arm64 Compiling\ AnalysisPipeline.swift /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift (in target 'shafinMultitool' from project 'shafinMultitool')
+
+SwiftCompile normal arm64 /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling AnalysisPipeline.swift (in target 'shafinMultitool' from project 'shafinMultitool')
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for shafinMultitool (in target 'shafinMultitool' from project 'shafinMultitool')
+
+SwiftDriver\ Compilation\ Requirements shafinMultitool normal arm64 com.apple.xcode.tools.swift.compiler (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name shafinMultitool -Onone @/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.SwiftFileList -DDEBUG -D COCOAPODS -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator -F /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator -F /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/SnapKit -emit-localized-strings -emit-localized-strings-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64 -c -j14 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/unterlantas/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/unterlantas/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool_const_extract_protocols.json -Xcc -iquote -Xcc /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool-generated-files.hmap -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool-own-target-headers.hmap -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool-a1c01b3ce75f8e5380a862df35468f08-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool-project-headers.hmap -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/SnapKit/SnapKit.framework/Headers -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DerivedSources-normal/arm64 -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DerivedSources/arm64 -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DerivedSources -Xcc -DDEBUG\=1 -Xcc -DCOCOAPODS\=1 -emit-objc-header -emit-objc-header-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool-Swift.h -working-directory /Users/unterlantas/Documents/XCode/shafinMultitool -experimental-emit-module-separately -disable-cmo
+
+SwiftDriver\ Compilation shafinMultitool normal arm64 com.apple.xcode.tools.swift.compiler (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name shafinMultitool -Onone @/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.SwiftFileList -DDEBUG -D COCOAPODS -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -target arm64-apple-ios17.0-simulator -g -module-cache-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator -F /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator -F /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/SnapKit -emit-localized-strings -emit-localized-strings-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64 -c -j14 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/unterlantas/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.5-23F81a-6cfe768891a92b912361537c460fe42b.sdkstatcache -output-file-map /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/unterlantas/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool_const_extract_protocols.json -Xcc -iquote -Xcc /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool-generated-files.hmap -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool-own-target-headers.hmap -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool-a1c01b3ce75f8e5380a862df35468f08-VFS-iphonesimulator/all-product-headers.yaml -Xcc -iquote -Xcc /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool-project-headers.hmap -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/SnapKit/SnapKit.framework/Headers -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DerivedSources-normal/arm64 -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DerivedSources/arm64 -Xcc -I/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DerivedSources -Xcc -DDEBUG\=1 -Xcc -DCOCOAPODS\=1 -emit-objc-header -emit-objc-header-path /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool-Swift.h -working-directory /Users/unterlantas/Documents/XCode/shafinMultitool -experimental-emit-module-separately -disable-cmo
+
+Copy /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.swiftmodule/arm64-apple-ios-simulator.abi.json /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.abi.json (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.abi.json /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.swiftmodule/arm64-apple-ios-simulator.abi.json
+
+Copy /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.swiftsourceinfo (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.swiftsourceinfo /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo
+
+Ld /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/shafinMultitool normal (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -O0 -L/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -L/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/usr/lib/swift -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/usr/lib/swift -F/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator -F/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/SnapKit -filelist /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.LinkFileList -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -rpath -Xlinker @loader_path/Frameworks -Xlinker -dead_strip -Xlinker -object_path_lto -Xlinker /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool_dependency_info.dat -fobjc-link-runtime -fprofile-instr-generate -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.swiftmodule @/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool-linker-args.resp -lswiftCoreGraphics -framework SnapKit -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __entitlements -Xlinker /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool.app-Simulated.xcent -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __ents_der -Xlinker /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool.app-Simulated.xcent.der -framework RealityKit -framework ARKit -framework Pods_shafinMultitool -framework llama -Xlinker -no_adhoc_codesign -o /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/shafinMultitool
+
+CopySwiftLibs /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/shafinMultitool --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/Frameworks --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/SystemExtensions --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/Extensions --scan-folder /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/System/Library/Frameworks/RealityKit.framework --scan-folder /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/System/Library/Frameworks/ARKit.framework --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/Pods_shafinMultitool.framework --platform iphonesimulator --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+ProcessInfoPlistFile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/Info.plist /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Info.plist (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-infoPlistUtility /Users/unterlantas/Documents/XCode/shafinMultitool/shafinMultitool/Info.plist -producttype com.apple.product-type.application -genpkginfo /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PkgInfo -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/aesthetic_nima_mobilenet_fp16-CoreMLPartialInfo.plist -additionalcontentfile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/DETRResnet50SemanticSegmentationF16P8-CoreMLPartialInfo.plist -additionalcontentfile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/LaunchScreen-SBPartialInfo.plist -additionalcontentfile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/assetcatalog_generated_info.plist -scanforprivacyfile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/Frameworks/llama.framework -o /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/Info.plist
+
+ExtractAppIntentsMetadata (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name shafinMultitool --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk --xcode-version 17F113 --platform-family iOS --deployment-target 17.0 --bundle-identifier com.vigvamcev-media.shafinMultitool --output /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app --target-triple arm64-apple-ios17.0-simulator --binary-file /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/shafinMultitool --dependency-file /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool_dependency_info.dat --stringsdata-file /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.SwiftFileList --metadata-file-list /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool.DependencyMetadataFileList --static-metadata-file-list /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/shafinMultitool.DependencyStaticMetadataFileList --swift-const-vals-list /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitool.build/Objects-normal/arm64/shafinMultitool.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-12 01:22:20.881 appintentsmetadataprocessor[27496:9264441] Starting appintentsmetadataprocessor export
+2026-09-12 01:22:20.888 appintentsmetadataprocessor[27496:9264441] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+ProcessInfoPlistFile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest/Info.plist /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/empty-shafinMultitoolTests.plist (in target 'shafinMultitoolTests' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-infoPlistUtility /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/empty-shafinMultitoolTests.plist -producttype com.apple.product-type.bundle.unit-test -expandbuildsettings -format binary -platform iphonesimulator -o /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest/Info.plist
+
+Ld /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest/shafinMultitoolTests normal (in target 'shafinMultitoolTests' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0-simulator -bundle -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk -O0 -L/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -L/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/usr/lib/swift -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/usr/lib/swift -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator -F/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/SnapKit -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk/Developer/Library/Frameworks -filelist /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/Objects-normal/arm64/shafinMultitoolTests.LinkFileList -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker @loader_path/Frameworks -Xlinker -rpath -Xlinker /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -dead_strip -bundle_loader /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/shafinMultitool -Xlinker -object_path_lto -Xlinker /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/Objects-normal/arm64/shafinMultitoolTests_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/Objects-normal/arm64/shafinMultitoolTests_dependency_info.dat -fobjc-link-runtime -fprofile-instr-generate -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/Objects-normal/arm64/shafinMultitoolTests.swiftmodule @/Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/Objects-normal/arm64/shafinMultitoolTests-linker-args.resp -lswiftCoreGraphics -framework SnapKit -Xlinker -needed_framework -Xlinker XCTest -framework XCTest -Xlinker -needed-lXCTestSwiftSupport -lXCTestSwiftSupport -Xlinker -no_adhoc_codesign -o /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest/shafinMultitoolTests
+
+CopySwiftLibs /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest (in target 'shafinMultitoolTests' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest/shafinMultitoolTests --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest/Frameworks --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest/PlugIns --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest/SystemExtensions --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest/Extensions --platform iphonesimulator --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+ExtractAppIntentsMetadata (in target 'shafinMultitoolTests' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name shafinMultitoolTests --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.5.sdk --xcode-version 17F113 --platform-family iOS --deployment-target 17.0 --bundle-identifier com.vigvamcev-media.shafinMultitoolTests --output /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest --target-triple arm64-apple-ios17.0-simulator --binary-file /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest/shafinMultitoolTests --dependency-file /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/Objects-normal/arm64/shafinMultitoolTests_dependency_info.dat --stringsdata-file /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/Objects-normal/arm64/shafinMultitoolTests.SwiftFileList --metadata-file-list /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/shafinMultitoolTests.DependencyMetadataFileList --static-metadata-file-list /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/shafinMultitoolTests.DependencyStaticMetadataFileList --swift-const-vals-list /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolTests.build/Objects-normal/arm64/shafinMultitoolTests.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-12 01:22:21.210 appintentsmetadataprocessor[27499:9264469] Starting appintentsmetadataprocessor export
+2026-09-12 01:22:21.211 appintentsmetadataprocessor[27499:9264469] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+CodeSign /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest (in target 'shafinMultitoolTests' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app/PlugIns/shafinMultitoolTests.xctest
+
+CodeSign /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app
+
+Validate /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app (in target 'shafinMultitool' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-validationUtility /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitool.app -shallow-bundle -infoplist-subpath Info.plist
+
+ProcessInfoPlistFile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitoolUITests-Runner.app/PlugIns/shafinMultitoolUITests.xctest/Info.plist /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolUITests.build/empty-shafinMultitoolUITests.plist (in target 'shafinMultitoolUITests' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-infoPlistUtility /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolUITests.build/empty-shafinMultitoolUITests.plist -producttype com.apple.product-type.bundle.ui-testing -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolUITests.build/ProductTypeInfoPlistAdditions.plist -o /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitoolUITests-Runner.app/PlugIns/shafinMultitoolUITests.xctest/Info.plist
+
+CopySwiftLibs /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitoolUITests-Runner.app/PlugIns/shafinMultitoolUITests.xctest (in target 'shafinMultitoolUITests' from project 'shafinMultitool')
+    cd /Users/unterlantas/Documents/XCode/shafinMultitool
+    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitoolUITests-Runner.app/PlugIns/shafinMultitoolUITests.xctest/shafinMultitoolUITests --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitoolUITests-Runner.app/PlugIns/shafinMultitoolUITests.xctest/Frameworks --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitoolUITests-Runner.app/PlugIns/shafinMultitoolUITests.xctest/PlugIns --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitoolUITests-Runner.app/PlugIns/shafinMultitoolUITests.xctest/SystemExtensions --scan-folder /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitoolUITests-Runner.app/PlugIns/shafinMultitoolUITests.xctest/Extensions --platform iphonesimulator --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Products/Debug-iphonesimulator/shafinMultitoolUITests-Runner.app/PlugIns/shafinMultitoolUITests.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/unterlantas/Library/Developer/Xcode/DerivedData/shafinMultitool-ggusvwzgvdkcfbfwrnkapympkreb/Build/Intermediates.noindex/shafinMultitool.build/Debug-iphonesimulator/shafinMultitoolUITests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+
+2026-09-12 01:22:36.324141+0300 shafinMultitool[27779:9267155] [Startup] AppDelegate didFinishLaunching
+2026-09-12 01:22:36.398090+0300 shafinMultitool[27779:9267305] [Core] {"msg":"file does not exist... clearing", "file":/Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/private/var/Managed Preferences/kCFPreferencesCurrentUser/com.apple.CoreMotion.plist, "error":Error Domain=NSCocoaErrorDomain Code=260 "Не удалось открыть файл «com.apple.CoreMotion.plist», так как такого файла не существует." UserInfo={NSFilePath=/Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/private/var/Managed Preferences/kCFPreferencesCurrentUser/com.apple.CoreMotion.plist, NSURL=file:///Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS%2026.5.simruntime/Contents/Resources/RuntimeRoot/private/var/Managed%20Preferences/kCFPreferencesCurrentUser/com.apple.CoreMotion.plist, NSUnderlyingError=0x10a0635d0 {Error Domain=NSPOSIXErrorDomain Code=2 "No such file or directory"}}}
+2026-09-12 01:22:37.033569+0300 shafinMultitool[27779:9267288] [] <<<< FigCaptureSourceSimulator >>>> signalled err=-12784 at <>:259
+2026-09-12 01:22:37.033815+0300 shafinMultitool[27779:9267288] [] <<<< FigCaptureSourceSimulator >>>> signalled err=-12784 at <>:259
+2026-09-12 01:22:37.033886+0300 shafinMultitool[27779:9267288] [] <<<< FormatDescription >>>> signalled err=-12710 at <>:1002
+2026-09-12 01:22:37.033956+0300 shafinMultitool[27779:9267288] [] (Fig) signalled err=-12710 at <>:601
+2026-09-12 01:22:37.034214+0300 shafinMultitool[27779:9267288] [] <<<< FormatDescription >>>> signalled err=-12710 at <>:1002
+2026-09-12 01:22:37.034283+0300 shafinMultitool[27779:9267288] [] (Fig) signalled err=-12710 at <>:601
+2026-09-12 01:22:37.034399+0300 shafinMultitool[27779:9267288] [] <<<< FormatDescription >>>> signalled err=-12710 at <>:1002
+2026-09-12 01:22:37.034460+0300 shafinMultitool[27779:9267288] [] (Fig) signalled err=-12710 at <>:601
+2026-09-12 01:22:37.034551+0300 shafinMultitool[27779:9267288] [] <<<< FigCaptureSourceSimulator >>>> signalled err=-12784 at <>:259
+2026-09-12 01:22:37.034604+0300 shafinMultitool[27779:9267288] [] <<<< FigCaptureSourceSimulator >>>> signalled err=-12784 at <>:259
+Test Suite 'Selected tests' started at 2026-09-12 01:22:37.261.
+Test Suite 'shafinMultitoolTests.xctest' started at 2026-09-12 01:22:37.261.
+Test Suite 'AnalysisPipelinePresentationTests' started at 2026-09-12 01:22:37.261.
+Test Case '-[shafinMultitoolTests.AnalysisPipelinePresentationTests testTEMPDumpReplayVsLabelsForDriftForensics]' started.
+objc[27779]: Class UIAccessibilityLoaderWebShared is implemented in both /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x110e20398) and /Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x1182f4310). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+2026-09-12 01:22:37.371668+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:37.374026+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_001|target=high|conf=0.740|exp=["keep_current_setup"]|act=["change_camera_angle", "move_object_back"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:22:37.980001+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:37.980612+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_002|target=medium|conf=0.750|exp=["shift_frame_right", "simplify_background"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=mixed
+2026-09-12 01:22:38.556479+0300 shafinMultitool[27779:9267358] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:38.557184+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_003|target=high|conf=0.760|exp=["keep_current_setup"]|act=["change_camera_angle", "remove_background_hotspot"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:22:39.195236+0300 shafinMultitool[27779:9267291] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:39.195761+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:22:39.771053+0300 shafinMultitool[27779:9267358] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:39.771577+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:22:40.381789+0300 shafinMultitool[27779:9267290] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:40.382317+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_006|target=medium|conf=0.692|exp=["add_front_fill_light"]|act=["move_object_right", "simplify_background"]|forbiddenHit=[]|verdict=mixed
+2026-09-12 01:22:40.921203+0300 shafinMultitool[27779:9267290] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:40.921653+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_007|target=medium|conf=1.000|exp=["add_front_fill_light"]|act=["move_object_right"]|forbiddenHit=[]|verdict=mixed
+2026-09-12 01:22:41.395005+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:41.395483+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_008|target=high|conf=0.651|exp=["keep_current_setup"]|act=["move_object_right", "step_closer"]|forbiddenHit=["step_closer"]|verdict=good
+2026-09-12 01:22:41.839181+0300 shafinMultitool[27779:9267370] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:41.839675+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_009|target=high|conf=0.750|exp=["keep_current_setup"]|act=["move_object_right"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:22:42.329158+0300 shafinMultitool[27779:9267290] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:42.329660+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:22:42.891414+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:42.892015+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_011|target=high|conf=0.648|exp=["keep_current_setup"]|act=["add_front_fill_light", "change_camera_angle", "rotate_subject_toward_light", "step_closer"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:22:43.429462+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:43.429953+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_012|target=high|conf=0.704|exp=["keep_current_setup"]|act=["move_object_right"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:22:43.889375+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:43.889938+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_013|target=medium|conf=0.589|exp=["shift_frame_right", "simplify_background"]|act=["shift_frame_right", "step_back"]|forbiddenHit=[]|verdict=mixed
+2026-09-12 01:22:44.297618+0300 shafinMultitool[27779:9267290] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:44.298073+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_014|target=medium|conf=0.707|exp=["simplify_background", "wait_for_background_clearance"]|act=["move_object_right"]|forbiddenHit=[]|verdict=mixed
+2026-09-12 01:22:44.681063+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:44.681698+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:22:45.205248+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:45.205769+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:22:45.724917+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:45.725396+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_017|target=high|conf=0.691|exp=["keep_current_setup"]|act=["change_camera_angle", "move_object_back", "move_object_right", "simplify_background"]|forbiddenHit=["simplify_background"]|verdict=good
+2026-09-12 01:22:46.275712+0300 shafinMultitool[27779:9267357] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:46.276188+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:22:46.779183+0300 shafinMultitool[27779:9267356] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:46.779662+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_019|target=high|conf=0.740|exp=["keep_current_setup"]|act=["shift_frame_left", "simplify_background", "step_back"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:22:47.445057+0300 shafinMultitool[27779:9267376] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:47.445506+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_020|target=high|conf=0.750|exp=["keep_current_setup"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=["simplify_background"]|verdict=good
+2026-09-12 01:22:48.103395+0300 shafinMultitool[27779:9267357] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:48.103802+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_021|target=high|conf=0.858|exp=["keep_current_setup"]|act=["move_object_right"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:22:48.757277+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:48.757752+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_022|target=medium|conf=0.750|exp=["add_front_fill_light"]|act=["change_camera_angle", "move_object_back"]|forbiddenHit=[]|verdict=mixed
+2026-09-12 01:22:49.243430+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:49.243920+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:22:49.929880+0300 shafinMultitool[27779:9267359] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:49.930296+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_024|target=low|conf=1.000|exp=[]|act=["add_front_fill_light", "change_camera_angle", "rotate_subject_toward_light"]|forbiddenHit=[]|verdict=mixed
+2026-09-12 01:22:50.595865+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:50.596253+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:22:51.261416+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:51.261830+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:22:51.714252+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:51.714831+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:22:52.279631+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:52.280255+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_028|target=medium|conf=1.000|exp=["keep_current_setup"]|act=["move_object_right", "simplify_background"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:22:52.946263+0300 shafinMultitool[27779:9267376] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:52.946780+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:22:53.716956+0300 shafinMultitool[27779:9267376] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:53.717394+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_030|target=high|conf=0.740|exp=["keep_current_setup"]|act=["simplify_background"]|forbiddenHit=["simplify_background"]|verdict=good
+2026-09-12 01:22:54.357083+0300 shafinMultitool[27779:9267376] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:54.357556+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_031|target=high|conf=0.750|exp=["keep_current_setup"]|act=["move_object_left"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:22:55.041307+0300 shafinMultitool[27779:9267357] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:55.041926+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:22:56.628859+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:56.634357+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_033|target=medium|conf=0.750|exp=["simplify_background"]|act=["change_camera_angle", "move_object_back", "move_object_right", "simplify_background"]|forbiddenHit=[]|verdict=mixed
+2026-09-12 01:22:59.330759+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:22:59.331301+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_034|target=medium|conf=0.740|exp=["keep_current_setup"]|act=["shift_frame_down", "shift_frame_up"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:02.133201+0300 shafinMultitool[27779:9267376] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:02.133777+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_035|target=medium|conf=1.000|exp=["add_background_light", "add_front_fill_light"]|act=["move_object_right"]|forbiddenHit=[]|verdict=mixed
+2026-09-12 01:23:02.955887+0300 shafinMultitool[27779:9267358] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:02.956353+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_036|target=medium|conf=1.000|exp=["keep_current_setup"]|act=["move_object_right"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:04.422731+0300 shafinMultitool[27779:9267370] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:04.423393+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_037|target=medium|conf=0.691|exp=["keep_current_setup"]|act=["change_camera_angle", "move_object_back", "move_object_right", "simplify_background"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:05.100467+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:05.101019+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:06.655145+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:06.655879+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:07.368281+0300 shafinMultitool[27779:9267357] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:07.368807+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_040|target=high|conf=0.740|exp=["keep_current_setup"]|act=["simplify_background"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:08.047018+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:08.047645+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:08.678013+0300 shafinMultitool[27779:9267290] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:08.678539+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_042|target=high|conf=0.692|exp=["keep_current_setup"]|act=["move_object_left", "simplify_background"]|forbiddenHit=["simplify_background"]|verdict=good
+2026-09-12 01:23:09.327730+0300 shafinMultitool[27779:9267357] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:09.328411+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_043|target=medium|conf=0.700|exp=["keep_current_setup"]|act=["move_object_left"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:10.074046+0300 shafinMultitool[27779:9267358] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:10.074562+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_044|target=medium|conf=0.758|exp=["keep_current_setup"]|act=[]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:10.698410+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:10.699064+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_045|target=high|conf=1.000|exp=["keep_current_setup"]|act=[]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:11.388172+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:11.388780+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:12.024844+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:12.025425+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:12.613266+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:12.613846+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:13.288959+0300 shafinMultitool[27779:9267376] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:13.289677+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_049|target=high|conf=0.700|exp=["keep_current_setup"]|act=["shift_frame_right", "simplify_background"]|forbiddenHit=["simplify_background"]|verdict=good
+2026-09-12 01:23:13.923952+0300 shafinMultitool[27779:9267290] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:13.924569+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_050|target=medium|conf=1.000|exp=["keep_current_setup"]|act=["move_object_right"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:14.578945+0300 shafinMultitool[27779:9267290] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:14.579641+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_051|target=high|conf=0.750|exp=["keep_current_setup"]|act=["move_object_right", "simplify_background"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:15.179552+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:15.180280+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:15.860124+0300 shafinMultitool[27779:9267358] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:15.860629+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:16.499669+0300 shafinMultitool[27779:9267358] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:16.500267+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:17.118960+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:17.119941+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_055|target=medium|conf=1.000|exp=["keep_current_setup"]|act=["add_front_fill_light", "rotate_subject_toward_light"]|forbiddenHit=["add_front_fill_light"]|verdict=good
+2026-09-12 01:23:17.795118+0300 shafinMultitool[27779:9267294] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:17.795744+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:18.456737+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:18.457479+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_057|target=medium|conf=1.000|exp=["keep_current_setup"]|act=["move_object_right", "simplify_background"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:19.115594+0300 shafinMultitool[27779:9267356] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:19.116271+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_058|target=high|conf=0.750|exp=[]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background", "wait_for_background_clearance"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:19.711901+0300 shafinMultitool[27779:9267290] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:19.712334+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_059|target=high|conf=0.668|exp=[]|act=["move_object_right", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:20.338849+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:20.339547+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:21.004829+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:21.005407+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_061|target=high|conf=0.941|exp=[]|act=["simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:21.700800+0300 shafinMultitool[27779:9267376] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:21.701401+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_062|target=high|conf=1.000|exp=[]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:22.417172+0300 shafinMultitool[27779:9267357] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:22.417673+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:23.125657+0300 shafinMultitool[27779:9267362] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:23.126187+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_064|target=high|conf=1.000|exp=["remove_background_hotspot"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:23.783841+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:23.784333+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_065|target=high|conf=1.000|exp=["change_camera_angle"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:24.465986+0300 shafinMultitool[27779:9267356] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:24.466682+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:25.196221+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:25.196844+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_067|target=high|conf=0.750|exp=["simplify_background"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:25.895038+0300 shafinMultitool[27779:9267294] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:25.895497+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:26.653346+0300 shafinMultitool[27779:9267359] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:26.653825+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_069|target=high|conf=0.750|exp=["remove_background_hotspot"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:27.321756+0300 shafinMultitool[27779:9267358] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:27.322429+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_070|target=high|conf=0.571|exp=[]|act=["shift_frame_right", "simplify_background", "step_back"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:27.929929+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:27.930406+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_071|target=high|conf=0.691|exp=[]|act=["simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:28.637577+0300 shafinMultitool[27779:9267376] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:28.638246+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_072|target=high|conf=0.978|exp=["change_camera_angle"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:29.318271+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:29.319124+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_073|target=high|conf=0.750|exp=["remove_background_hotspot"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:29.969601+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:29.970162+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_074|target=high|conf=0.750|exp=["level_horizon"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:30.636200+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:30.636626+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_075|target=high|conf=1.000|exp=["change_camera_angle"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:31.281637+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:31.282228+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_076|target=high|conf=0.750|exp=["wait_for_background_clearance"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:31.863923+0300 shafinMultitool[27779:9267357] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:31.864357+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_077|target=high|conf=0.750|exp=["simplify_background"]|act=["keep_current_setup"]|forbiddenHit=["keep_current_setup"]|verdict=bad
+2026-09-12 01:23:32.378469+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:32.379127+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_078|target=high|conf=0.665|exp=[]|act=["change_camera_angle", "move_object_back"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:32.870149+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:32.870776+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:33.421463+0300 shafinMultitool[27779:9267362] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:33.421965+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_080|target=high|conf=0.850|exp=["remove_background_hotspot", "step_closer"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background", "wait_for_background_clearance"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:33.992273+0300 shafinMultitool[27779:9267294] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:33.992835+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_081|target=high|conf=1.000|exp=[]|act=["move_object_left"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:34.645668+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:34.646128+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:35.283110+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:35.283586+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_083|target=high|conf=0.750|exp=["add_front_fill_light"]|act=["move_object_right"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:35.889686+0300 shafinMultitool[27779:9267356] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:35.890238+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_084|target=high|conf=0.750|exp=["wait_for_background_clearance"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:36.307334+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:36.307772+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_085|target=medium|conf=0.665|exp=["simplify_background", "step_closer"]|act=["change_camera_angle", "move_object_back"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:36.967988+0300 shafinMultitool[27779:9267376] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:36.968847+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:37.626550+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:37.627218+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_087|target=high|conf=0.750|exp=["remove_background_hotspot"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:38.272297+0300 shafinMultitool[27779:9267370] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:38.272979+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_088|target=high|conf=1.000|exp=["change_camera_angle"]|act=["change_camera_angle", "remove_background_hotspot"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:38.805627+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:38.806046+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_089|target=high|conf=0.780|exp=["remove_background_hotspot"]|act=["remove_distracting_object", "shift_frame_left", "wait_for_background_clearance"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:39.445092+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:39.445576+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_090|target=medium|conf=0.707|exp=[]|act=["move_object_right"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:40.118416+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:40.119228+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_091|target=high|conf=0.851|exp=["remove_background_hotspot"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:40.784926+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:40.785595+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_092|target=high|conf=0.750|exp=["step_back"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:41.193454+0300 shafinMultitool[27779:9267370] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:41.194145+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_093|target=high|conf=0.860|exp=["add_front_fill_light", "step_closer"]|act=["simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:41.847793+0300 shafinMultitool[27779:9267362] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:41.848346+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:42.461733+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:42.462333+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:42.861249+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:42.861834+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_096|target=medium|conf=0.700|exp=["step_closer"]|act=[]|forbiddenHit=[]|verdict=mixed
+2026-09-12 01:23:43.476939+0300 shafinMultitool[27779:9267358] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:43.477485+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_097|target=high|conf=0.764|exp=["simplify_background", "wait_for_background_clearance"]|act=["keep_current_setup"]|forbiddenHit=["keep_current_setup"]|verdict=bad
+2026-09-12 01:23:43.863241+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:43.863691+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_098|target=medium|conf=0.750|exp=["simplify_background"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:44.522573+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:44.523120+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_099|target=high|conf=1.000|exp=["remove_background_hotspot", "simplify_background"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:45.060741+0300 shafinMultitool[27779:9267376] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:45.061249+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_100|target=high|conf=0.750|exp=[]|act=["move_object_left"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:45.727499+0300 shafinMultitool[27779:9267355] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:45.728017+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_101|target=medium|conf=0.864|exp=["add_front_fill_light"]|act=["move_object_right", "simplify_background"]|forbiddenHit=[]|verdict=mixed
+2026-09-12 01:23:46.405800+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:46.406250+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_102|target=high|conf=0.750|exp=["remove_background_hotspot"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:47.113376+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:47.118192+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_103|target=high|conf=0.740|exp=[]|act=["shift_frame_down", "shift_frame_up"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:47.799877+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:47.800340+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_104|target=high|conf=1.000|exp=["simplify_background", "wait_for_background_clearance"]|act=["move_object_left", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:48.345218+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:48.345771+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_105|target=high|conf=0.926|exp=[]|act=["move_object_left", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:49.010052+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:49.010909+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_106|target=high|conf=1.000|exp=["remove_background_hotspot"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:49.621517+0300 shafinMultitool[27779:9267358] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:49.621981+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_107|target=high|conf=0.740|exp=["simplify_background", "wait_for_background_clearance"]|act=["move_object_right"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:23:50.174477+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:50.175128+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_108|target=high|conf=0.663|exp=["keep_current_setup"]|act=["change_camera_angle", "move_object_back", "move_object_right", "simplify_background"]|forbiddenHit=["change_camera_angle", "simplify_background"]|verdict=good
+2026-09-12 01:23:50.818918+0300 shafinMultitool[27779:9267356] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:50.819673+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_109|target=high|conf=0.707|exp=["keep_current_setup"]|act=["move_object_left"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:51.413796+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:51.414480+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_111|target=high|conf=0.704|exp=["keep_current_setup"]|act=["move_object_left"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:51.902985+0300 shafinMultitool[27779:9267362] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:51.903605+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:52.513869+0300 shafinMultitool[27779:9267370] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:52.514537+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:53.207998+0300 shafinMultitool[27779:9267355] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:53.208640+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_117|target=high|conf=0.686|exp=["keep_current_setup"]|act=["move_object_left"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:53.756713+0300 shafinMultitool[27779:9267359] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:53.757309+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:54.294170+0300 shafinMultitool[27779:9267290] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:54.294765+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:54.861039+0300 shafinMultitool[27779:9267356] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:54.861685+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_122|target=high|conf=0.704|exp=["keep_current_setup"]|act=["move_object_right"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:55.515671+0300 shafinMultitool[27779:9267356] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:55.516317+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_123|target=high|conf=0.750|exp=["keep_current_setup"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|verdict=good
+2026-09-12 01:23:56.121412+0300 shafinMultitool[27779:9267356] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:56.121880+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:56.790089+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:56.790676+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:57.183379+0300 shafinMultitool[27779:9267358] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:57.183857+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_128|target=high|conf=0.740|exp=["keep_current_setup"]|act=["add_front_fill_light", "change_camera_angle", "rotate_subject_toward_light", "step_closer"]|forbiddenHit=["add_front_fill_light", "change_camera_angle", "step_closer"]|verdict=good
+2026-09-12 01:23:57.709793+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:57.710331+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_130|target=high|conf=0.750|exp=["keep_current_setup"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|verdict=good
+2026-09-12 01:23:58.206749+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:58.207233+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_131|target=high|conf=0.581|exp=["keep_current_setup"]|act=["move_object_right"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:23:58.803186+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:58.803765+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:59.211194+0300 shafinMultitool[27779:9267370] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:59.211797+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:23:59.610116+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:23:59.610598+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_134|target=high|conf=0.704|exp=["keep_current_setup"]|act=["move_object_right"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:24:00.218222+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:00.218973+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_135|target=high|conf=0.686|exp=["keep_current_setup"]|act=["move_object_left", "simplify_background"]|forbiddenHit=["simplify_background"]|verdict=good
+2026-09-12 01:24:00.823754+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:00.824462+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:24:01.354238+0300 shafinMultitool[27779:9267370] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:01.355071+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_137|target=high|conf=0.750|exp=["keep_current_setup"]|act=["move_object_left"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:24:01.969131+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:01.969666+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_138|target=high|conf=0.971|exp=["keep_current_setup"]|act=["change_camera_angle", "move_object_back", "move_object_right", "simplify_background"]|forbiddenHit=["change_camera_angle", "simplify_background"]|verdict=good
+2026-09-12 01:24:02.512066+0300 shafinMultitool[27779:9267355] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:02.512565+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:24:02.912120+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:02.912583+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:24:03.381213+0300 shafinMultitool[27779:9267356] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:03.381786+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:24:03.911008+0300 shafinMultitool[27779:9267294] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:03.911465+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:24:04.384284+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:04.384730+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_145|target=high|conf=0.750|exp=["keep_current_setup"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|verdict=good
+2026-09-12 01:24:05.002414+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:05.003015+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_146|target=medium|conf=0.700|exp=["keep_current_setup"]|act=["move_object_right"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:24:05.663534+0300 shafinMultitool[27779:9267294] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:05.664160+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_147|target=high|conf=0.750|exp=["keep_current_setup"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|verdict=good
+2026-09-12 01:24:06.117122+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:06.117549+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_148|target=high|conf=0.704|exp=["keep_current_setup"]|act=["move_object_left"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:24:06.762432+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:06.762898+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_150|target=medium|conf=0.740|exp=["keep_current_setup"]|act=["step_back"]|forbiddenHit=["step_back"]|verdict=good
+2026-09-12 01:24:07.426167+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:07.426780+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:24:08.002990+0300 shafinMultitool[27779:9267359] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:08.003430+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_154|target=medium|conf=0.750|exp=["keep_current_setup"]|act=["move_object_right"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:24:08.469568+0300 shafinMultitool[27779:9267294] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:08.469976+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_155|target=high|conf=0.700|exp=["keep_current_setup"]|act=["move_object_right"]|forbiddenHit=[]|verdict=good
+2026-09-12 01:24:09.040284+0300 shafinMultitool[27779:9267355] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:09.040772+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_156|target=high|conf=0.677|exp=["keep_current_setup"]|act=["change_camera_angle", "move_object_back", "move_object_left", "simplify_background"]|forbiddenHit=["change_camera_angle", "simplify_background"]|verdict=good
+2026-09-12 01:24:09.532598+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:09.533139+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_208|target=high|conf=0.669|exp=["remove_distracting_object", "simplify_background", "step_closer"]|act=["change_camera_angle", "move_object_back"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:10.114062+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:10.114574+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_209|target=high|conf=0.750|exp=["remove_distracting_object", "shift_frame_left", "step_back"]|act=[]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:10.704797+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:10.705247+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_210|target=high|conf=0.692|exp=["add_front_fill_light", "change_camera_angle", "remove_background_hotspot"]|act=["move_object_right", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:11.274728+0300 shafinMultitool[27779:9267359] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:11.275346+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_211|target=high|conf=1.000|exp=["add_front_fill_light", "rotate_subject_toward_light"]|act=["add_front_fill_light", "change_camera_angle", "rotate_subject_toward_light"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:11.805484+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:11.805949+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_212|target=high|conf=0.764|exp=["simplify_background", "step_closer"]|act=["keep_current_setup"]|forbiddenHit=["keep_current_setup"]|verdict=bad
+2026-09-12 01:24:12.459315+0300 shafinMultitool[27779:9267289] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:12.459914+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_213|target=high|conf=0.750|exp=["remove_distracting_object", "shift_frame_right", "step_back"]|act=[]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:12.994554+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:12.995052+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_214|target=high|conf=0.686|exp=["remove_distracting_object", "simplify_background", "wait_for_background_clearance"]|act=["change_camera_angle", "move_object_back", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:13.582509+0300 shafinMultitool[27779:9267361] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:13.583148+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_215|target=high|conf=0.750|exp=["shift_frame_down", "step_back"]|act=["move_object_right"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:14.082740+0300 shafinMultitool[27779:9267290] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:14.083267+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_216|target=high|conf=0.463|exp=["remove_distracting_object", "shift_frame_left", "step_back"]|act=["keep_current_setup"]|forbiddenHit=["keep_current_setup"]|verdict=bad
+2026-09-12 01:24:14.595900+0300 shafinMultitool[27779:9267294] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:14.596398+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_217|target=high|conf=0.861|exp=["add_front_fill_light", "change_camera_angle", "remove_background_hotspot"]|act=["move_object_right", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:15.183144+0300 shafinMultitool[27779:9267356] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:15.183675+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_218|target=high|conf=1.000|exp=["add_front_fill_light", "rotate_subject_toward_light"]|act=["add_front_fill_light", "change_camera_angle", "rotate_subject_toward_light"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:15.705442+0300 shafinMultitool[27779:9267356] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:15.706053+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_219|target=high|conf=0.589|exp=["remove_distracting_object", "simplify_background"]|act=["shift_frame_down", "shift_frame_up"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:16.374800+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:16.375445+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_220|target=high|conf=0.756|exp=["shift_frame_down", "step_closer"]|act=["keep_current_setup"]|forbiddenHit=["keep_current_setup"]|verdict=bad
+2026-09-12 01:24:17.037945+0300 shafinMultitool[27779:9267362] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:17.038487+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_221|target=high|conf=0.750|exp=["remove_distracting_object", "shift_frame_left", "wait_for_background_clearance"]|act=["keep_current_setup"]|forbiddenHit=["keep_current_setup"]|verdict=bad
+2026-09-12 01:24:17.536164+0300 shafinMultitool[27779:9267288] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:17.536994+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_222|target=high|conf=0.701|exp=["remove_distracting_object", "simplify_background", "step_back"]|act=["move_object_left", "rotate_subject_toward_light", "simplify_background", "step_closer"]|forbiddenHit=["step_closer"]|verdict=bad
+2026-09-12 01:24:18.101865+0300 shafinMultitool[27779:9267355] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:18.102403+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_223|target=high|conf=0.858|exp=["change_camera_angle", "remove_background_hotspot"]|act=[]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:18.709575+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:18.710182+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_224|target=high|conf=1.000|exp=["add_front_fill_light", "rotate_subject_toward_light"]|act=[]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:19.097355+0300 shafinMultitool[27779:9267359] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:19.097894+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_225|target=high|conf=0.774|exp=["shift_frame_right", "step_back"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:19.586676+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:19.587190+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_226|target=high|conf=0.677|exp=["remove_distracting_object", "shift_frame_left", "step_back"]|act=["change_camera_angle", "move_object_back", "move_object_right", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:20.159917+0300 shafinMultitool[27779:9267336] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:20.160394+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_227|target=high|conf=0.700|exp=["remove_distracting_object", "simplify_background"]|act=["keep_current_setup"]|forbiddenHit=["keep_current_setup"]|verdict=bad
+2026-09-12 01:24:20.740949+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:20.741449+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_228|target=high|conf=0.775|exp=["step_closer"]|act=[]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:21.374265+0300 shafinMultitool[27779:9267362] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:21.374794+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_229|target=high|conf=0.440|exp=["add_front_fill_light", "change_camera_angle", "remove_background_hotspot"]|act=[]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:21.670101+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:21.670614+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_230|target=high|conf=0.764|exp=["shift_frame_down", "step_back"]|act=["keep_current_setup"]|forbiddenHit=["keep_current_setup"]|verdict=bad
+2026-09-12 01:24:22.195602+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:22.196229+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_231|target=high|conf=0.750|exp=["remove_distracting_object", "wait_for_background_clearance"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:22.850708+0300 shafinMultitool[27779:9267367] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:22.851161+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_232|target=high|conf=0.750|exp=["remove_distracting_object", "simplify_background"]|act=[]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:23.396896+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:23.397375+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_233|target=high|conf=1.000|exp=["add_front_fill_light", "rotate_subject_toward_light"]|act=["move_object_left"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:23.785690+0300 shafinMultitool[27779:9267376] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:23.786328+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_234|target=high|conf=0.794|exp=["change_camera_angle", "remove_background_hotspot"]|act=[]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:24.294451+0300 shafinMultitool[27779:9267355] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:24.295261+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_235|target=high|conf=0.750|exp=["shift_frame_right", "step_back"]|act=[]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:24.596303+0300 shafinMultitool[27779:9267360] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:24.596877+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_236|target=high|conf=0.740|exp=["step_closer"]|act=["shift_frame_down", "shift_frame_up"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:25.140961+0300 shafinMultitool[27779:9267362] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:25.141506+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_237|target=high|conf=1.000|exp=["remove_distracting_object", "simplify_background"]|act=["add_front_fill_light", "change_camera_angle", "rotate_subject_toward_light"]|forbiddenHit=[]|verdict=bad
+2026-09-12 01:24:25.803470+0300 shafinMultitool[27779:9267358] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:25.804033+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+2026-09-12 01:24:26.131028+0300 shafinMultitool[27779:9267359] [default] CSU exception: Failed to create espresso context.
+2026-09-12 01:24:26.131480+0300 shafinMultitool[27779:9267155] [VisionTracking] ❌ Vision error: Failed to create espresso context.
+DIFF|ca_img_239|target=high|conf=0.750|exp=["change_camera_angle", "remove_background_hotspot"]|act=["change_camera_angle", "remove_background_hotspot", "simplify_background"]|forbiddenHit=[]|verdict=bad
+DRIFTSUMMARY drift=128/174 forbiddenHits=26
+Test Case '-[shafinMultitoolTests.AnalysisPipelinePresentationTests testTEMPDumpReplayVsLabelsForDriftForensics]' passed (109.463 seconds).
+Test Suite 'AnalysisPipelinePresentationTests' passed at 2026-09-12 01:24:26.726.
+	 Executed 1 test, with 0 failures (0 unexpected) in 109.463 (109.465) seconds
+Test Suite 'shafinMultitoolTests.xctest' passed at 2026-09-12 01:24:26.726.
+	 Executed 1 test, with 0 failures (0 unexpected) in 109.463 (109.465) seconds
+Test Suite 'Selected tests' passed at 2026-09-12 01:24:26.726.
+	 Executed 1 test, with 0 failures (0 unexpected) in 109.463 (109.466) seconds
+2026-09-12 01:24:27.157 xcodebuild[27447:9263993] [MT] IDETestOperationsObserverDebug: 125.182 elapsed -- Testing started completed.
+2026-09-12 01:24:27.158 xcodebuild[27447:9263993] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-09-12 01:24:27.158 xcodebuild[27447:9263993] [MT] IDETestOperationsObserverDebug: 125.182 sec, +125.182 sec -- end
+
+Test session results, code coverage, and logs:
+	/tmp/shafin-drift-dump2.xcresult
+
+** TEST SUCCEEDED **
+
+Testing started

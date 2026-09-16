@@ -1,0 +1,252 @@
+{
+ "sample_id": "camera-annotation-pilot-v1",
+ "adjudicator_only": true,
+ "note": "Интенции автора брифов. Не для аннотаторов. Синтетический ориентир для адъюдикации, не human-gold истина.",
+ "entries": [
+  {
+   "pilot_record_id": "pilot_v1_001",
+   "case_id": "CC-T06",
+   "intended_verdict": "good",
+   "intended_reason": "перекрытие видно уверенно, гипотеза про грязную линзу не заявляется",
+   "focus": "diagnosis_confidence"
+  },
+  {
+   "pilot_record_id": "pilot_v1_002",
+   "case_id": "CC-O08",
+   "intended_verdict": "good",
+   "intended_reason": "совет обусловлен доступностью места",
+   "focus": "conditional_advice"
+  },
+  {
+   "pilot_record_id": "pilot_v1_003",
+   "case_id": "CC-T05",
+   "intended_verdict": "good",
+   "intended_reason": "назван наблюдаемый факт (полосы), а не неподтверждённый диагноз",
+   "focus": "diagnosis_confidence"
+  },
+  {
+   "pilot_record_id": "pilot_v1_004",
+   "case_id": "CC-R04",
+   "intended_verdict": "good",
+   "intended_reason": "улучшение привязано к конкретной проблеме и сопоставимой паре",
+   "focus": "verified_improvement"
+  },
+  {
+   "pilot_record_id": "pilot_v1_005",
+   "case_id": "CC-V01",
+   "intended_verdict": "good",
+   "intended_reason": "зона названа, требование выполнимо в движении",
+   "focus": "framing_follow"
+  },
+  {
+   "pilot_record_id": "pilot_v1_006",
+   "case_id": "CC-P02",
+   "intended_verdict": "good",
+   "intended_reason": "просьба о действии без оценки внешности",
+   "focus": "executability"
+  },
+  {
+   "pilot_record_id": "pilot_v1_007",
+   "case_id": "CC-S02",
+   "intended_verdict": "bad",
+   "intended_reason": "навязывает «правильный» ракурс вместо цели показать слои",
+   "focus": "prescribed_angle"
+  },
+  {
+   "pilot_record_id": "pilot_v1_008",
+   "case_id": "CC-S01",
+   "intended_verdict": "good",
+   "intended_reason": "выбранная сторона становится видимой",
+   "focus": "chosen_side"
+  },
+  {
+   "pilot_record_id": "pilot_v1_009",
+   "case_id": "CC-F01",
+   "intended_verdict": "good",
+   "intended_reason": "совет про конечный формат, не только текущий кадр",
+   "focus": "format_projection"
+  },
+  {
+   "pilot_record_id": "pilot_v1_010",
+   "case_id": "CC-P06",
+   "intended_verdict": "good",
+   "intended_reason": "связь героев видна, сюжет не придумывается",
+   "focus": "relationships"
+  },
+  {
+   "pilot_record_id": "pilot_v1_011",
+   "case_id": "CC-P04",
+   "intended_verdict": "good",
+   "intended_reason": "учтены оба выбранных участника",
+   "focus": "group_readability"
+  },
+  {
+   "pilot_record_id": "pilot_v1_012",
+   "case_id": "CC-P05",
+   "intended_verdict": "good",
+   "intended_reason": "повтор кадра вместо автоспуска и ретуши",
+   "focus": "timing"
+  },
+  {
+   "pilot_record_id": "pilot_v1_013",
+   "case_id": "CC-R03",
+   "intended_verdict": "bad",
+   "intended_reason": "устранение одной проблемы ценой защищённой (лицо в тени); такой совет запрещён кейсом",
+   "focus": "masked_tradeoff"
+  },
+  {
+   "pilot_record_id": "pilot_v1_014",
+   "case_id": "CC-O01",
+   "intended_verdict": "good",
+   "intended_reason": "совет относится к отмеченному экземпляру и к проверяемому результату",
+   "focus": "referent_binding"
+  },
+  {
+   "pilot_record_id": "pilot_v1_015",
+   "case_id": "CC-O03",
+   "intended_verdict": "good",
+   "intended_reason": "устраняет конфликт с контуром головы",
+   "focus": "protected_contour"
+  },
+  {
+   "pilot_record_id": "pilot_v1_016",
+   "case_id": "CC-R06",
+   "intended_verdict": "good",
+   "intended_reason": "статус назван честно, локальный режим сохранён",
+   "focus": "honest_status"
+  },
+  {
+   "pilot_record_id": "pilot_v1_017",
+   "case_id": "CC-F03",
+   "intended_verdict": "good",
+   "intended_reason": "конкретное исправление при пересъёмке",
+   "focus": "reshoot_advice"
+  },
+  {
+   "pilot_record_id": "pilot_v1_018",
+   "case_id": "CC-T02",
+   "intended_verdict": "bad",
+   "intended_reason": "не устраняет причину (неподвижность/опора) и навязывает стиль вместо задачи",
+   "focus": "cause_vs_style"
+  },
+  {
+   "pilot_record_id": "pilot_v1_019",
+   "case_id": "CC-I01",
+   "intended_verdict": "good",
+   "intended_reason": "при неоднозначности система спрашивает, а не выбирает сама",
+   "focus": "ask_not_guess"
+  },
+  {
+   "pilot_record_id": "pilot_v1_020",
+   "case_id": "CC-O06",
+   "intended_verdict": "bad",
+   "intended_reason": "сантиметры без измерительного основания запрещены требованиями",
+   "focus": "unmeasured_units"
+  },
+  {
+   "pilot_record_id": "pilot_v1_021",
+   "case_id": "CC-V06",
+   "intended_verdict": "good",
+   "intended_reason": "ограниченная альтернатива названа до записи",
+   "focus": "rehearsal_warning"
+  },
+  {
+   "pilot_record_id": "pilot_v1_022",
+   "case_id": "CC-V04",
+   "intended_verdict": "good",
+   "intended_reason": "предупреждение о параметре до следующего дубля",
+   "focus": "parameter_lock"
+  },
+  {
+   "pilot_record_id": "pilot_v1_023",
+   "case_id": "CC-R01",
+   "intended_verdict": "good",
+   "intended_reason": "нет придуманной коррекции ради активности",
+   "focus": "no_move"
+  },
+  {
+   "pilot_record_id": "pilot_v1_024",
+   "case_id": "CC-T03",
+   "intended_verdict": "good",
+   "intended_reason": "совет выполним и проверим по деталям",
+   "focus": "executability"
+  },
+  {
+   "pilot_record_id": "pilot_v1_025",
+   "case_id": "CC-O07",
+   "intended_verdict": "good",
+   "intended_reason": "разделяет цель и фон",
+   "focus": "executability"
+  },
+  {
+   "pilot_record_id": "pilot_v1_026",
+   "case_id": "CC-P03",
+   "intended_verdict": "good",
+   "intended_reason": "реквизит и лицо читаются согласно задаче",
+   "focus": "protected_faces"
+  },
+  {
+   "pilot_record_id": "pilot_v1_027",
+   "case_id": "CC-V02",
+   "intended_verdict": "good",
+   "intended_reason": "управление телефоном, а не предметом; причина названа",
+   "focus": "motion_control"
+  },
+  {
+   "pilot_record_id": "pilot_v1_028",
+   "case_id": "CC-I05",
+   "intended_verdict": "bad",
+   "intended_reason": "исправляет намеренный стиль против выбора пользователя",
+   "focus": "style_preservation"
+  },
+  {
+   "pilot_record_id": "pilot_v1_029",
+   "case_id": "CC-V03",
+   "intended_verdict": "good",
+   "intended_reason": "конкретное исполнимое действие",
+   "focus": "motion_control"
+  },
+  {
+   "pilot_record_id": "pilot_v1_030",
+   "case_id": "CC-I06",
+   "intended_verdict": "bad",
+   "intended_reason": "выдуманное название и неверная сторона; должен быть воздержаться/выбор области",
+   "focus": "hallucinated_reference"
+  },
+  {
+   "pilot_record_id": "pilot_v1_031",
+   "case_id": "CC-T01",
+   "intended_verdict": "good",
+   "intended_reason": "резкость привязана к выбранной цели",
+   "focus": "target_binding"
+  },
+  {
+   "pilot_record_id": "pilot_v1_032",
+   "case_id": "CC-R02",
+   "intended_verdict": "bad",
+   "intended_reason": "устаревший overlay и совет должны быть немедленно сняты (WAIT/ABSTAIN)",
+   "focus": "stale_advice"
+  },
+  {
+   "pilot_record_id": "pilot_v1_033",
+   "case_id": "CC-O04",
+   "intended_verdict": "good",
+   "intended_reason": "действие пользователя, предмет выделен",
+   "focus": "executability"
+  },
+  {
+   "pilot_record_id": "pilot_v1_034",
+   "case_id": "CC-P01",
+   "intended_verdict": "good",
+   "intended_reason": "лицо открывается, группа не режется",
+   "focus": "protected_faces"
+  },
+  {
+   "pilot_record_id": "pilot_v1_035",
+   "case_id": "CC-T04",
+   "intended_verdict": "good",
+   "intended_reason": "возврат к доступной линзе/дистанции",
+   "focus": "executability"
+  }
+ ]
+}

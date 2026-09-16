@@ -1,0 +1,206 @@
+{
+  "schema_id": "camera-frozen-label-mapping-v1",
+  "schema_version": "1.0.0-draft.1",
+  "status": "draft_for_review (D02a); feeds the annotation GUI export, not a training run",
+  "purpose": "D02a: reconcile the v1 dataset annotation vocabulary (21 domain issues) with the frozen neural contract (8 issues) so an annotation maps losslessly to training targets and no equivalence is invented",
+  "derivation_basis": "each relation is read from the two enum name lists plus the audit §7 findings; no equivalence is measured, and every ambiguous case carries requires_contract_decision=true rather than a silent rename",
+  "sources": {
+    "v1_annotation_axis": "datasets/camera-coach/v1/label-schema.json $defs.issue.properties.issue_id (21 values)",
+    "frozen_neural_axis": "ml/camera_coach/contracts/set_composition_net_v1.json outputs.heads[issue_logits].ordered_names (8 values)",
+    "gui_writer": "tools/camera_annotation/annotation_labels.py (writes the frozen axis)"
+  },
+  "rules": {
+    "beauty_vs_keep": "beauty (beautiful|borderline|ugly) is NOT a keep decision: an intentional low-key or moody frame can be 'ugly' by rating and still be an explicit keep (requires a note). KEEP needs positive evidence, never 'nothing found'",
+    "missing_is_not_negative": "an absent annotation field means unknown/masked; it is never a negative label",
+    "missing_delta_is_mask": "an unexpressed direction (delta) stays masked (None); it must not be written as 0",
+    "no_invented_equivalence": "v1 issues that only look similar to a frozen issue are marked aggregates or no_frozen_issue, never silently renamed"
+  },
+  "v1_to_frozen": [
+    {
+      "v1_issue": "insufficient_look_space",
+      "kind": "one_to_one",
+      "frozen_issue": "insufficient_look_space"
+    },
+    {
+      "v1_issue": "subject_edge_pressure",
+      "kind": "one_to_one",
+      "frozen_issue": "subject_too_close_to_edge"
+    },
+    {
+      "v1_issue": "weak_subject_prominence",
+      "kind": "one_to_one",
+      "frozen_issue": "subject_not_prominent_enough"
+    },
+    {
+      "v1_issue": "background_competition",
+      "kind": "one_to_one",
+      "frozen_issue": "background_competes_with_subject"
+    },
+    {
+      "v1_issue": "unclear_focus_hierarchy",
+      "kind": "one_to_one",
+      "frozen_issue": "scene_has_no_clear_focus"
+    },
+    {
+      "v1_issue": "tilted_horizon",
+      "kind": "aggregate",
+      "frozen_issue": "horizon_distracts",
+      "note": "the frozen id is broader (horizon distracts); tilted_horizon is the sharper v1 reading"
+    },
+    {
+      "v1_issue": "background_clutter",
+      "kind": "aggregate",
+      "frozen_issue": "frame_visually_overloaded"
+    },
+    {
+      "v1_issue": "subject_blends_into_dark_background",
+      "kind": "aggregate",
+      "frozen_issue": "backlight_hides_subject",
+      "requires_contract_decision": true,
+      "note": "v1 names the effect, the frozen id names one cause (backlight); F10 in audit §7 shows the effect has other causes"
+    },
+    {
+      "v1_issue": "bright_background_pull",
+      "kind": "aggregate",
+      "frozen_issue": "background_competes_with_subject"
+    },
+    {
+      "v1_issue": "object_edge_pressure",
+      "kind": "aggregate",
+      "frozen_issue": "subject_too_close_to_edge",
+      "requires_contract_decision": true,
+      "note": "object-scoped variant; the frozen axis has no object-edge id"
+    },
+    {
+      "v1_issue": "weak_object_prominence",
+      "kind": "aggregate",
+      "frozen_issue": "subject_not_prominent_enough",
+      "requires_contract_decision": true,
+      "note": "object-scoped variant; no separate frozen id"
+    },
+    {
+      "v1_issue": "object_conflicts_with_subject",
+      "kind": "aggregate",
+      "frozen_issue": "background_competes_with_subject",
+      "requires_contract_decision": true,
+      "note": "carried in its own enum in CameraAnalysisDomainContracts (objectConflictsWithSubject)"
+    },
+    {
+      "v1_issue": "weak_subject_background_separation",
+      "kind": "aggregate",
+      "frozen_issue": "background_competes_with_subject",
+      "requires_contract_decision": true,
+      "note": "also the lighting-separation case (audit §7 F10); polarity matters"
+    },
+    {
+      "v1_issue": "tight_framing",
+      "kind": "no_frozen_issue",
+      "roadmap": "behaviour_not_issue",
+      "note": "a framing state that motivates step_back (contract: stepBackForBreathingRoom ↔ tightFraming); not an issue id"
+    },
+    {
+      "v1_issue": "timing_blocker_in_frame",
+      "kind": "no_frozen_issue",
+      "roadmap": "behaviour_not_issue",
+      "note": "temporal; relates to wait_for_clearance and is out of the still-frame issue axis (§7.9)"
+    },
+    {
+      "v1_issue": "camera_height_mismatch",
+      "kind": "no_frozen_issue",
+      "roadmap": "candidate_gap",
+      "note": "audit §7.6 rejects it as an unconditional verdict; needs intent + feasibility before any id"
+    },
+    {
+      "v1_issue": "perspective_mismatch",
+      "kind": "no_frozen_issue",
+      "roadmap": "candidate_gap",
+      "note": "wide-angle/keystone family (audit F01/F18); requires new local signals"
+    },
+    {
+      "v1_issue": "flat_depth",
+      "kind": "no_frozen_issue",
+      "roadmap": "candidate_gap",
+      "note": "dof_too_deep family; audit §7.6 marks it low priority"
+    },
+    {
+      "v1_issue": "front_light_deficit",
+      "kind": "no_frozen_issue",
+      "roadmap": "candidate_gap",
+      "note": "an action (add_front_fill_light) exists but no frozen issue id; F07 shows it is context dependent"
+    },
+    {
+      "v1_issue": "prop_breaks_balance",
+      "kind": "no_frozen_issue",
+      "roadmap": "candidate_gap",
+      "note": "audit §7.6 rejects unconditional balance verdicts; needs a selected target"
+    },
+    {
+      "v1_issue": "face_contour_occlusion",
+      "kind": "no_frozen_issue",
+      "roadmap": "candidate_gap",
+      "note": "occlusion lives in the technical axis (TechnicalQualityIssueType.occlusion); F39/F21 show the fine cases"
+    }
+  ],
+  "frozen_coverage": {
+    "subject_too_close_to_edge": {
+      "v1_sources": [
+        "subject_edge_pressure",
+        "object_edge_pressure"
+      ],
+      "covered": true
+    },
+    "subject_not_prominent_enough": {
+      "v1_sources": [
+        "weak_subject_prominence",
+        "weak_object_prominence"
+      ],
+      "covered": true
+    },
+    "background_competes_with_subject": {
+      "v1_sources": [
+        "background_competition",
+        "bright_background_pull",
+        "object_conflicts_with_subject",
+        "weak_subject_background_separation"
+      ],
+      "covered": true
+    },
+    "insufficient_look_space": {
+      "v1_sources": [
+        "insufficient_look_space"
+      ],
+      "covered": true
+    },
+    "backlight_hides_subject": {
+      "v1_sources": [
+        "subject_blends_into_dark_background"
+      ],
+      "covered": true
+    },
+    "scene_has_no_clear_focus": {
+      "v1_sources": [
+        "unclear_focus_hierarchy"
+      ],
+      "covered": true
+    },
+    "frame_visually_overloaded": {
+      "v1_sources": [
+        "background_clutter"
+      ],
+      "covered": true
+    },
+    "horizon_distracts": {
+      "v1_sources": [
+        "tilted_horizon"
+      ],
+      "covered": true
+    }
+  },
+  "counts": {
+    "v1_total": 21,
+    "one_to_one": 5,
+    "aggregate": 8,
+    "no_frozen_issue": 8,
+    "requires_contract_decision": 6
+  }
+}

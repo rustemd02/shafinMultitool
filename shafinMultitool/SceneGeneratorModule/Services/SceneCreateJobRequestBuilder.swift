@@ -50,20 +50,37 @@ enum SceneCreateJobRequestBuilder {
         guard (1...Self.maximumScenes).contains(maximumScenes) else {
             return .failure(.constraintsViolation)
         }
-        let canonical = canonicalJSON(
+        let requestWithoutHash = SceneCreateJobRequest(
             requestID: requestID,
             clientBuild: clientBuild,
+            schemaVersion: SceneAPIVersion.scriptSchemaVersion,
             locale: locale,
             scriptText: scriptText,
             markedObjectIDs: markedObjectIDs,
             maximumScenes: maximumScenes,
             previousJobID: previousJobID,
+            requestHash: "",
+            schemaVersionBackend: SceneAPIVersion.backendSchemaVersion,
             modelVersion: modelVersion,
             promptVersion: promptVersion,
             providerName: providerName,
             providerVersion: providerVersion
         )
-        let digest = SHA256.hash(data: Data(canonical.utf8))
+        let canonicalData: Data
+        do {
+            let encoded = try JSONEncoder().encode(requestWithoutHash)
+            guard var object = try JSONSerialization.jsonObject(with: encoded) as? [String: Any] else {
+                return .failure(.encodingFailure)
+            }
+            object.removeValue(forKey: "request_hash")
+            canonicalData = try JSONSerialization.data(
+                withJSONObject: object,
+                options: [.sortedKeys, .withoutEscapingSlashes]
+            )
+        } catch {
+            return .failure(.encodingFailure)
+        }
+        let digest = SHA256.hash(data: canonicalData)
         let requestHash = digest.map { String(format: "%02x", $0) }.joined()
         return .success(
             SceneCreateJobRequest(
@@ -84,48 +101,6 @@ enum SceneCreateJobRequestBuilder {
             )
         )
     }
-
-    private static func canonicalJSON(
-        requestID: UUID,
-        clientBuild: String,
-        locale: String,
-        scriptText: String,
-        markedObjectIDs: [String],
-        maximumScenes: Int,
-        previousJobID: String?,
-        modelVersion: String,
-        promptVersion: String,
-        providerName: String,
-        providerVersion: String
-    ) -> String {
-        var parts: [String] = [
-            #""client_build":"\#(jsonEscape(clientBuild))""#,
-            #""locale":"\#(jsonEscape(locale))""#,
-            #""marked_objects":[\#(markedObjectIDs.map { #""\#(jsonEscape($0))""# }.joined(separator: ","))]"#,
-            #""maximum_scenes":\#(maximumScenes)"#,
-            #""model_version":"\#(jsonEscape(modelVersion))""#,
-            #""prompt_version":"\#(jsonEscape(promptVersion))""#,
-            #""provider_name":"\#(jsonEscape(providerName))""#,
-            #""provider_version":"\#(jsonEscape(providerVersion))""#,
-            #""request_id":"\#(requestID.uuidString)""#,
-            #""schema_version":"\#(SceneAPIVersion.scriptSchemaVersion)""#,
-            #""schema_version_backend":"\#(SceneAPIVersion.backendSchemaVersion)""#,
-            #""script_text":"\#(jsonEscape(scriptText))""#
-        ]
-        if let previousJobID {
-            parts.append(#""previous_job_id":"\#(jsonEscape(previousJobID))""#)
-        }
-        return "{\(parts.sorted().joined(separator: ","))}"
-    }
-
-    private static func jsonEscape(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\t", with: "\\t")
-    }
 }
 
 enum SceneRequestBuildError: String, Equatable, Sendable, Error {
@@ -133,4 +108,5 @@ enum SceneRequestBuildError: String, Equatable, Sendable, Error {
     case textLengthViolation
     case markedObjectsViolation
     case constraintsViolation
+    case encodingFailure
 }

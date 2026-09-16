@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Run the Swift semantic still-image replay from the committed M4 config.
+"""Run the Swift semantic still-image replay from a committed replay config.
 
 The checked-in config is intentionally portable. This runner resolves its
 repository-relative inputs and external output contract into a transient
 absolute config, selects it through SEMANTIC_EVAL_CONFIG, and also writes the
 test's canonical transient config path for Xcode test-process inheritance.
+
+The default config is the M4-001 fullRuntime 107-record lane; ``--config``
+selects another committed lane (for example the 174-record label-drift lane)
+without changing how the M4-001 lane materializes.
 """
 
 from __future__ import annotations
@@ -82,6 +86,14 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="External path for the JSONL output written by the Swift test.",
     )
+    parser.add_argument(
+        "--config",
+        default=str(CONFIG_RELATIVE_PATH),
+        help=(
+            "Repository-relative committed replay config to execute "
+            f"(default: {CONFIG_RELATIVE_PATH})."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -89,12 +101,13 @@ def main() -> int:
     args = parse_args()
     script_path = Path(__file__).resolve()
     repo_root = repository_root(script_path)
-    config_path = repo_root / CONFIG_RELATIVE_PATH
+    config_path = repo_relative_path(repo_root, args.config, "config")
     config_bytes = config_path.read_bytes()
     config = json.loads(config_bytes)
+    config_relative = config_path.relative_to(repo_root)
 
-    if config.get("config_id") != "m4-001-fullruntime-107-r1":
-        raise SystemExit("unexpected committed replay config_id")
+    if not isinstance(config.get("config_id"), str) or not config["config_id"]:
+        raise SystemExit("committed replay config is missing a config_id")
     if config.get("runtime") != "real_runtime_still_replay":
         raise SystemExit("committed replay config is not fullRuntime")
     if config.get("output_path") != "<EXTERNAL_OUTPUT_PATH>":
@@ -169,7 +182,7 @@ def main() -> int:
             env.pop(key, None)
         env["SEMANTIC_EVAL_CONFIG"] = str(materialized_path)
 
-        print(f"committed_config={CONFIG_RELATIVE_PATH}")
+        print(f"committed_config={config_relative}")
         print(f"committed_config_sha256={sha256_bytes(config_bytes)}")
         print(f"materialized_config_sha256={sha256_bytes(materialized_bytes)}")
         print("xcodebuild_command=" + " ".join(command))
@@ -181,6 +194,16 @@ def main() -> int:
             raise SystemExit(f"Swift replay did not create output: {output_path}")
         rows = output_path.read_text(encoding="utf-8").splitlines()
         records = {json.loads(row)["record_id"] for row in rows}
+        expected_records = config.get("expected_records")
+        expected_rows = config.get("expected_rows")
+        if isinstance(expected_records, int) and len(records) != expected_records:
+            raise SystemExit(
+                f"output record count {len(records)} does not match expected_records {expected_records}"
+            )
+        if isinstance(expected_rows, int) and len(rows) != expected_rows:
+            raise SystemExit(
+                f"output row count {len(rows)} does not match expected_rows {expected_rows}"
+            )
         print(f"output_sha256={sha256_file(output_path)}")
         print(f"output_rows={len(rows)}")
         print(f"output_records={len(records)}")

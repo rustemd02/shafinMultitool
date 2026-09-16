@@ -56,11 +56,14 @@ enum ProCameraControlContracts {
         .init(control: .exposureManualShutterAngleISO, availability: .legacyOnly,
               owner: "CameraService.changeISO (legacy; unwired to Coach path)"),
         .init(control: .focusAuto, availability: .legacyOnly,
-              owner: "CameraService.focusOnTap (legacy; unwired to Coach path)"),
+              owner: "CameraService.focusOnTap (legacy one-shot autoFocus; unwired to Coach path)"),
+        // C06: `focusOnTap` sets `.autoFocus` + `.autoExpose`, never
+        // `.locked`. There is no focus-lock implementation, so this row must
+        // not name a lock owner that does not exist.
         .init(control: .focusTapLock, availability: .legacyOnly,
-              owner: "CameraService.focusOnTap (legacy; unwired to Coach path)"),
+              owner: "NONE: no focus-lock owner; focusOnTap installs .autoFocus, not .locked (legacy; unwired)"),
         .init(control: .focusManual, availability: .legacyOnly,
-              owner: "CameraService (legacy; unwired to Coach path)"),
+              owner: "NONE: no manual-focus owner (legacy; unwired to Coach path)"),
         .init(control: .whiteBalanceAuto, availability: .legacyOnly,
               owner: "CameraService.changeWB (legacy; unwired to Coach path)"),
         .init(control: .whiteBalancePreset, availability: .legacyOnly,

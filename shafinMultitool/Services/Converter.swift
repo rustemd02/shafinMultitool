@@ -13,6 +13,13 @@ class Converter {
     
     func cgFloatValuesFromUIColor(color: UIColor) -> (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) {
         guard let components = color.cgColor.components else { return (0.0,0.0,0.0,0.0) }
+        // Grayscale colors carry only [white, alpha]; expanding them keeps
+        // monochrome/dynamic system colors from indexing out of range.
+        if components.count == 2 {
+            let white = components[0]
+            return (white, white, white, components[1])
+        }
+        guard components.count >= 4 else { return (0.0,0.0,0.0,0.0) }
         return (components[0], components[1], components[2], components[3])
     }
     

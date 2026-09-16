@@ -199,6 +199,20 @@ def find_first(root: Path, name: str) -> Path | None:
     return next(root.rglob(name), None) if root.exists() else None
 
 
+def find_first_across_roots(roots: list[Path], name: str) -> Path | None:
+    """Search several roots in order.
+
+    Used for artifact lookup so that an incomplete extraction still falls back to
+    the exported attachments: an archive that unpacked without the expected file
+    must not make that file look absent when it is sitting next to the archive.
+    """
+    for root in roots:
+        found = find_first(root, name)
+        if found is not None:
+            return found
+    return None
+
+
 def collect_device_diagnostics(device_id: str) -> dict[str, Any]:
     lock_state = run_command(
         ["xcrun", "devicectl", "device", "info", "lockState", "--device", device_id],
@@ -733,12 +747,15 @@ def main(argv: list[str] | None = None) -> int:
     maybe_export_attachments(xcresult, attachments_dir)
     normalized_aliases = normalize_exported_attachments(attachments_dir)
     extracted_root = maybe_extract_artifacts_zip(attachments_dir, extracted_dir)
-    artifacts_search_root = extracted_root or attachments_dir
+    # Extracted artifacts win when present, but an incomplete extraction must not
+    # hide a file that the exported attachments still carry.
+    artifacts_search_roots = [root for root in (extracted_root, attachments_dir) if root is not None]
+    artifacts_search_root = artifacts_search_roots[0]
     camera_metrics_path = maybe_run_camera_postprocess(repo_root, artifacts_search_root, args.tier, postprocess_dir)
 
-    app_summary = load_json_if_exists(find_first(artifacts_search_root, "combined_summary.json"))
-    camera_summary = load_json_if_exists(find_first(artifacts_search_root, "camera_summary.json"))
-    scene_summary = load_json_if_exists(find_first(artifacts_search_root, "scene_summary.json"))
+    app_summary = load_json_if_exists(find_first_across_roots(artifacts_search_roots, "combined_summary.json"))
+    camera_summary = load_json_if_exists(find_first_across_roots(artifacts_search_roots, "camera_summary.json"))
+    scene_summary = load_json_if_exists(find_first_across_roots(artifacts_search_roots, "scene_summary.json"))
     camera_eval = load_json_if_exists(camera_metrics_path)
     if camera_eval is not None:
         camera_eval["_bucket_metrics_path"] = str(postprocess_dir / "bucket_metrics.json")

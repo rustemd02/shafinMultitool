@@ -16,6 +16,14 @@ private final class LensHapticRecorder: SETHapticPerforming {
 final class CameraViewModelLensSwitchTests: XCTestCase {
 
     func testProductionPipelineStreamReachesVerificationAfterRecommendationDisappears() async {
+        await exerciseVerificationResultRetention(incomparable: false)
+    }
+
+    func testIncomparableResultDoesNotTearDownCaptureEpisode() async {
+        await exerciseVerificationResultRetention(incomparable: true)
+    }
+
+    private func exerciseVerificationResultRetention(incomparable: Bool) async {
         let fixture = makeFixture { _ in
             .noOp(activeLens: .wide)
         }
@@ -72,6 +80,31 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         XCTAssertEqual(fixture.viewModel.coachingEpisodeState.baseline?.frameID, "episode-f0")
         XCTAssertEqual(fixture.viewModel.coachingEpisodeState.movementFrames, 2)
         XCTAssertEqual(fixture.viewModel.coachingEpisodeState.stableAfterFrames, 2)
+
+        if incomparable {
+            guard let verified = fixture.viewModel.verificationResult else {
+                return XCTFail("the ready transition must first produce an owner result")
+            }
+            // A focused consumer-boundary check, not an injected full-loop
+            // success: incomparable must not masquerade as route teardown.
+            let result = ActionVerificationResult(
+                token: verified.token,
+                actionID: verified.actionID,
+                beforeFrameID: verified.beforeFrameID,
+                afterFrameID: verified.afterFrameID,
+                decision: .incomparable(reason: .unsupportedAction),
+                deltas: [],
+                safetyRegressions: []
+            )
+            let event = fixture.pipeline.currentCoachingEpisodeEvent
+            XCTAssertTrue(fixture.viewModel.applyVerificationResult(result))
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+            XCTAssertEqual(fixture.pipeline.currentCoachingEpisodeEvent, event)
+            XCTAssertEqual(fixture.viewModel.verificationResult, result)
+            XCTAssertEqual(fixture.viewModel.coachingEpisodeState.phase, .readyForVerification)
+        }
 
         await fixture.viewModel.releaseAndWait()
     }
@@ -641,7 +674,8 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
             actionID: actionID,
             frameID: id,
             targetX: 0.5,
-            targetY: 0.5
+            targetY: 0.5,
+            targetIdentity: identity
         )
         return CoachingEpisodeObservation(
             frame: frame,
@@ -686,7 +720,16 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
                     personCount: subjectDetected ? 1 : 0
                 ),
                 measuredAt: capturedAt,
-                baseConfidence: subjectDetected ? 0.94 : 0
+                baseConfidence: subjectDetected ? 0.94 : 0,
+                // The production live handoff binds advice to the subject
+                // source, which the snapshot derives from sample provenance;
+                // a sample without provenance admits no baseline. Match the
+                // evidence lens generation below.
+                provenance: FeatureSampleProvenance(
+                    frameID: id,
+                    captureGeneration: 7,
+                    orientation: .up
+                )
             ),
             horizonMeasuredAt: nil,
             horizon: nil,

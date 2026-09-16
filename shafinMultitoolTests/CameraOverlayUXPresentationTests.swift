@@ -316,9 +316,74 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         XCTAssertNil(presentation.overlayHint)
     }
 
+    func testTypedFrameGlobalHintsKeepCopyWithoutSpatialGeometry() {
+        let locale = Locale(identifier: "en")
+        let frameGlobalHints = [
+            makeLiveHint(
+                actionType: nil,
+                targetRegion: nil,
+                semanticActionType: .levelHorizon,
+                technicalIssueType: nil,
+                technicalActionType: nil,
+                includeLinkedEvidence: false
+            ),
+            makeLiveHint(
+                actionType: nil,
+                targetRegion: nil,
+                semanticActionType: nil,
+                technicalIssueType: .motionBlur,
+                technicalActionType: .stabilizeCamera,
+                includeLinkedEvidence: false
+            )
+        ]
+
+        for hint in frameGlobalHints {
+            let presentation = CameraOverlayUXPresentation.make(
+                liveHint: hint,
+                context: CameraOverlayUXContext(hasSpatialEvidence: false),
+                locale: locale
+            )
+            XCTAssertEqual(presentation.state, .stableTip)
+            XCTAssertNotNil(presentation.actionInstruction)
+            XCTAssertNil(presentation.targetRegion)
+            XCTAssertNil(presentation.overlayHint)
+        }
+
+        let subjectBound = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(
+                actionType: .moveFrameLeft,
+                targetRegion: nil,
+                includeLinkedEvidence: false
+            ),
+            context: CameraOverlayUXContext(hasSpatialEvidence: false),
+            locale: locale
+        )
+        XCTAssertEqual(subjectBound.state, .liveSeeking)
+
+        let unknown = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(
+                actionId: TechnicalQualityActionType.stabilizeCamera.rawValue,
+                actionType: nil,
+                targetRegion: nil,
+                technicalIssueType: .motionBlur,
+                technicalActionType: nil,
+                includeLinkedEvidence: false
+            ),
+            context: CameraOverlayUXContext(hasSpatialEvidence: false),
+            locale: locale
+        )
+        XCTAssertEqual(unknown.state, .liveSeeking)
+    }
+
     func testCorrectiveGuideIsKeptOnlyForTheActiveAction() {
         let corrective = makeLiveHint(
             actionType: .moveFrameLeft,
+            subjectIdentity: SubjectTrackIdentity(
+                trackID: "hint-subject",
+                firstSeenFrameID: "frame-1",
+                generation: 7
+            ),
+            observedSourceRegion: NormalizedRect(x: 0.20, y: 0.26, width: 0.22, height: 0.34),
             overlayHint: OverlayHint(
                 id: "guide-left",
                 kind: .arrow,
@@ -407,6 +472,35 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             104,
             accuracy: 0.001
         )
+
+        for canvas in [portrait, landscape] {
+            for locale in [Locale(identifier: "en"), Locale(identifier: "ru")] {
+                let observation = SETCopyKey.cameraEpisodeAwaitingMovement.localizedString(locale: locale)
+                let content = SETCameraCoachRailContent(
+                    observation: observation + "\n" + observation,
+                    actionInstruction: "Move the camera slightly to the left",
+                    whyLabel: SETCopyKey.cameraWhy.localizedString(locale: locale)
+                )
+                let minimum = SETCameraCoachMetric.liveRailHeight(
+                    canvasSize: canvas, isAccessibilityType: false, isExpanded: false
+                )
+                let measured = SETCameraCoachMetric.liveRailHeight(
+                    canvasSize: canvas, isAccessibilityType: false, isExpanded: false,
+                    content: content
+                )
+                XCTAssertGreaterThan(measured, minimum, "Wrapped command must enlarge the shared reservation")
+                let expanded = SETCameraCoachMetric.liveRailHeight(
+                    canvasSize: canvas, isAccessibilityType: false, isExpanded: true,
+                    content: SETCameraCoachRailContent(
+                        observation: content.observation,
+                        actionInstruction: content.actionInstruction,
+                        explanation: observation + "\n" + observation,
+                        whyLabel: content.whyLabel
+                    )
+                )
+                XCTAssertGreaterThan(expanded, measured)
+            }
+        }
 
         let attachment = XCTAttachment(string: "portrait width=358 bottom=28\nlandscape width=420 bottom=104")
         attachment.name = "camera-coach-lower-third-layout.txt"
@@ -601,6 +695,250 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         }
     }
 
+    func testActiveEpisodeWinsOverTransientKeepAndKeepsAcceptedAction() {
+        let locale = Locale(identifier: "en")
+        let token = CoachingEpisodeToken(
+            rawValue: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
+            generation: 7
+        )
+        let keepHint = makeLiveHint(
+            actionType: .leaveFrameAsIs,
+            targetRegion: nil,
+            overlayHint: nil,
+            includeLinkedEvidence: false
+        )
+        let expectedAction = SETCameraCopy.actionKey(
+            forCanonicalActionID: SemanticActionType.shiftFrameLeft.rawValue
+        )!.localizedString(locale: locale)
+        let expectedPhases: [(
+            CoachingEpisodePhase,
+            SETCopyKey,
+            CameraOverlayUXPresentation.State
+        )] = [
+            (.awaitingMovement, .cameraEpisodeAwaitingMovement, .stableTip),
+            (.collectingStableAfterFrames, .cameraEpisodeCollecting, .actionObserved),
+            (.readyForVerification, .cameraEpisodeChecking, .verification)
+        ]
+
+        for (phase, copyKey, expectedState) in expectedPhases {
+            let state = makeEpisodeState(
+                token: token,
+                subjectRegion: NormalizedRect(x: 0.22, y: 0.28, width: 0.22, height: 0.40),
+                phase: phase
+            )
+            let presentation = CameraOverlayUXPresentation.make(
+                liveHint: keepHint,
+                context: CameraOverlayUXContext(
+                    decision: .keep,
+                    episodeState: state
+                ),
+                locale: locale
+            )
+
+            XCTAssertEqual(presentation.state, expectedState, phase.rawValue)
+            XCTAssertEqual(presentation.observation, copyKey.localizedString(locale: locale), phase.rawValue)
+            XCTAssertEqual(
+                presentation.actionInstruction,
+                phase == .readyForVerification ? nil : expectedAction,
+                phase.rawValue
+            )
+            XCTAssertEqual(presentation.markerEventID, token.rawValue.uuidString, phase.rawValue)
+            // `shiftFrameLeft` moves the camera left; its subject-facing
+            // displacement/overlay direction is therefore right.
+            XCTAssertEqual(presentation.overlayHint?.direction, .right, phase.rawValue)
+            XCTAssertNotEqual(presentation.observation, SETCopyKey.cameraKeep.localizedString(locale: locale), phase.rawValue)
+        }
+
+        let limited = CameraOverlayUXPresentation.make(
+            liveHint: keepHint,
+            context: CameraOverlayUXContext(
+                decision: .keep,
+                episodeState: makeEpisodeState(
+                    token: token,
+                    subjectRegion: NormalizedRect(x: 0.22, y: 0.28, width: 0.22, height: 0.40),
+                    phase: .awaitingMovement
+                ),
+                performance: CameraRuntimePerformanceSnapshot(
+                    budget: ThermalGovernor.Budget(
+                        highPriorityFrequency: 2,
+                        mediumPriorityFrequency: 0.5,
+                        lowPriorityFrequency: 0,
+                        heavyModelsEnabled: false
+                    ),
+                    thermalTier: .constrained
+                )
+            ),
+            locale: locale
+        )
+        XCTAssertEqual(limited.state, .liveSeeking)
+        XCTAssertNil(limited.actionInstruction)
+        XCTAssertNil(limited.overlayHint)
+    }
+
+    func testMatchingVerificationOutcomesUseLocalizedOwnerCopyAndStaleResultsAreIgnored() {
+        let locale = Locale(identifier: "en")
+        let token = CoachingEpisodeToken(
+            rawValue: UUID(uuidString: "44444444-4444-4444-8444-444444444444")!,
+            generation: 7
+        )
+        let staleToken = CoachingEpisodeToken(
+            rawValue: UUID(uuidString: "55555555-5555-4555-8555-555555555555")!,
+            generation: 7
+        )
+        let state = makeEpisodeState(
+            token: token,
+            subjectRegion: NormalizedRect(x: 0.22, y: 0.28, width: 0.22, height: 0.40),
+            phase: .readyForVerification
+        )
+        let outcomes: [(ActionVerificationDecision, SETCopyKey, CameraOverlayUXPresentation.State)] = [
+            (.comparable(outcome: .improved), .cameraVerificationImproved, .verificationImproved),
+            (.comparable(outcome: .unchanged), .cameraVerificationUnchanged, .verificationNotImproved),
+            (.comparable(outcome: .worse), .cameraVerificationWorse, .verificationNotImproved),
+            (.incomparable(reason: .evidenceMissing), .cameraVerificationIncomparable, .abstention),
+            (.comparable(outcome: .fixed), .cameraVerificationFixed, .verificationImproved)
+        ]
+
+        for (decision, copyKey, expectedState) in outcomes {
+            let result = makeVerificationResult(token: token, decision: decision)
+            let presentation = CameraOverlayUXPresentation.make(
+                liveHint: makeLiveHint(actionType: .leaveFrameAsIs, includeLinkedEvidence: false),
+                context: CameraOverlayUXContext(
+                    decision: .keep,
+                    episodeState: state,
+                    verificationResult: result
+                ),
+                locale: locale
+            )
+
+            XCTAssertEqual(presentation.state, expectedState, copyKey.rawValue)
+            XCTAssertEqual(presentation.observation, copyKey.localizedString(locale: locale), copyKey.rawValue)
+            XCTAssertNotEqual(presentation.observation, SETCopyKey.cameraKeep.localizedString(locale: locale), copyKey.rawValue)
+            if case .incomparable = decision {
+                XCTAssertTrue(presentation.isFallback)
+                XCTAssertNil(presentation.markerEventID)
+                XCTAssertEqual(presentation.episodeToken, token)
+                XCTAssertTrue(presentation.canContinueEpisode)
+            } else if case .comparable(outcome: .fixed) = decision {
+                XCTAssertNil(presentation.markerEventID)
+                XCTAssertEqual(presentation.episodeToken, token)
+                XCTAssertTrue(presentation.canContinueEpisode)
+            } else {
+                XCTAssertEqual(presentation.markerEventID, token.rawValue.uuidString)
+                XCTAssertEqual(presentation.episodeToken, token)
+                XCTAssertTrue(presentation.canContinueEpisode)
+            }
+        }
+
+        let limitedResult = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(actionType: .leaveFrameAsIs, includeLinkedEvidence: false),
+            context: CameraOverlayUXContext(
+                decision: .keep,
+                episodeState: state,
+                verificationResult: makeVerificationResult(
+                    token: token,
+                    decision: .comparable(outcome: .improved)
+                ),
+                analysisStatus: .limited
+            ),
+            locale: locale
+        )
+        XCTAssertEqual(limitedResult.state, .verificationImproved)
+        XCTAssertFalse(limitedResult.canContinueEpisode)
+
+        let ecoResult = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(actionType: .leaveFrameAsIs, includeLinkedEvidence: false),
+            context: CameraOverlayUXContext(
+                decision: .keep,
+                episodeState: state,
+                verificationResult: makeVerificationResult(
+                    token: token,
+                    decision: .comparable(outcome: .improved)
+                ),
+                performance: CameraRuntimePerformanceSnapshot(
+                    budget: ThermalGovernor.Budget(
+                        highPriorityFrequency: 2,
+                        mediumPriorityFrequency: 0.5,
+                        lowPriorityFrequency: 0,
+                        heavyModelsEnabled: false
+                    ),
+                    thermalTier: .constrained
+                )
+            ),
+            locale: locale
+        )
+        XCTAssertEqual(ecoResult.state, .verificationImproved)
+        XCTAssertFalse(ecoResult.canContinueEpisode)
+
+        let sameTokenBeforeReady = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(actionType: .leaveFrameAsIs, includeLinkedEvidence: false),
+            context: CameraOverlayUXContext(
+                decision: .keep,
+                episodeState: makeEpisodeState(
+                    token: token,
+                    subjectRegion: NormalizedRect(x: 0.22, y: 0.28, width: 0.22, height: 0.40),
+                    phase: .awaitingMovement
+                ),
+                verificationResult: makeVerificationResult(
+                    token: token,
+                    decision: .comparable(outcome: .improved)
+                )
+            ),
+            locale: locale
+        )
+        XCTAssertEqual(sameTokenBeforeReady.state, .stableTip)
+        XCTAssertEqual(
+            sameTokenBeforeReady.observation,
+            SETCopyKey.cameraEpisodeAwaitingMovement.localizedString(locale: locale)
+        )
+        XCTAssertFalse(sameTokenBeforeReady.canContinueEpisode)
+
+        let stale = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(actionType: .leaveFrameAsIs, includeLinkedEvidence: false),
+            context: CameraOverlayUXContext(
+                decision: .keep,
+                episodeState: state,
+                verificationResult: makeVerificationResult(
+                    token: staleToken,
+                    decision: .comparable(outcome: .fixed)
+                )
+            ),
+            locale: locale
+        )
+        XCTAssertEqual(stale.state, .verification)
+        XCTAssertEqual(stale.observation, SETCopyKey.cameraEpisodeChecking.localizedString(locale: locale))
+        XCTAssertNil(stale.actionInstruction)
+        XCTAssertEqual(stale.markerEventID, token.rawValue.uuidString)
+    }
+
+    func testLifecyclePriorityHidesActiveEpisodeAndVerificationResult() {
+        let token = CoachingEpisodeToken(
+            rawValue: UUID(uuidString: "66666666-6666-4666-8666-666666666666")!,
+            generation: 7
+        )
+        let presentation = CameraOverlayUXPresentation.make(
+            liveHint: makeLiveHint(actionType: .leaveFrameAsIs, includeLinkedEvidence: false),
+            context: CameraOverlayUXContext(
+                lifecycleState: .failed(.runtimeError),
+                decision: .keep,
+                episodeState: makeEpisodeState(
+                    token: token,
+                    subjectRegion: NormalizedRect(x: 0.22, y: 0.28, width: 0.22, height: 0.40),
+                    phase: .readyForVerification
+                ),
+                verificationResult: makeVerificationResult(
+                    token: token,
+                    decision: .comparable(outcome: .improved)
+                )
+            ),
+            locale: Locale(identifier: "en")
+        )
+
+        XCTAssertEqual(presentation.state, .failed)
+        XCTAssertNil(presentation.markerEventID)
+        XCTAssertEqual(presentation.observation, SETCopyKey.cameraFailed.localizedString(locale: Locale(identifier: "en")))
+        XCTAssertFalse(presentation.observation.contains("checked change"))
+    }
+
     func testCorrectiveGeometryUsesSubjectAndTargetAndStaysInsideSafeRect() {
         let sizes = [
             CGSize(width: 390, height: 844),
@@ -729,7 +1067,7 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         XCTAssertEqual(plan.primaryAction?.actionType, .moveFrameRight)
         XCTAssertEqual(
             plan.primaryAction?.targetRegion,
-            SemanticActionType.shiftFrameRight.subjectTargetRegion(from: subject)
+            SemanticActionType.shiftFrameRight.subjectTargetRegion(from: subject, sourceSpace: .vision)
         )
         XCTAssertNotEqual(plan.primaryAction?.targetRegion, issue.affectedRegion)
         XCTAssertFalse(overlaps(plan.primaryAction?.targetRegion, subject))
@@ -737,7 +1075,9 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
 
     func testEpisodeTokenOwnsMarkerIdentityAndFrozenTargetGeometry() {
         let subject = NormalizedRect(x: 0.22, y: 0.28, width: 0.22, height: 0.40)
-        let target = SemanticActionType.shiftFrameLeft.subjectTargetRegion(from: subject)
+        let target = SemanticActionType.shiftFrameLeft
+            .subjectTargetRegion(from: subject, sourceSpace: .subjectTarget)!
+            .converted(from: .subjectTarget, to: .vision)!
         let firstToken = CoachingEpisodeToken(
             rawValue: UUID(uuidString: "11111111-1111-4111-8111-111111111111")!,
             generation: 7
@@ -774,7 +1114,7 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         )
 
         let expectedPoint = SemanticActionType.shiftFrameLeft.subjectDisplacementDirection!
-            .subjectTargetPoint(from: subject)
+            .subjectTargetPoint(from: subject, sourceSpace: .subjectTarget)!
         XCTAssertEqual(firstState.baseline?.advice.targetPoint?.x, expectedPoint.x)
         XCTAssertEqual(firstState.baseline?.advice.targetPoint?.y, expectedPoint.y)
         XCTAssertEqual(rerendered.markerEventID, firstToken.rawValue.uuidString)
@@ -786,13 +1126,17 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
     private func makeLiveHint(
         id: String = "hint-1",
         frameId: String = "frame-1",
+        actionId: String? = "action-1",
         text: String = "Сигнал кадра.",
         confidence: Double = 0.86,
         actionType: ActionTypeV1? = .moveFrameLeft,
         targetRegion: NormalizedRect? = NormalizedRect(x: 0.62, y: 0.2, width: 0.24, height: 0.44),
+        subjectIdentity: SubjectTrackIdentity? = nil,
+        observedSourceRegion: NormalizedRect? = nil,
         overlayHint: OverlayHint? = nil,
         semanticActionType: SemanticActionType? = nil,
         technicalIssueType: TechnicalQualityIssueType? = nil,
+        technicalActionType: TechnicalQualityActionType? = nil,
         linkedIssueIDs: [String] = ["issue-1"],
         includeLinkedEvidence: Bool = true,
         linkedEvidence: CameraLinkedEvidenceProjection? = nil,
@@ -827,44 +1171,80 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             text: text,
             confidence: confidence,
             actionType: actionType,
-            actionId: "action-1",
+            actionId: actionId,
             linkedIssueIds: linkedIssueIDs,
             summaryId: "summary-1",
             traceRootIds: ["trace-1"],
             targetRegion: targetRegion,
+            subjectIdentity: subjectIdentity,
+            observedSourceRegion: observedSourceRegion,
             overlayHint: overlayHint,
             isFallback: false,
             expandedVerdict: expandedVerdict,
             semanticActionType: semanticActionType,
             technicalIssueType: technicalIssueType,
+            technicalActionType: technicalActionType,
             linkedEvidence: resolvedLinkedEvidence
         )
     }
 
     private func makeEpisodeState(
         token: CoachingEpisodeToken,
-        subjectRegion: NormalizedRect
+        subjectRegion: NormalizedRect,
+        phase: CoachingEpisodePhase = .awaitingMovement,
+        movementFrames: Int = 0,
+        stableAfterFrames: Int = 0
     ) -> CoachingEpisodeState {
         let frameID = "episode-frame"
+        let subjectIdentity = SubjectTrackIdentity(
+            trackID: "episode-subject",
+            firstSeenFrameID: frameID,
+            generation: token.generation
+        )
+        let capturedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let binding = UserMovementSubjectBinding(
+            identity: subjectIdentity,
+            frameID: frameID,
+            region: subjectRegion,
+            source: .vision,
+            coordinateSpace: .subjectTarget,
+            measuredAt: capturedAt,
+            confidence: 0.92
+        )!
+        let evidence = UserMovementEvidence(
+            capturedAt: capturedAt,
+            evaluatedAt: capturedAt,
+            lensGeneration: token.generation,
+            subjectTrackID: subjectIdentity.trackID,
+            subjectBinding: binding,
+            orientation: .portrait,
+            isCalibrated: true,
+            calibrationVersion: "overlay-test",
+            featureMeasuredAt: [.subjectDisplacement: capturedAt],
+            featureConfidence: [.subjectDisplacement: 0.92],
+            sourceAvailability: [.subjectDisplacement: true]
+        )
         let baseline = CoachingEpisodeBaseline(
             advice: StabilizedAdvice(
                 decision: .correct,
-                actionID: ActionTypeV1.moveFrameLeft.rawValue,
+                actionID: SemanticActionType.shiftFrameLeft.rawValue,
                 frameID: frameID,
                 targetX: 1.0,
                 targetY: subjectRegion.y + subjectRegion.height / 2
             ),
-            actionID: ActionTypeV1.moveFrameLeft.rawValue,
+            actionID: SemanticActionType.shiftFrameLeft.rawValue,
             frame: UserMovementFrame(
                 frameID: frameID,
                 subjectRegion: subjectRegion,
                 meanLuma: 0.5,
-                motionIsStill: true
+                motionIsStill: true,
+                metrics: UserMovementMetrics(),
+                evidence: evidence
             ),
             lifecycle: .initial(generation: token.generation, orientation: .portrait, lensID: "wide"),
-            subjectIdentity: nil,
+            subjectIdentity: subjectIdentity,
             frameID: frameID,
-            capturedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            capturedAt: capturedAt,
             orientation: .portrait,
             lensID: "wide",
             captureGeneration: token.generation,
@@ -873,13 +1253,28 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
             exposureState: nil
         )
         return CoachingEpisodeState(
-            phase: .awaitingMovement,
+            phase: phase,
             token: token,
             baseline: baseline,
-            movementFrames: 0,
-            stableAfterFrames: 0,
+            movementFrames: movementFrames,
+            stableAfterFrames: stableAfterFrames,
             lastFrameID: frameID,
             cancellationReason: nil
+        )
+    }
+
+    private func makeVerificationResult(
+        token: CoachingEpisodeToken,
+        decision: ActionVerificationDecision
+    ) -> ActionVerificationResult {
+        ActionVerificationResult(
+            token: token,
+            actionID: SemanticActionType.shiftFrameLeft.rawValue,
+            beforeFrameID: "episode-frame",
+            afterFrameID: "episode-after",
+            decision: decision,
+            deltas: [],
+            safetyRegressions: []
         )
     }
 

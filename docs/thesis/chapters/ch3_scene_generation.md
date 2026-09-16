@@ -1,8 +1,17 @@
 ---
-status: synced_from_master
+status: needs_update
 source: /Users/unterlantas/Downloads/ДИССЕР.md
 last_synced: 2026-05-29
 chapter: 3_scene_generation
+needs_update_reason: >-
+  2026-09-13 Q05 sync: EV-SG-SCENE-001/CL-SG-SCENE-001 fixed a production-reachable
+  duplicate-phone defect in SceneBundlePipeline (93 tests, 0 failures), and the remote
+  SceneGenerationClient is still not connected to the active bundle path (S03b). EV-SG-CLARIFY-001/
+  CL-SG-CLARIFY-001 unwrapped the clarification wire end to end and added a local server round cap
+  (local_verify.sh exit 0; staging/production and real App Attest roundtrip remain open). EV-SG-D05-001/
+  CL-SG-D05-001 records that numeric Scene gates exceed master thresholds but the full D05 packet does
+  not pass for corpus/provenance reasons. Do not describe remote generation or a passed D05 packet
+  as delivered.
 ---
 
 # **3\. Генерация раскадровки сцены** {#3.-генерация-раскадровки-сцены}

@@ -657,7 +657,9 @@ final class MarkedObjectMatcher {
         in text: String,
         markedObjects: [MarkedObject]
     ) -> [MarkedObjectReference] {
+#if DEBUG
         print("🔍 [MATCHER] Поиск упоминаний markedObjects в тексте: '\(text)'")
+#endif
         print("🔍 [MATCHER] Размеченных объектов для поиска: \(markedObjects.count)")
         
         var references: [MarkedObjectReference] = []

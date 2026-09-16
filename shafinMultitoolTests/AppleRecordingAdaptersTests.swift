@@ -235,18 +235,20 @@ final class AppleRecordingAdaptersTests: XCTestCase {
         let actualTimings = try sampleTimings(hostSampleBuffer)
         XCTAssertEqual(actualTimings.count, expectedTimings.count)
         for (actual, expected) in zip(actualTimings, expectedTimings) {
-            XCTAssertEqualWithAccuracy(
+            // XCTAssertEqualWithAccuracy is deprecated in this toolchain; the
+            // accuracy form of XCTAssertEqual is the same assertion.
+            XCTAssertEqual(
                 actual.presentationTimeStamp.seconds,
                 expected.presentationTimeStamp.seconds,
                 accuracy: 0.001
             )
-            XCTAssertEqualWithAccuracy(
+            XCTAssertEqual(
                 actual.decodeTimeStamp.seconds,
                 expected.decodeTimeStamp.seconds,
                 accuracy: 0.001
             )
         }
-        XCTAssertEqualWithAccuracy(
+        XCTAssertEqual(
             CMSampleBufferGetPresentationTimeStamp(hostSampleBuffer).seconds,
             actualTimings[0].presentationTimeStamp.seconds,
             accuracy: 0.001

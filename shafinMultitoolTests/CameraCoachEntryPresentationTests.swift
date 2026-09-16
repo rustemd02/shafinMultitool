@@ -201,9 +201,16 @@ final class CameraCoachEntryPresentationTests: XCTestCase {
             .deletingLastPathComponent()
             .appendingPathComponent("shafinMultitool/Multitool2Module/UI/DesignSystem/SETComponents.swift")
         let designSystemSource = try String(contentsOf: designSystemSourceURL, encoding: .utf8)
+        // Scope the audit to the SETDigitalAction declaration itself. The
+        // previous boundary (enum SETTallyMode) swept in SETPauseReviewBand
+        // and other neighbours whose body copy legitimately uses uiBodyFont,
+        // producing a false violation for the command-label owner.
         guard
             let actionStart = designSystemSource.range(of: "struct SETDigitalAction"),
-            let actionEnd = designSystemSource.range(of: "enum SETTallyMode", range: actionStart.upperBound..<designSystemSource.endIndex)
+            let actionEnd = designSystemSource.range(
+                of: "struct SETPauseReviewBand",
+                range: actionStart.upperBound..<designSystemSource.endIndex
+            )
         else {
             XCTFail("SETDigitalAction source boundary is missing")
             return

@@ -1,0 +1,43 @@
+{
+  "_instructions": [
+    "OWNER-ONLY FILE. The cinematic manifest has no 'author' field, so CC-BY author/licensor text must come from here.",
+    "Fill author, license_url, attribution_string, source_url for EVERY film. Optional: author_url, title.",
+    "emit_attribution_notices.py refuses (exit 1) if any film is missing a field. Do not guess or copy the film title as author.",
+    "Use with: python3 tools/datasets/emit_attribution_notices.py --attestation <attestation.json> --attribution-map datasets/camera-coach/v1/attribution-map.draft.json"
+  ],
+  "attribution_map_schema_id": "camera-attribution-map-v1",
+  "attribution_map_version": "v1.0.0",
+  "provided_by": "",
+  "entries": [
+    {
+      "film_key": "big_buck_bunny",
+      "title": "Big Buck Bunny (Blender Open Movie)",
+      "author": "",
+      "author_url": "",
+      "license_id": "",
+      "license_url": "",
+      "attribution_string": "",
+      "source_url": ""
+    },
+    {
+      "film_key": "tears_of_steel",
+      "title": "Tears of Steel (Blender Open Movie)",
+      "author": "",
+      "author_url": "",
+      "license_id": "",
+      "license_url": "",
+      "attribution_string": "",
+      "source_url": ""
+    },
+    {
+      "film_key": "tos_teaser",
+      "title": "Tears of Steel — teaser (Blender Open Movie)",
+      "author": "",
+      "author_url": "",
+      "license_id": "",
+      "license_url": "",
+      "attribution_string": "",
+      "source_url": ""
+    }
+  ]
+}

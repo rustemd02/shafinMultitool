@@ -1,0 +1,58 @@
+{
+ "dataset_id": "camera-intent-pilot-v1",
+ "research_only": true,
+ "human_gold": false,
+ "note": "low-level deterministic diagnostics; labels are curated quality classes",
+ "dump_source": "docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/evidence-m2/intent-features-full-dump-20260912.txt",
+ "seed": 20260912,
+ "test_fraction": 0.3,
+ "feature_names": [
+  "aesthetic_confidence",
+  "aesthetic_score",
+  "background_clutter",
+  "backlight_index",
+  "edge_pressure",
+  "exposure_bias",
+  "focus_competition",
+  "frame_aspect_ratio",
+  "horizon_angle",
+  "horizon_confidence",
+  "object_count",
+  "person_count",
+  "primary_subject_confidence",
+  "scene_type_confidence",
+  "separation_score",
+  "subject_area_ratio",
+  "verdict_confidence",
+  "severity_background_competes_with_subject",
+  "severity_backlight_hides_subject",
+  "severity_frame_visually_overloaded",
+  "severity_scene_has_no_clear_focus",
+  "severity_subject_not_prominent_enough",
+  "severity_subject_too_close_to_edge",
+  "kind_object",
+  "kind_unknown",
+  "sem_readable",
+  "sem_clear_focus"
+ ],
+ "classes": [
+  "good",
+  "mixed",
+  "bad"
+ ],
+ "generated_at": "2026-09-12T03:49:36Z",
+ "train_count": 122,
+ "test_count": 52,
+ "label_distribution": {
+  "train": {
+   "good": 57,
+   "mixed": 10,
+   "bad": 55
+  },
+  "test": {
+   "good": 24,
+   "mixed": 4,
+   "bad": 24
+  }
+ }
+}

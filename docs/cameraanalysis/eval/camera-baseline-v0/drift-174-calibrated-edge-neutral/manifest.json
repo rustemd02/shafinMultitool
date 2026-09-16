@@ -1,0 +1,69 @@
+{
+  "artifacts": [
+    {
+      "bytes": 464562,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/m4-001-fullruntime-174-drift-r1-edge-neutral.jsonl",
+      "sha256": "787b4045712d7368fce5a8992cc9924fffeea04293d5fd60b6aef04cab536e94"
+    },
+    {
+      "bytes": 5662,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/ab-comparison.json",
+      "sha256": "620d7f2b85617697180739c9e3de53ce5eeeed2b476ba538e508772fdf867006"
+    },
+    {
+      "bytes": 128149,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/label-drift-report.json",
+      "sha256": "254055d087a44bf81adb514047e4b5f940d70fad3d0fa50edadbee488ff71d8b"
+    },
+    {
+      "bytes": 15667,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/label-drift-report.md",
+      "sha256": "31d536c07e36f95e42d83ae4c32a71a296823c68a499745418e9c078278401a6"
+    },
+    {
+      "bytes": 78644,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/drift-rows.jsonl",
+      "sha256": "991a85c0f33d95ff2eb140e2ae5a8f126250e219606e6df9137c1f2974ad841a"
+    },
+    {
+      "bytes": 528624,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/scored/candidate_outputs.jsonl",
+      "sha256": "6e0ca5be774789b8aa16b5062d96b95f9b2c260f2cc40ba8f8055fe94b8bc62f"
+    },
+    {
+      "bytes": 158047,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/scored/case_results.jsonl",
+      "sha256": "5fdcdda0568f4a506fa84efc83afdc35cf15ebe22a642d661edf44d0ddb1a8a6"
+    },
+    {
+      "bytes": 849,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/scored/set_metrics.json",
+      "sha256": "278be4fb46e771f5dde42033a29af18c167296786f035d30de8d30288e44ce67"
+    },
+    {
+      "bytes": 65171,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/scored/bucket_metrics.json",
+      "sha256": "1d1fdfd2c2655c51f56832c3b401f0dde33fae372e3320fc5aca10df124e5f8a"
+    },
+    {
+      "bytes": 2498,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/scored/semantic_eval_summary.md",
+      "sha256": "7e2c3d9db257f5df276f2478de842cbc90a75430a3c9423b58b6a03a43571e2e"
+    }
+  ],
+  "baseline_lane": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/manifest.json",
+  "captured_at": "2026-09-12T22:15:20+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Not a release measurement, not physical camera evidence, and not human gold. The calibration has one newly failing expectation test whose reason is recorded in ab-comparison.json.",
+  "comparison": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/ab-comparison.json",
+  "drift_view": {
+    "baseline_drift_view": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/label-drift-report.json (124/174, 39 overcorrections, 9 false keeps, 20 forbidden hits)",
+    "false_keep_on_non_good": 26,
+    "forbidden_hit_count": 27,
+    "good_frame_overcorrection": 13,
+    "strict_drift": "95/174"
+  },
+  "lane_id": "camera-label-drift-174-calibrated-edge-neutral",
+  "purpose": "Record the still-replay metrics and the explicit A/B control run for the single-hunk object edge-pressure calibration, against the uncalibrated 174-label baseline in ../drift-174/.",
+  "schema_version": 1,
+  "status": "measured_calibration_candidate_research_only"
+}

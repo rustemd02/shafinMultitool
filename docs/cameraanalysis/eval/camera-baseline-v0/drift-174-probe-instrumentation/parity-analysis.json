@@ -1,0 +1,37 @@
+{
+  "aesthetic_score_identical_records": 171,
+  "cause": "shafinMultitool/Multitool2Module/Models/CoreMLWrappers/DETRDetector.swift was rewritten between the historical commit and HEAD: the old extractDetections() merged every pixel of a class into one bounding box per class, the current one runs connected-component labelling and emits one box per component. More components therefore reach the critique, which is the intended behaviour (two separate lamps are two objects) but means object_count, objectDensity and background_clutterScore are NOT parity-comparable with the historical artifact.",
+  "consequence": "Part of the residual drift against the historical numbers is a detector-input difference rather than a critique-rule difference. Rule alignment must be judged against the fresh baseline lane, not against the historical artifact.",
+  "object_count": {
+    "current_histogram": {
+      "0": 41,
+      "1": 43,
+      "2": 32,
+      "3": 23,
+      "4": 18,
+      "5": 7,
+      "6": 1,
+      "7": 3,
+      "8": 2,
+      "10": 2,
+      "13": 2
+    },
+    "current_mean": 2.1379,
+    "historical_histogram": {
+      "0": 37,
+      "1": 49,
+      "2": 45,
+      "3": 25,
+      "4": 9,
+      "5": 4,
+      "6": 4,
+      "8": 1
+    },
+    "historical_mean": 1.7356,
+    "records_with_different_count": 66
+  },
+  "person_count_differences": 0,
+  "question": "Are the signals the critique consumes the same as in the historical artifact the alignment targets?",
+  "scene_type_differences": 29,
+  "subject_kind_differences": 22
+}

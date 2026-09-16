@@ -1,0 +1,56 @@
+{
+  "augmentation": {
+    "horizontal_flip": true
+  },
+  "candidate": "candidate_b_roi_conditioned_ablation",
+  "config_version": "camera_training.v2",
+  "dataset": {
+    "admission": "non_admitted_research",
+    "path": "ml/camera_coach/configs/production_records_smoke.jsonl",
+    "rights_manifest_sha256": null,
+    "sha256": "7a78a80daed3d3d4c6b1ada9092c9abbe57521671af526542a0a3d49428fc384"
+  },
+  "deterministic": true,
+  "device": "cpu",
+  "lock_sha256": "b3c308e04fc071402e14114e0fd43fd59677142f3e51a03bf2276c35b8ab0992",
+  "loss": {
+    "path": "ml/camera_coach/configs/loss_weights.json",
+    "sha256": "b48cfca4e8de5e5930ed8498f0220cb9591ebd0d5a71ba69f99a8f8a9783b4be"
+  },
+  "mode": "production_records",
+  "model": {
+    "manifest_path": "ml/camera_coach/contracts/set_composition_net_v2.json",
+    "manifest_sha256": "2ab88e9595e5b02935877b1dc1d7fbd2d6ef2aaeae97eadfc08dbebccb312b85"
+  },
+  "output_root": "/private/tmp/setos-m01-runs",
+  "resume_from": null,
+  "runtime": {
+    "python_version": "3.11.9",
+    "torch_version": "2.10.0"
+  },
+  "seed": 20260913,
+  "seeds": [
+    11,
+    22,
+    33
+  ],
+  "training": {
+    "batch_size": 4,
+    "class_weight_max": 5.0,
+    "early_stop_patience": 3,
+    "epochs": 2,
+    "gradient_clip": 1.0,
+    "learning_rate": 0.001,
+    "trained_heads": [
+      "scene_class_logits",
+      "subjectness_roi_agreement_logits",
+      "issue_logits",
+      "action_utility_logits",
+      "good_frame_probability",
+      "abstention_probability",
+      "risk_probability",
+      "continuous_target_deltas"
+    ],
+    "weight_decay": 0.0
+  }
+}

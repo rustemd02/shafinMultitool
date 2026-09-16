@@ -329,6 +329,11 @@ final class SceneParserService {
         remotePlanProvider = provider
     }
 
+    /// Read-only diagnostic: whether a remote provider is currently wired.
+    var isRemoteOffloadConfigured: Bool {
+        remoteOffloadEnabled && remotePlanProvider != nil
+    }
+
     func setV9RuntimeMode(_ mode: V9RuntimeMode) {
         UserDefaults.standard.set(mode.rawValue, forKey: v9RuntimeModeDefaultsKey)
         // Backward compatibility: old boolean toggle stays aligned with explicit mode.
@@ -962,7 +967,9 @@ final class SceneParserService {
         for (keyword, type) in KeywordsMapping.actorKeywords {
             // Пропускаем если уже обработали этот тип
             if processedTypes.contains(type) {
+                #if DEBUG
                 print("🔍 [EXTRACT_ACTORS] Пропуск ключевого слова '\(keyword)' (тип \(type.rawValue) уже обработан)")
+                #endif
                 continue
             }
 
@@ -976,7 +983,9 @@ final class SceneParserService {
                                         originalText.contains("Льву") || originalText.contains("Львом") ||
                                         originalText.contains("ЛЕВ")
                     if isCapitalized {
+                        #if DEBUG
                         print("🔍 [EXTRACT_ACTORS] Слово '\(keyword)' определено как имя персонажа (human)")
+                        #endif
                         actualType = .human
                     }
                 }
@@ -995,7 +1004,9 @@ final class SceneParserService {
                     actorCounter += 1
                     processedTypes.insert(actualType)
                 } else {
+                    #if DEBUG
                     print("🔍 [EXTRACT_ACTORS] Пропуск '\(keyword)' - есть число перед ним")
+                    #endif
                 }
             }
         }
@@ -1065,7 +1076,9 @@ final class SceneParserService {
     // MARK: - Object Extraction
 
     private func extractObjects(from text: String, markedObjects: [MarkedObject] = []) -> [SceneObject] {
+#if DEBUG
         print("🔍 [EXTRACT_OBJECTS] Начало извлечения объектов из текста: '\(text)'")
+#endif
         print("🔍 [EXTRACT_OBJECTS] Размеченных объектов для поиска: \(markedObjects.count)")
 
         var objects: [SceneObject] = []
@@ -1079,7 +1092,9 @@ final class SceneParserService {
             print("🔍 [EXTRACT_OBJECTS] Найдено ссылок на markedObjects: \(references.count)")
 
             for (index, reference) in references.enumerated() {
+                #if DEBUG
                 print("🔍 [EXTRACT_OBJECTS]   Reference[\(index)]: markerId=\(reference.markerId.uuidString), markerName='\(reference.markerName)', matchedText='\(reference.matchedText)'")
+                #endif
 
                 if let marker = markedObjects.first(where: { $0.id == reference.markerId }) {
                     let relativePosition = determineRelativePosition(for: reference.matchedText, in: text)
@@ -1110,13 +1125,17 @@ final class SceneParserService {
         for (keyword, type) in KeywordsMapping.objectKeywords {
             // Пропускаем если объект этого типа уже добавлен (из markedObjects или ранее)
             if processedObjectTypes.contains(type) {
+                #if DEBUG
                 print("🔍 [EXTRACT_OBJECTS] Пропуск ключевого слова '\(keyword)' (тип \(type.rawValue) уже добавлен)")
+                #endif
                 continue
             }
 
             // Используем лемматизацию для поиска
             if lemmatizer.textContainsKeyword(text, keyword: keyword) {
+                #if DEBUG
                 print("🔍 [EXTRACT_OBJECTS] Найдено ключевое слово '\(keyword)' (тип \(type.rawValue)) через лемматизацию")
+                #endif
 
                 let relativePosition = determineRelativePosition(for: keyword, in: text)
 
@@ -1145,7 +1164,9 @@ final class SceneParserService {
         objects: [SceneObject],
         markedObjects: [MarkedObject] = []
     ) -> [SceneAction] {
+#if DEBUG
         print("🔍 [EXTRACT_ACTIONS] Начало извлечения действий из текста: '\(text)'")
+#endif
         print("🔍 [EXTRACT_ACTIONS] Доступно актёров: \(actors.count), объектов: \(objects.count)")
 
         var actions: [SceneAction] = []
@@ -1705,7 +1726,9 @@ final class SceneParserService {
         print("🔍 [FIND_MATCHING_OBJECT] Поиск в стандартных ключевых словах...")
         for (keyword, type) in KeywordsMapping.objectKeywords {
             if lemmatizer.matchesKeyword(lowercasedWord, keyword: keyword) {
+                #if DEBUG
                 print("🔍 [FIND_MATCHING_OBJECT] Совпадение с ключевым словом '\(keyword)' (тип \(type.rawValue))")
+                #endif
                 let matches = objects.filter { $0.type == type }
                 if matches.count == 1, let found = matches.first {
                     print("🔍 [FIND_MATCHING_OBJECT] Найден стандартный объект: id='\(found.id)'")

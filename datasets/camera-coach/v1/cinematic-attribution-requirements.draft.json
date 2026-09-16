@@ -1,0 +1,61 @@
+{
+  "schema_id": "camera-attribution-requirements-draft-v1",
+  "admission_status": "pending",
+  "admitted": false,
+  "release_cleared": false,
+  "why": "No owner attestation and no owner-provided author strings exist yet. Author MUST NOT be inferred from title/license.",
+  "manifest": "/Users/unterlantas/Library/Application Support/SETOS/Datasets/camera-coach/research/cinematic/manifest.jsonl",
+  "manifest_sha256": "5ea01c75ca75e1b7027796e7a348631e44f6fb931ae67e594d718a969f3350f4",
+  "manifest_frame_count": 319,
+  "annotation_queue_note": "queue-v3-cinematic has 313 cinematic frames vs 319 in manifest (6 tos_teaser frames missing); requires an explicit --count-discrepancy-note when emitting",
+  "attestation_required_fields": [
+    "attestation_schema_id",
+    "attestation_version",
+    "attester.attester_id",
+    "attester.attester_name",
+    "attester.attester_role",
+    "attested_at",
+    "corpus.corpus_id",
+    "corpus.source_id",
+    "corpus.manifest_sha256",
+    "license.license_id",
+    "license.license_url",
+    "license.attribution_required",
+    "permissions.production_allowed",
+    "permissions.redistribution_allowed",
+    "people.people_present",
+    "people.consent_obtained",
+    "people.consent_reference",
+    "basis.basis_type",
+    "basis.basis_reference",
+    "decision.admitted",
+    "decision.decision",
+    "decision.decision_scope"
+  ],
+  "attribution_map_required_per_film": [
+    "author",
+    "license_url",
+    "attribution_string",
+    "source_url"
+  ],
+  "per_film": [
+    {
+      "film_key": "big_buck_bunny",
+      "title": "Big Buck Bunny (Blender Open Movie)",
+      "frames": 146,
+      "status": "pending_owner_author_and_attribution"
+    },
+    {
+      "film_key": "tears_of_steel",
+      "title": "Tears of Steel (Blender Open Movie)",
+      "frames": 167,
+      "status": "pending_owner_author_and_attribution"
+    },
+    {
+      "film_key": "tos_teaser",
+      "title": "Tears of Steel — teaser (Blender Open Movie)",
+      "frames": 6,
+      "status": "pending_owner_author_and_attribution"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "schema_id": "camera-silver-actions-stage2-config-v1",
+  "schema_version": "1.0.0",
+  "seed": 20260909,
+  "input_size": [320, 320],
+  "data": {
+    "manifest": "pairs.jsonl",
+    "receipt": "receipt.json",
+    "image_root": "."
+  },
+  "stage1": {
+    "artifact": "encoder-final.pt",
+    "receipt": "receipt.json"
+  },
+  "training": {
+    "epochs": 5,
+    "batch_size": 16,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0001,
+    "max_records": 0,
+    "focal_gamma": 2.0,
+    "focal_alpha": 0.25,
+    "loss_weights": {
+      "issue_logits": 1.0,
+      "action_utility_logits": 1.0,
+      "continuous_target_deltas": 1.0
+    }
+  },
+  "model": {
+    "candidate": "candidate_a_dual_branch",
+    "manifest_path": "ml/camera_coach/contracts/set_composition_net_v1.json",
+    "manifest_sha256": "ef05756ac5c78d89d0ec9a14864d193357ced0e1925ef9759b6ab8e78c36e074"
+  }
+}

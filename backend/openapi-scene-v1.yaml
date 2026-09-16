@@ -50,6 +50,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           $ref: '#/components/responses/IdempotencyConflict'
+        '429':
+          $ref: '#/components/responses/QuotaExceeded'
         '410':
           $ref: '#/components/responses/KillSwitch'
   /jobs/{jobId}:
@@ -76,6 +78,12 @@ paths:
     delete:
       operationId: cancelJob
       summary: Cancel a pending job. Cancellation is terminal and idempotent.
+      description: >-
+        Remove the remaining raw script and marked-object content as part of
+        cancellation, including when the job is already terminal. Preserve the
+        terminal response envelope, ownership, create-key binding and quota
+        metadata for at most 30 days from creation. A cancelled job does not
+        refund accepted-job quota. After metadata expiry the job is not found.
       security:
         - ServiceToken: []
       parameters:
@@ -385,6 +393,25 @@ components:
             $ref: '#/components/schemas/ApiError'
     KillSwitch:
       description: Server-driven kill-switch engaged (410).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    QuotaExceeded:
+      description: >-
+        Installation accepted-job limit reached: 10 in a rolling hour or 20
+        in a rolling 24 hours. Same-key replay is not charged again;
+        cancellation does not refund an accepted job. No job was created.
+      headers:
+        Retry-After:
+          description: >-
+            Bounded delay hint before checking admission again; concurrent
+            submissions or clock correction may extend the wait. Not an
+            automatic retry instruction or a reservation.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 86400
       content:
         application/json:
           schema:

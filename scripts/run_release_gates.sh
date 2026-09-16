@@ -26,9 +26,10 @@ usage() {
 Usage:
   scripts/run_release_gates.sh --derived-data-root /absolute/existing/path
 
-The command owns only <derived-data-root>/shafin-release-gates. It does not
-discover DerivedData, use a developer-home path, install dependencies, or
-access the network.
+The command owns only <derived-data-root>/shafin-release-gates, and it writes each
+run into its own run-<UTC>-<pid> subdirectory: an earlier run's logs and derived
+data are never removed to make room for this one. It does not discover
+DerivedData, use a developer-home path, install dependencies, or access the network.
 EOF
 }
 
@@ -213,16 +214,19 @@ printf 'DERIVED_DATA_ROOT: %s\n' "$DERIVED_DATA_ROOT"
 printf 'OWNED_OUTPUT_ROOT: %s\n' "$OWNED_ROOT"
 printf 'PASS preflight: tools, workspace, scheme, source manifest, validators, offline provenance records, and output root are valid\n'
 
-if [ -e "$OWNED_ROOT" ]; then
-    if ! rm -rf -- "$OWNED_ROOT"; then
-        fail "output-reset" "could not remove exact owned output directory: $OWNED_ROOT"
-    fi
-fi
+# Each run owns a fresh directory instead of resetting the shared one, so a failed
+# run's logs survive its successor (P03: do not delete earlier evidence to match a
+# name).
 if ! mkdir -p -- "$OWNED_ROOT"; then
-    fail "output-reset" "could not recreate exact owned output directory: $OWNED_ROOT"
+    fail "output-init" "could not create owned output directory: $OWNED_ROOT"
 fi
-DEBUG_DERIVED_ROOT="$OWNED_ROOT/DebugDerivedData"
-RELEASE_DERIVED_ROOT="$OWNED_ROOT/ReleaseDerivedData"
+RUN_ROOT="$OWNED_ROOT/run-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+if ! mkdir -p -- "$RUN_ROOT"; then
+    fail "output-init" "could not create the run directory: $RUN_ROOT"
+fi
+printf 'RUN_OUTPUT_ROOT: %s\n' "$RUN_ROOT"
+DEBUG_DERIVED_ROOT="$RUN_ROOT/DebugDerivedData"
+RELEASE_DERIVED_ROOT="$RUN_ROOT/ReleaseDerivedData"
 
 # CC-011D: accepted offline provenance records are a pre-build release gate.
 llama_provenance=(
@@ -230,16 +234,16 @@ llama_provenance=(
     "$LLAMA_PROVENANCE_VALIDATOR"
     --repo-root "$REPO_ROOT"
 )
-run_logged_command "2" "llama framework provenance (offline)" "$OWNED_ROOT/llama-provenance.log" "${llama_provenance[@]}"
-cat "$OWNED_ROOT/llama-provenance.log"
+run_logged_command "2" "llama framework provenance (offline)" "$RUN_ROOT/llama-provenance.log" "${llama_provenance[@]}"
+cat "$RUN_ROOT/llama-provenance.log"
 
 circle_provenance=(
     python3
     "$CIRCLE_PROVENANCE_VALIDATOR"
     --repo-root "$REPO_ROOT"
 )
-run_logged_command "3" "Circle asset provenance (offline)" "$OWNED_ROOT/circle-provenance.log" "${circle_provenance[@]}"
-cat "$OWNED_ROOT/circle-provenance.log"
+run_logged_command "3" "Circle asset provenance (offline)" "$RUN_ROOT/circle-provenance.log" "${circle_provenance[@]}"
+cat "$RUN_ROOT/circle-provenance.log"
 
 component_status=(
     python3
@@ -247,16 +251,16 @@ component_status=(
     --repo-root "$REPO_ROOT"
     --record "$COMPONENT_STATUS_RECORD"
 )
-run_logged_command "4" "release component dispositions (offline)" "$OWNED_ROOT/component-status.log" "${component_status[@]}"
-cat "$OWNED_ROOT/component-status.log"
+run_logged_command "4" "release component dispositions (offline)" "$RUN_ROOT/component-status.log" "${component_status[@]}"
+cat "$RUN_ROOT/component-status.log"
 
 privacy_self_test=(
     "$PRIVACY_VALIDATOR"
     --self-test
     --source-manifest "$SOURCE_MANIFEST"
 )
-run_logged_command "5" "privacy validator self-test" "$OWNED_ROOT/privacy-self-test.log" "${privacy_self_test[@]}"
-cat "$OWNED_ROOT/privacy-self-test.log"
+run_logged_command "5" "privacy validator self-test" "$RUN_ROOT/privacy-self-test.log" "${privacy_self_test[@]}"
+cat "$RUN_ROOT/privacy-self-test.log"
 
 debug_build=(
     xcodebuild
@@ -269,8 +273,8 @@ debug_build=(
     COMPILER_INDEX_STORE_ENABLE=NO
     build-for-testing
 )
-run_logged_command "6" "Debug build-for-testing" "$OWNED_ROOT/debug-build.log" "${debug_build[@]}"
-debug_app="$(resolve_exact_app "$DEBUG_DERIVED_ROOT" "$OWNED_ROOT/debug-apps.list")"
+run_logged_command "6" "Debug build-for-testing" "$RUN_ROOT/debug-build.log" "${debug_build[@]}"
+debug_app="$(resolve_exact_app "$DEBUG_DERIVED_ROOT" "$RUN_ROOT/debug-apps.list")"
 debug_xctestrun="$(find "$DEBUG_DERIVED_ROOT" -type f -name '*.xctestrun' -print -quit)"
 if [ -z "$debug_xctestrun" ]; then
     fail "debug-build" "build-for-testing produced no .xctestrun under $DEBUG_DERIVED_ROOT"
@@ -288,8 +292,8 @@ release_build=(
     COMPILER_INDEX_STORE_ENABLE=NO
     build
 )
-run_logged_command "7" "Release build" "$OWNED_ROOT/release-build.log" "${release_build[@]}"
-release_app="$(resolve_exact_app "$RELEASE_DERIVED_ROOT" "$OWNED_ROOT/release-apps.list")"
+run_logged_command "7" "Release build" "$RUN_ROOT/release-build.log" "${release_build[@]}"
+release_app="$(resolve_exact_app "$RELEASE_DERIVED_ROOT" "$RUN_ROOT/release-apps.list")"
 printf 'RELEASE_APP: %s\n' "$release_app"
 
 release_validation=(
@@ -298,20 +302,20 @@ release_validation=(
     --source-manifest "$SOURCE_MANIFEST"
     --app "$release_app"
 )
-run_logged_command "8" "Release bundle validation" "$OWNED_ROOT/release-validation.log" "${release_validation[@]}"
-cat "$OWNED_ROOT/release-validation.log"
+run_logged_command "8" "Release bundle validation" "$RUN_ROOT/release-validation.log" "${release_validation[@]}"
+cat "$RUN_ROOT/release-validation.log"
 
 fixture_test=(
     "$FIXTURE_TEST"
     --release-app "$release_app"
 )
-run_logged_command "9" "Release bundle contamination fixtures" "$OWNED_ROOT/release-fixtures.log" "${fixture_test[@]}"
-cat "$OWNED_ROOT/release-fixtures.log"
+run_logged_command "9" "Release bundle contamination fixtures" "$RUN_ROOT/release-fixtures.log" "${fixture_test[@]}"
+cat "$RUN_ROOT/release-fixtures.log"
 
-manifest_count="$(extract_metric MANIFEST_COUNT "$OWNED_ROOT/release-validation.log")"
-total_app_kib="$(extract_metric TOTAL_APP_KIB "$OWNED_ROOT/release-validation.log")"
-material_count="$(extract_metric MATERIAL_CONTRIBUTOR_COUNT "$OWNED_ROOT/release-validation.log")"
-known_blocker_count="$(extract_metric KNOWN_BLOCKER_COUNT "$OWNED_ROOT/release-validation.log")"
+manifest_count="$(extract_metric MANIFEST_COUNT "$RUN_ROOT/release-validation.log")"
+total_app_kib="$(extract_metric TOTAL_APP_KIB "$RUN_ROOT/release-validation.log")"
+material_count="$(extract_metric MATERIAL_CONTRIBUTOR_COUNT "$RUN_ROOT/release-validation.log")"
+known_blocker_count="$(extract_metric KNOWN_BLOCKER_COUNT "$RUN_ROOT/release-validation.log")"
 
 printf 'PASS RELEASE GATES: commit=%s dirty=%s debug_product=%s release_app=%s manifest_count=%s total_app_kib=%s material_contributors=%s known_blockers=%s provenance_validators=2 contamination_fixtures=6 owned_output_root=%s\n' \
     "$TESTED_COMMIT" \

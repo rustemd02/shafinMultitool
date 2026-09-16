@@ -1,0 +1,230 @@
+{
+  "receipt_version": 1,
+  "tool": "tools/release/freeze_receipt.py",
+  "freeze_set": "/Users/unterlantas/Documents/XCode/shafinMultitool/tools/release/freeze_set.json",
+  "generated_at": "2026-09-13T21:25:52Z",
+  "git_head": "0733df2cb83c8e3687c31251e11e5d0747052602",
+  "artifact_count": 17,
+  "artifacts": [
+    {
+      "path": "datasets/camera-coach/v1/capture-protocol.md",
+      "category": "protocol",
+      "sha256": "b43c2121705362fb08a7585cbad629f0f6b5b0e89b55b53031fb4f0475dc8611",
+      "size_bytes": 15193,
+      "versions": {
+        "schema_version": "v1.0.0"
+      },
+      "version_key": "schema_version",
+      "version_value": "v1.0.0"
+    },
+    {
+      "path": "datasets/camera-coach/v1/cluster-schema.json",
+      "category": "schema",
+      "sha256": "1e2fedc40f2a93b6c2434736b8bccb8989738334450a9247bf847d84ca3d6652",
+      "size_bytes": 8526,
+      "versions": {
+        "schema_version": "v1.0.0",
+        "$id": "https://set-os.local/datasets/camera-coach/v1/cluster-schema.json"
+      },
+      "version_key": "schema_version",
+      "version_value": "v1.0.0",
+      "note": "Cluster record shape for the source-shoot/session grouping the cluster-level gates rely on."
+    },
+    {
+      "path": "datasets/camera-coach/v1/episode-schema.json",
+      "category": "schema",
+      "sha256": "74ea8c020889049924c0bf5807bf51ab4ccd8e0d52dd066557492be9ba012664",
+      "size_bytes": 2646,
+      "versions": {
+        "schema_version": "v1.0.0",
+        "$id": "https://set-os.local/datasets/camera-coach/v1/episode-schema.json"
+      },
+      "version_key": "schema_version",
+      "version_value": "v1.0.0",
+      "note": "The before/action/after episode contract (outcome, outcome_verifier, subject_continuity). Consumed by tools/release/build_episode_metrics.py, so a silent edit here would move a §5 producer."
+    },
+    {
+      "path": "datasets/camera-coach/v1/evaluation-policy-v1.json",
+      "category": "evaluation-policy",
+      "sha256": "1ed00a4728f3cd0f9c2085de491528faed94735862a0eaad6ad77cf6c915dd07",
+      "size_bytes": 24922,
+      "versions": {
+        "schema_version": "1.4.1",
+        "policy_version": "camera-coach.eval-policy.v1",
+        "schema_id": "camera-coach-evaluation-policy"
+      },
+      "version_key": "schema_version",
+      "version_value": "1.4.1",
+      "note": "The §5.1 acceptance thresholds and metric definitions. Lowering a threshold here must be a versioned change (exit 2) with an impact list, not a silent edit; P02 item 3 requires this policy to be written before the locked test, and P02 item 4 requires it inside the freeze receipt."
+    },
+    {
+      "path": "datasets/camera-coach/v1/frozen-label-mapping.json",
+      "category": "labels",
+      "sha256": "34be93e3accf447b7e2b9ad04499458697d4558cc5c8339d8c2b298ee15ff99d",
+      "size_bytes": 7393,
+      "versions": {
+        "schema_version": "1.0.0-draft.1",
+        "schema_id": "camera-frozen-label-mapping-v1"
+      },
+      "version_key": "schema_version",
+      "version_value": "1.0.0-draft.1"
+    },
+    {
+      "path": "datasets/camera-coach/v1/label-schema.json",
+      "category": "labels",
+      "sha256": "41ade97f8cd15d12692cfc193ee4eef3303ea949a3653824e178204e09d70962",
+      "size_bytes": 12914,
+      "versions": {
+        "schema_version": "v1.0.0",
+        "$id": "https://set-os.local/datasets/camera-coach/v1/label-schema.json"
+      },
+      "version_key": "schema_version",
+      "version_value": "v1.0.0"
+    },
+    {
+      "path": "datasets/camera-coach/v1/research-source-catalog.json",
+      "category": "catalog",
+      "sha256": "041217a9a19e9f52ec4ed692abbc04c3282fb875e8fc9873e641555a01407f65",
+      "size_bytes": 28116,
+      "versions": {
+        "catalog_version": "1.0.0",
+        "schema_id": "camera-research-source-catalog-v1"
+      },
+      "version_key": "catalog_version",
+      "version_value": "1.0.0",
+      "note": "Carries the rights_policy and human_gold_policy fields, so the dataset admission policy is frozen with the catalog."
+    },
+    {
+      "path": "datasets/camera-coach/v1/silver-action-pair-schema.json",
+      "category": "schema",
+      "sha256": "b845aea33c3fd7632230f89bd3232e4dc13332d9b02c89ac41dbe0ddbe312e63",
+      "size_bytes": 8050,
+      "versions": {
+        "$id": "https://set-os.local/datasets/camera-coach/v1/silver-action-pair-schema.json"
+      },
+      "version_key": "$id",
+      "version_value": "https://set-os.local/datasets/camera-coach/v1/silver-action-pair-schema.json",
+      "note": "Silver action-pair lane contract, consumed by train_silver_actions.py and convert_coreml.py."
+    },
+    {
+      "path": "datasets/camera-coach/v1/silver-geometry-schema.json",
+      "category": "schema",
+      "sha256": "7dac85840f018a75325ca29eb1273a224a7e55697db3346c32f308fff77960e4",
+      "size_bytes": 9266,
+      "versions": {
+        "$id": "https://set-os.local/datasets/camera-coach/v1/silver-geometry-schema.json"
+      },
+      "version_key": "$id",
+      "version_value": "https://set-os.local/datasets/camera-coach/v1/silver-geometry-schema.json",
+      "note": "Silver geometry lane contract, consumed by train_silver_actions.py and generate_camera_corruptions.py."
+    },
+    {
+      "path": "datasets/camera-coach/v1/split-manifest-schema.json",
+      "category": "schema",
+      "sha256": "55c5f5da6ae6bf08f9bb3d78669f2d6492d0726fcc081b98dd6c40735900ef3d",
+      "size_bytes": 9504,
+      "versions": {
+        "schema_version": "v1.0.0",
+        "$id": "https://shafin.example.invalid/schemas/camera-coach/v1/split-manifest-schema.json"
+      },
+      "version_key": "schema_version",
+      "version_value": "v1.0.0",
+      "note": "Defines the split/cluster manifest. The FP_CORRECT cluster-level independence rule and split_disjointness both read cluster identity, so what a cluster IS has to be frozen."
+    },
+    {
+      "path": "datasets/camera-coach/v1/temporal-schema.json",
+      "category": "schema",
+      "sha256": "d3c70984c5f1991be63d7b1011231c4f4e0be73b8a5bd61c305ef02dbcca0ce3",
+      "size_bytes": 2694,
+      "versions": {
+        "schema_version": "v1.0.0",
+        "$id": "https://set-os.local/datasets/camera-coach/v1/temporal-schema.json"
+      },
+      "version_key": "schema_version",
+      "version_value": "v1.0.0",
+      "note": "Temporal sequence contract for the temporal and verify lanes."
+    },
+    {
+      "path": "docs/cameraanalysis/case-coverage.v3-draft.json",
+      "category": "registry",
+      "sha256": "b8bacbb585d4db65fc42fb4e9c3ac67145d416f23da039f6dc8f5b049574a8b7",
+      "size_bytes": 114340,
+      "versions": {
+        "schema_version": "3.0.0-draft.1",
+        "schema_id": "camera-case-coverage-v3-draft"
+      },
+      "version_key": "schema_version",
+      "version_value": "3.0.0-draft.1"
+    },
+    {
+      "path": "docs/cameraanalysis/operations-registry.v3-draft.json",
+      "category": "registry",
+      "sha256": "c14c5f142e9c9607a4e6d223bf6c666b7e170a96a7636aa14ca68a4d1e5ada16",
+      "size_bytes": 93424,
+      "versions": {
+        "schema_version": "3.0.0-draft.1",
+        "schema_id": "camera-operations-registry-v3-draft"
+      },
+      "version_key": "schema_version",
+      "version_value": "3.0.0-draft.1"
+    },
+    {
+      "path": "ml/camera_coach/contracts/set_composition_net_v1.json",
+      "category": "model-contract",
+      "sha256": "ef05756ac5c78d89d0ec9a14864d193357ced0e1925ef9759b6ab8e78c36e074",
+      "size_bytes": 11037,
+      "versions": {
+        "contract_version": "setcompositionnet.v1",
+        "contract_id": "SETCompositionNet",
+        "preprocessing_version": "setcompositionnet.preprocessing.v1",
+        "feature_version": "setcompositionnet.features.v1",
+        "input_contract_version": "setcompositionnet.input.v1",
+        "output_contract_version": "setcompositionnet.output.v1"
+      },
+      "version_key": "contract_version",
+      "version_value": "setcompositionnet.v1",
+      "note": "v1/v2 contract manifests and their JSON Schemas. The preprocessing contract is embedded in the manifests (preprocessing_version + preprocessing block); there is no separate preprocessing file, so the glob is what freezes it."
+    },
+    {
+      "path": "ml/camera_coach/contracts/set_composition_net_v1.schema.json",
+      "category": "model-contract",
+      "sha256": "a5a364c7deff7e5c831093110dc0d7c481c9df93357bf72c6ca4e61081f1fdfa",
+      "size_bytes": 20526,
+      "versions": {
+        "$id": "setcompositionnet.v1.schema.json"
+      },
+      "version_key": "$id",
+      "version_value": "setcompositionnet.v1.schema.json",
+      "note": "v1/v2 contract manifests and their JSON Schemas. The preprocessing contract is embedded in the manifests (preprocessing_version + preprocessing block); there is no separate preprocessing file, so the glob is what freezes it."
+    },
+    {
+      "path": "ml/camera_coach/contracts/set_composition_net_v2.json",
+      "category": "model-contract",
+      "sha256": "2ab88e9595e5b02935877b1dc1d7fbd2d6ef2aaeae97eadfc08dbebccb312b85",
+      "size_bytes": 17014,
+      "versions": {
+        "contract_version": "setcompositionnet.v2",
+        "contract_id": "SETCompositionNet",
+        "preprocessing_version": "setcompositionnet.preprocessing.v2",
+        "feature_version": "setcompositionnet.features.v2",
+        "input_contract_version": "setcompositionnet.input.v2",
+        "output_contract_version": "setcompositionnet.output.v2"
+      },
+      "version_key": "contract_version",
+      "version_value": "setcompositionnet.v2",
+      "note": "v1/v2 contract manifests and their JSON Schemas. The preprocessing contract is embedded in the manifests (preprocessing_version + preprocessing block); there is no separate preprocessing file, so the glob is what freezes it."
+    },
+    {
+      "path": "ml/camera_coach/contracts/set_composition_net_v2.schema.json",
+      "category": "model-contract",
+      "sha256": "8bacd867750ce8c4d681847f8ae2005517226a63f81a071ce95b09ff0a2d7d69",
+      "size_bytes": 28379,
+      "versions": {
+        "$id": "setcompositionnet.v2.schema.json"
+      },
+      "version_key": "$id",
+      "version_value": "setcompositionnet.v2.schema.json",
+      "note": "v1/v2 contract manifests and their JSON Schemas. The preprocessing contract is embedded in the manifests (preprocessing_version + preprocessing block); there is no separate preprocessing file, so the glob is what freezes it."
+    }
+  ]
+}

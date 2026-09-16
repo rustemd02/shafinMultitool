@@ -1726,6 +1726,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.batch_records is not None:
             manifests = _load_external_manifests(args.source_shoots, args.consent_manifest, args.rights_manifest, args.derivation_manifest)
             records = _read_collection(args.batch_records)
+            # An empty collection validates vacuously: `validate_batch([])` returns
+            # no errors, so the mode would report a passed admission check having
+            # examined nothing. A batch with zero records is not a passed batch.
+            if not records:
+                print(_error("input_error", f"batch collection is empty: {args.batch_records}"), file=sys.stderr)
+                return 1
             errors = validate_batch(records, manifests, fixture_mode=args.fixture_mode)
         else:
             record = _read_json(args.record)

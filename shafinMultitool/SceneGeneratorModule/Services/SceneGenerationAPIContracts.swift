@@ -124,6 +124,54 @@ struct SceneCreateJobRequest: Codable, Equatable, Sendable {
     let providerName: String
     let providerVersion: String
 
+    init(
+        requestID: UUID,
+        clientBuild: String,
+        schemaVersion: String,
+        locale: String,
+        scriptText: String,
+        markedObjectIDs: [String],
+        maximumScenes: Int,
+        previousJobID: String?,
+        requestHash: String,
+        schemaVersionBackend: String,
+        modelVersion: String,
+        promptVersion: String,
+        providerName: String,
+        providerVersion: String
+    ) {
+        self.requestID = requestID
+        self.clientBuild = clientBuild
+        self.schemaVersion = schemaVersion
+        self.locale = locale
+        self.scriptText = scriptText
+        self.markedObjectIDs = markedObjectIDs
+        self.maximumScenes = maximumScenes
+        self.previousJobID = previousJobID
+        self.requestHash = requestHash
+        self.schemaVersionBackend = schemaVersionBackend
+        self.modelVersion = modelVersion
+        self.promptVersion = promptVersion
+        self.providerName = providerName
+        self.providerVersion = providerVersion
+    }
+
+    private struct MarkedObjectPayload: Codable {
+        let canonicalID: String
+
+        enum CodingKeys: String, CodingKey {
+            case canonicalID = "canonical_id"
+        }
+    }
+
+    private struct ConstraintsPayload: Codable {
+        let maximumScenes: Int
+
+        enum CodingKeys: String, CodingKey {
+            case maximumScenes = "maximum_scenes"
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
         case requestID = "request_id"
         case clientBuild = "client_build"
@@ -131,6 +179,7 @@ struct SceneCreateJobRequest: Codable, Equatable, Sendable {
         case locale
         case scriptText = "script_text"
         case markedObjectIDs = "marked_objects"
+        case constraints
         case maximumScenes = "maximum_scenes"
         case previousJobID = "previous_job_id"
         case requestHash = "request_hash"
@@ -139,6 +188,67 @@ struct SceneCreateJobRequest: Codable, Equatable, Sendable {
         case promptVersion = "prompt_version"
         case providerName = "provider_name"
         case providerVersion = "provider_version"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard !container.contains(.maximumScenes) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .maximumScenes,
+                in: container,
+                debugDescription: "maximum_scenes must be nested under constraints"
+            )
+        }
+        requestID = try container.decode(UUID.self, forKey: .requestID)
+        clientBuild = try container.decode(String.self, forKey: .clientBuild)
+        schemaVersion = try container.decode(String.self, forKey: .schemaVersion)
+        locale = try container.decode(String.self, forKey: .locale)
+        scriptText = try container.decode(String.self, forKey: .scriptText)
+        if container.contains(.markedObjectIDs) {
+            markedObjectIDs = try container
+                .decode([MarkedObjectPayload].self, forKey: .markedObjectIDs)
+                .map(\.canonicalID)
+        } else {
+            markedObjectIDs = []
+        }
+        if container.contains(.constraints) {
+            maximumScenes = try container
+                .decode(ConstraintsPayload.self, forKey: .constraints)
+                .maximumScenes
+        } else {
+            maximumScenes = 1
+        }
+        previousJobID = try container.decodeIfPresent(String.self, forKey: .previousJobID)
+        requestHash = try container.decode(String.self, forKey: .requestHash)
+        schemaVersionBackend = try container.decode(String.self, forKey: .schemaVersionBackend)
+        modelVersion = try container.decode(String.self, forKey: .modelVersion)
+        promptVersion = try container.decode(String.self, forKey: .promptVersion)
+        providerName = try container.decode(String.self, forKey: .providerName)
+        providerVersion = try container.decode(String.self, forKey: .providerVersion)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestID, forKey: .requestID)
+        try container.encode(clientBuild, forKey: .clientBuild)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(locale, forKey: .locale)
+        try container.encode(scriptText, forKey: .scriptText)
+        try container.encode(
+            markedObjectIDs.map(MarkedObjectPayload.init(canonicalID:)),
+            forKey: .markedObjectIDs
+        )
+        try container.encode(
+            ConstraintsPayload(maximumScenes: maximumScenes),
+            forKey: .constraints
+        )
+        try container.encodeIfPresent(previousJobID, forKey: .previousJobID)
+        try container.encode(requestHash, forKey: .requestHash)
+        try container.encode(schemaVersionBackend, forKey: .schemaVersionBackend)
+        try container.encode(modelVersion, forKey: .modelVersion)
+        try container.encode(promptVersion, forKey: .promptVersion)
+        try container.encode(providerName, forKey: .providerName)
+        try container.encode(providerVersion, forKey: .providerVersion)
     }
 }
 

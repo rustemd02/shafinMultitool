@@ -34,6 +34,18 @@ enum SafetyBlockReason: String, Equatable, Sendable, CaseIterable {
     case horizonEvidenceUnavailable = "horizon_evidence_unavailable"
     case calibratedProbabilityMissing = "calibrated_probability_missing"
     case calibratedProbabilityLow = "calibrated_probability_low"
+    /// The user confirmed this effect is intentional (CC-I05); the coach must
+    /// not "fix" a deliberate style for the rest of the session.
+    case intentionalStylePreserved = "intentional_style_preserved"
+    // C05 pre-ranking admissibility reasons. These are prohibitions, not
+    // scores: a candidate rejected for one of them can never be ranked back
+    // into CORRECT by a higher probability.
+    case manipulationNotPermitted = "manipulation_not_permitted"
+    case resourceUnavailable = "resource_unavailable"
+    case destinationUnreachable = "destination_unreachable"
+    case modeNotAdmitted = "mode_not_admitted"
+    case verifierUnsupported = "verifier_unsupported"
+    case targetStale = "target_stale"
 }
 
 /// Evidence snapshot the gate reads. Built by the pipeline from the frame
@@ -55,6 +67,9 @@ struct CameraAdviceSafetyInput: Equatable, Sendable {
     let calibratedProbability: Double?
     /// Minimum calibrated probability for a correction to be allowed.
     let minimumConfidence: Double
+    /// Session-scoped families the user confirmed as intentional (CC-I05).
+    /// Empty by default so existing call sites are unaffected.
+    var intentionallySuppressedFamilies: Set<CameraAdviceActionFamily> = []
 }
 
 /// Evidence per forbidden action family: which family the candidate belongs
@@ -71,11 +86,116 @@ enum CameraAdviceActionFamily: String, Equatable, Sendable, CaseIterable {
     case keep = "keep"
 }
 
+/// C05 pre-ranking admissibility: the prerequisites a candidate must satisfy
+/// BEFORE it is ranked. These are prohibitions, not signals — no calibrated
+/// probability, raw logit or VLM confidence can turn a rejected candidate into
+/// the accepted action. Every field is fail-closed: `false` means the
+/// prerequisite is not established, so the candidate is withheld.
+struct CameraAdviceAdmissibilityInput: Equatable, Sendable {
+    /// The current intentRevision permits a correction of this kind at all.
+    let intentAllowsCorrection: Bool
+    /// The scene owner / presentation mode allows manipulating this target
+    /// (for example a participant of a live event may not be repositioned).
+    let manipulationPermitted: Bool
+    /// The required physical resource really exists and is controllable.
+    let resourceAvailable: Bool
+    /// The destination region is known to be reachable/available.
+    let destinationReachable: Bool
+    /// The operation is admissible in the current capture mode/phase.
+    let modeAdmitted: Bool
+    /// Calibrated evidence for this candidate exists.
+    let calibratedEvidenceAvailable: Bool
+    /// A supported verifier can actually measure the promised effect.
+    let verifierSupported: Bool
+    /// The tracked target is fresh for the current baseline.
+    let targetFresh: Bool
+
+    init(intentAllowsCorrection: Bool,
+         manipulationPermitted: Bool,
+         resourceAvailable: Bool,
+         destinationReachable: Bool,
+         modeAdmitted: Bool,
+         calibratedEvidenceAvailable: Bool,
+         verifierSupported: Bool,
+         targetFresh: Bool) {
+        self.intentAllowsCorrection = intentAllowsCorrection
+        self.manipulationPermitted = manipulationPermitted
+        self.resourceAvailable = resourceAvailable
+        self.destinationReachable = destinationReachable
+        self.modeAdmitted = modeAdmitted
+        self.calibratedEvidenceAvailable = calibratedEvidenceAvailable
+        self.verifierSupported = verifierSupported
+        self.targetFresh = targetFresh
+    }
+}
+
+/// The pre-ranking verdict. Evaluation order is fixed (intent → permissions →
+/// resource → destination → mode → calibrated evidence → verifier →
+/// freshness) so diagnostics are deterministic.
+enum CameraAdviceAdmissibilityDecision: Equatable, Sendable {
+    case admissible
+    case rejected(reason: SafetyBlockReason)
+
+    var isAdmissible: Bool {
+        self == .admissible
+    }
+
+    /// Fail-closed planner state for a rejected candidate. A prohibition maps
+    /// to ABSTAIN; a temporarily removable condition (stale target) maps to
+    /// WAIT. Neither carries an action.
+    var plannerDecision: CameraCoachDecisionV2 {
+        switch self {
+        case .admissible:
+            return .abstain
+        case .rejected(let reason):
+            switch reason {
+            case .targetStale:
+                return .wait
+            default:
+                return .abstain
+            }
+        }
+    }
+}
+
 /// The deterministic safety gate. Pure: same input always yields the same
 /// decision.
 enum CameraAdviceSafetyGate {
 
     static let defaultMinimumConfidence: Double = 0.5
+
+    /// C05: runs BEFORE any candidate ranking. A rejected prerequisite is a
+    /// prohibition; the planner must not rank a candidate past it. The order
+    /// is fixed and every missing prerequisite fails closed.
+    static func evaluateAdmissibility(
+        _ input: CameraAdviceAdmissibilityInput
+    ) -> CameraAdviceAdmissibilityDecision {
+        guard input.intentAllowsCorrection else {
+            return .rejected(reason: .intentionalStylePreserved)
+        }
+        guard input.manipulationPermitted else {
+            return .rejected(reason: .manipulationNotPermitted)
+        }
+        guard input.resourceAvailable else {
+            return .rejected(reason: .resourceUnavailable)
+        }
+        guard input.destinationReachable else {
+            return .rejected(reason: .destinationUnreachable)
+        }
+        guard input.modeAdmitted else {
+            return .rejected(reason: .modeNotAdmitted)
+        }
+        guard input.calibratedEvidenceAvailable else {
+            return .rejected(reason: .calibratedProbabilityMissing)
+        }
+        guard input.verifierSupported else {
+            return .rejected(reason: .verifierUnsupported)
+        }
+        guard input.targetFresh else {
+            return .rejected(reason: .targetStale)
+        }
+        return .admissible
+    }
 
     /// Evaluates one candidate action. Order matters: identity/evidence
     /// failures first (they invalidate EVERYTHING), then per-family
@@ -114,6 +234,12 @@ enum CameraAdviceSafetyGate {
             if input.subjectTrackLost == nil {
                 return .selectSubject(reason: .subjectAmbiguous)
             }
+        }
+
+        // 2d. Confirmed intent: a style the user declared deliberate is never
+        //     "corrected" for the rest of the session.
+        if input.intentionallySuppressedFamilies.contains(actionFamily) {
+            return .abstain(reason: .intentionalStylePreserved)
         }
 
         // 3. Motion: ordinary corrections wait for a still frame. A typed

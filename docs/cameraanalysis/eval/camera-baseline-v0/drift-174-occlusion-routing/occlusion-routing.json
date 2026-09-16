@@ -1,0 +1,100 @@
+{
+  "candidate_rules": [
+    {
+      "gain_derivation": 5,
+      "gain_validation": 3,
+      "risk_derivation": 3,
+      "risk_validation": 8,
+      "rule": "occlusion detected -> emit semantic step_back",
+      "selected": 46,
+      "verdict": "rejected: on the held-out validation half the rule removes more good frames from keep than it repairs label expectations"
+    },
+    {
+      "gain_derivation": 2,
+      "gain_validation": 3,
+      "risk_derivation": 0,
+      "risk_validation": 0,
+      "rule": "occlusion detected AND a dominant technical defect present -> emit semantic step_back",
+      "selected": 20,
+      "verdict": "clean on good frames in both halves, but the whole payoff is the net gain below"
+    }
+  ],
+  "captured_at": "2026-09-12T23:18:24+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Routing analysis and negative decision only; no release measurement.",
+  "consequence": "No source change. Recorded as a known limitation. With this, the remaining measured levers on the still-replay lane are exhausted for the signals available, and the open work is the owner-gated set (intent-model budget, physical device for App Attest roundtrip and VoiceOver, hosting plus consent scope for egress).",
+  "decision": {
+    "applied": false,
+    "arithmetic": "Appending the occlusion remediation on the 20 candidate rows would satisfy the label on 2 rows that do not already have it (ca_img_209, ca_img_235), add one forbidden-action violation (ca_img_236, where step_back is forbidden and the label expects step_closer), and add an action the labels do not ask for on the remaining 17 rows. Under the master gates a forbidden violation is weighted far more heavily than an expected-action hit (gate <= 0.02 against a current 0.138, and critical forbidden must be zero), so trading one violation for two expectation hits is net-negative.",
+    "reading": "The routing gap is real and now precisely located, but the corpus does not support closing it: only 3 of the 20 occlusion-bearing candidate rows expect step_back, one of them already has it, and one forbids it."
+  },
+  "mechanism": {
+    "finding": "technicalPauseActions(for:) implements action rows for .overexposure and .underexposure and returns [] for every other type, including .occlusion. The occlusion defect therefore has pause copy for its summary, why-problematic and action text, and it is emitted as the future action avoid_occlusion, but it can never become a semantic action row on a pause card.",
+    "path": "shafinMultitool/Multitool2Module/Services/Pipeline/AnalysisPipeline.swift (technicalPauseActions, default: return [])",
+    "second_gate": "Even with rows added, the pause card is built for the admitted issue, and occlusion is never marked dominant by the probe (only overexposure, underexposure and sharpness set isDominant), so occlusion is admitted only through the contextual fallback. Routing occlusion ahead of the admitted dominant issue would replace corrections that currently match the labels."
+  },
+  "population": {
+    "already_emits_step_back": [
+      "ca_img_215"
+    ],
+    "candidate_good_labelled": [],
+    "candidate_rows": [
+      "ca_img_032",
+      "ca_img_038",
+      "ca_img_061",
+      "ca_img_065",
+      "ca_img_072",
+      "ca_img_075",
+      "ca_img_082",
+      "ca_img_089",
+      "ca_img_091",
+      "ca_img_093",
+      "ca_img_094",
+      "ca_img_096",
+      "ca_img_099",
+      "ca_img_209",
+      "ca_img_215",
+      "ca_img_229",
+      "ca_img_231",
+      "ca_img_234",
+      "ca_img_235",
+      "ca_img_236"
+    ],
+    "label_expects_step_back": [
+      "ca_img_209",
+      "ca_img_215",
+      "ca_img_235"
+    ],
+    "net_gain_rows": [
+      "ca_img_209",
+      "ca_img_235"
+    ],
+    "occlusion_plus_a_dominant_defect": 20,
+    "of_which_silent": 19,
+    "pause_rows_with_occlusion": 46,
+    "step_back_is_forbidden": [
+      "ca_img_236"
+    ],
+    "unsupported_rows": [
+      "ca_img_032",
+      "ca_img_038",
+      "ca_img_061",
+      "ca_img_065",
+      "ca_img_072",
+      "ca_img_075",
+      "ca_img_082",
+      "ca_img_089",
+      "ca_img_091",
+      "ca_img_093",
+      "ca_img_094",
+      "ca_img_096",
+      "ca_img_099",
+      "ca_img_229",
+      "ca_img_231",
+      "ca_img_234",
+      "ca_img_236"
+    ]
+  },
+  "question": "How should a detected occlusion / edge-cutoff become a semantic remark, and does the routing fix pay for itself on the 174-label corpus?",
+  "report_id": "drift-174-occlusion-routing",
+  "source_change": "none"
+}

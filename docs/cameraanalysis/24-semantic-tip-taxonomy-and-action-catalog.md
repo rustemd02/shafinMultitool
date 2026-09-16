@@ -4,6 +4,10 @@
 
 Дата: 2026-05-04
 
+Проект следующего каталога операций и targets находится в [доменном контракте v3, N6](03-domain-contracts.md#n6-решение-действие-и-цель). При его реализации этот документ остаётся владельцем безопасных labels/templates: текст и overlay проецируют один принятый Action, `targetRefs` обозначает перемещаемый предмет, а `protectedRefs` — сохраняемого героя. Старые enum и шаблоны не переименованы этой записью.
+
+Уточнение 2026-09-11: это каталог семантического слоя PR-S01, а не самостоятельное разрешение всех перечисленных действий в production 1.0. Текущие release-границы заданы [master plan v2](../aegis/work/2026-09-03-gpt-5-6-pro-guidance/SET_OS_APP_STORE_1_0_CODEX_MASTER_PLAN_v2.md). Расширенный каталог предметных, фото- и видеосценариев для будущего контракта находится в [разделе 23 требований](camera-analysis-requirements-draft.md#23-camera-coach-для-фото-и-видео-каталог-сценариев-следующего-контракта); новые `CC-*` — ID требований, не расширение текущего enum.
+
 Связанные документы:
 - [README.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/README.md)
 - [03-domain-contracts.md](/Users/unterlantas/Documents/XCode/shafinMultitool/docs/cameraanalysis/03-domain-contracts.md)

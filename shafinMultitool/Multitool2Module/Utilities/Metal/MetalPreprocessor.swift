@@ -12,6 +12,101 @@ import Foundation
 import ImageIO
 import Metal
 
+/// The oriented-frame crop window actually sampled into the subject-crop
+/// tensor, in TOP-LEFT pixel coordinates of the oriented frame (the same
+/// convention the frozen ROI uses). It is recorded separately from the resize
+/// transform so a subject point can be checked for visibility without
+/// inventing coordinates.
+struct SETCompositionNetCropWindow: Equatable, Sendable {
+    let left: Double
+    let top: Double
+    let right: Double
+    let bottom: Double
+
+    var isDegenerate: Bool { right <= left || bottom <= top }
+
+    func contains(pixelX: Double, pixelY: Double) -> Bool {
+        !isDegenerate
+            && pixelX >= left && pixelX <= right
+            && pixelY >= top && pixelY <= bottom
+    }
+}
+
+/// Actual N11 transform provenance for the frozen SETCompositionNet-v1
+/// tensors. Each transform is derived from the geometry the renderer/sampler
+/// really applied (oriented source extent and the actual crop/scale), then
+/// validated against the frozen contract; nothing here is borrowed from a
+/// preview aspect-fill matrix.
+struct SETCompositionNetTensorTransformRecord: Equatable, Sendable {
+    let fullFrameTransform: CameraTensorTransform
+    /// Nil when no ROI crop was applied: the subject tensor is a zero fill, so
+    /// there is no resize geometry that could be recorded honestly.
+    let subjectCropTransform: CameraTensorTransform?
+    let subjectCropWindow: SETCompositionNetCropWindow?
+    let orientedSourcePixelSize: CGSize
+
+    /// Maps an oriented-frame normalized point (top-left, y-down — the space
+    /// the ROI and the tensors share) into the named tensor's destination
+    /// coordinates. Returns nil for an unknown tensor id or for a point that is
+    /// not visible in that tensor (e.g. outside the applied subject-crop
+    /// window). It is never clamped onto an edge, so a cropped-away target
+    /// cannot be presented as a manufactured on-screen point.
+    func destinationPoint(inTensorID tensorID: String,
+                          fromOrientedX x: Double,
+                          y: Double) -> (x: Double, y: Double)? {
+        guard x.isFinite, y.isFinite, (0...1).contains(x), (0...1).contains(y) else {
+            return nil
+        }
+        if tensorID == CameraTensorTransformContract.setCompositionNetFullFrameTensorID {
+            return fullFrameTransform.destinationPoint(fromSourceNormalized: x, y: y)
+        }
+        guard tensorID == CameraTensorTransformContract.setCompositionNetSubjectCropTensorID,
+              let subjectCropTransform,
+              let window = subjectCropWindow,
+              orientedSourcePixelSize.width > 0,
+              orientedSourcePixelSize.height > 0 else {
+            return nil
+        }
+        let pixelX = x * Double(orientedSourcePixelSize.width)
+        let pixelY = y * Double(orientedSourcePixelSize.height)
+        guard window.contains(pixelX: pixelX, pixelY: pixelY) else { return nil }
+        let localX = (pixelX - window.left) / (window.right - window.left)
+        let localY = (pixelY - window.top) / (window.bottom - window.top)
+        return subjectCropTransform.destinationPoint(fromSourceNormalized: localX, y: localY)
+    }
+}
+
+/// One SETCompositionNet raster preprocessing result: both frozen tensors plus
+/// the actual transform recorded for each of them.
+struct SETCompositionNetTensorBundle {
+    let fullFrame: CVPixelBuffer
+    let subjectCrop: CVPixelBuffer
+    let transforms: SETCompositionNetTensorTransformRecord
+}
+
+/// One SETCompositionNet logical RGB preprocessing result: both frozen float
+/// tensors plus the actual transform recorded for each of them.
+struct SETCompositionNetRGBTensorBundle {
+    let fullFrameRGB: [Double]
+    let subjectCropRGB: [Double]
+    let transforms: SETCompositionNetTensorTransformRecord
+}
+
+/// The geometry Core Image actually applied for one raster resize. These are
+/// the values read back from the rendered source, not a separate calculation.
+/// `appliedSourceRect` is the extent of the oriented/cropped image Core Image
+/// really sampled (which can differ from the nominal crop by its integralized
+/// bounds), so the recorded transform and visibility window use it verbatim.
+private struct SETCompositionNetRenderedRaster {
+    let buffer: CVPixelBuffer
+    let appliedSourceRect: CGRect
+    let appliedDestinationSize: CGSize
+    let appliedScaleX: Double
+    let appliedScaleY: Double
+
+    var appliedSourceSize: CGSize { appliedSourceRect.size }
+}
+
 final class MetalPreprocessor {
     private let device: MTLDevice?
     private let context: CIContext
@@ -61,28 +156,66 @@ final class MetalPreprocessor {
     /// Frozen SETCompositionNet-v1 camera tensors. Core Image performs the
     /// orientation exactly once; mirrored orientations are carried by the
     /// ImageIO orientation value and are never mirrored again here.
+    ///
+    /// This is a convenience wrapper over `setCompositionNetPixelBufferBundle`;
+    /// callers that need the actual per-tensor N11 transform must use the
+    /// bundle API, which cannot return a tensor without its proven transform.
     func setCompositionNetPixelBuffers(
         from pixelBuffer: CVPixelBuffer,
         orientation: CGImagePropertyOrientation,
         roi: SETCompositionNetROI
     ) -> (fullFrame: CVPixelBuffer, subjectCrop: CVPixelBuffer)? {
-        guard roi.validate().isEmpty else { return nil }
-        guard let fullFrame = setCompositionNetResizedPixelBuffer(
+        guard let bundle = setCompositionNetPixelBufferBundle(
             from: pixelBuffer,
             orientation: orientation,
-            targetSize: CGSize(
-                width: SETCompositionNetContract.fullFrameWidth,
-                height: SETCompositionNetContract.fullFrameHeight
-            )
+            roi: roi
+        ) else {
+            return nil
+        }
+        return (fullFrame: bundle.fullFrame, subjectCrop: bundle.subjectCrop)
+    }
+
+    /// Builds the frozen SETCompositionNet-v1 raster tensors together with the
+    /// actual transform applied to each. Fail-closed: if any tensor's real
+    /// geometry cannot be expressed as a valid frozen recipe (unknown tensor,
+    /// degenerate source, substituted aspect-fill recipe), the whole bundle is
+    /// rejected — no tensor is returned with a "similar" transform.
+    func setCompositionNetPixelBufferBundle(
+        from pixelBuffer: CVPixelBuffer,
+        orientation: CGImagePropertyOrientation,
+        roi: SETCompositionNetROI
+    ) -> SETCompositionNetTensorBundle? {
+        guard roi.validate().isEmpty else { return nil }
+        let orientedExtent = orientedPixelBufferExtent(for: pixelBuffer, orientation: orientation)
+        guard orientedExtent.width > 0, orientedExtent.height > 0 else { return nil }
+        let orientedSourceSize = CGSize(width: orientedExtent.width, height: orientedExtent.height)
+
+        let fullFrameTarget = CGSize(
+            width: SETCompositionNetContract.fullFrameWidth,
+            height: SETCompositionNetContract.fullFrameHeight
+        )
+        guard let fullFrameRaster = setCompositionNetResizedPixelBuffer(
+            from: pixelBuffer,
+            orientation: orientation,
+            targetSize: fullFrameTarget
+        ) else {
+            return nil
+        }
+        guard let fullFrameTransform = recordedTransform(
+            matching: fullFrameRaster,
+            tensorID: CameraTensorTransformContract.setCompositionNetFullFrameTensorID,
+            orientation: orientation,
+            targetSize: fullFrameTarget
         ) else {
             return nil
         }
 
         let subjectCrop: CVPixelBuffer
+        var subjectCropTransform: CameraTensorTransform?
+        var subjectCropWindow: SETCompositionNetCropWindow?
         if roi.present {
             // CIImage coordinates have a bottom-left origin; convert the
             // manifest's top-left normalized ROI before clipping and cropping.
-            let orientedExtent = orientedPixelBufferExtent(for: pixelBuffer, orientation: orientation)
             guard let cropBounds = setCompositionNetClippedSquareBounds(
                 for: roi,
                 width: orientedExtent.width,
@@ -96,18 +229,37 @@ final class MetalPreprocessor {
                 width: CGFloat(cropBounds.right - cropBounds.left),
                 height: CGFloat(cropBounds.bottom - cropBounds.top)
             )
-            guard let resized = setCompositionNetResizedPixelBuffer(
+            let subjectTarget = CGSize(
+                width: SETCompositionNetContract.subjectCropWidth,
+                height: SETCompositionNetContract.subjectCropHeight
+            )
+            guard let subjectRaster = setCompositionNetResizedPixelBuffer(
                     from: pixelBuffer,
                     orientation: orientation,
-                    targetSize: CGSize(
-                        width: SETCompositionNetContract.subjectCropWidth,
-                        height: SETCompositionNetContract.subjectCropHeight
-                    ),
+                    targetSize: subjectTarget,
                     cropRect: cropRect
+                  ),
+                  let transform = recordedTransform(
+                    matching: subjectRaster,
+                    tensorID: CameraTensorTransformContract.setCompositionNetSubjectCropTensorID,
+                    orientation: orientation,
+                    targetSize: subjectTarget
                   ) else {
                 return nil
             }
-            subjectCrop = resized
+            subjectCrop = subjectRaster.buffer
+            subjectCropTransform = transform
+            // Record the window from the extent Core Image actually sampled, in
+            // the oriented frame's TOP-LEFT coordinates. This keeps the window
+            // exactly consistent with the recorded transform source even when
+            // Core Image integralizes the crop bounds.
+            let applied = subjectRaster.appliedSourceRect
+            subjectCropWindow = SETCompositionNetCropWindow(
+                left: Double(applied.minX - orientedExtent.minX),
+                top: Double(orientedExtent.maxY - applied.maxY),
+                right: Double(applied.maxX - orientedExtent.minX),
+                bottom: Double(orientedExtent.maxY - applied.minY)
+            )
         } else {
             guard let zero = makeZeroPixelBuffer(
                 width: SETCompositionNetContract.subjectCropWidth,
@@ -117,7 +269,17 @@ final class MetalPreprocessor {
             }
             subjectCrop = zero
         }
-        return (fullFrame: fullFrame, subjectCrop: subjectCrop)
+
+        return SETCompositionNetTensorBundle(
+            fullFrame: fullFrameRaster.buffer,
+            subjectCrop: subjectCrop,
+            transforms: SETCompositionNetTensorTransformRecord(
+                fullFrameTransform: fullFrameTransform,
+                subjectCropTransform: subjectCropTransform,
+                subjectCropWindow: subjectCropWindow,
+                orientedSourcePixelSize: orientedSourceSize
+            )
+        )
     }
 
     /// Returns the logical SETCompositionNet tensors directly from the
@@ -126,17 +288,43 @@ final class MetalPreprocessor {
     /// resize helper, whose callers intentionally retain their old behavior.
     /// Orientation, mirroring, clipping and bilinear sampling are all applied
     /// here exactly once in the manifest's top-left coordinate space.
+    /// Convenience wrapper over `setCompositionNetRGBTensorBundle`; see the
+    /// bundle API for per-tensor N11 transform provenance.
     func setCompositionNetRGBTensors(
         from pixelBuffer: CVPixelBuffer,
         orientation: CGImagePropertyOrientation,
         roi: SETCompositionNetROI
     ) -> (fullFrameRGB: [Double], subjectCropRGB: [Double])? {
-        guard roi.validate().isEmpty,
-              let source = setCompositionNetSourceRGB(from: pixelBuffer),
-              let oriented = setCompositionNetOrientedRGB(source, orientation: orientation) else {
+        guard let bundle = setCompositionNetRGBTensorBundle(
+            from: pixelBuffer,
+            orientation: orientation,
+            roi: roi
+        ) else {
             return nil
         }
+        return (fullFrameRGB: bundle.fullFrameRGB, subjectCropRGB: bundle.subjectCropRGB)
+    }
 
+    /// Builds the logical float SETCompositionNet-v1 tensors together with the
+    /// actual transform applied to each. Same fail-closed rule as the raster
+    /// bundle: an unprovable transform rejects the whole result.
+    func setCompositionNetRGBTensorBundle(
+        from pixelBuffer: CVPixelBuffer,
+        orientation: CGImagePropertyOrientation,
+        roi: SETCompositionNetROI
+    ) -> SETCompositionNetRGBTensorBundle? {
+        guard roi.validate().isEmpty,
+              let source = setCompositionNetSourceRGB(from: pixelBuffer),
+              let oriented = setCompositionNetOrientedRGB(source, orientation: orientation),
+              oriented.width > 0, oriented.height > 0 else {
+            return nil
+        }
+        let orientedSourceSize = CGSize(width: oriented.width, height: oriented.height)
+
+        let fullFrameTarget = CGSize(
+            width: SETCompositionNetContract.fullFrameWidth,
+            height: SETCompositionNetContract.fullFrameHeight
+        )
         let fullFrame = setCompositionNetResize(
             oriented,
             targetWidth: SETCompositionNetContract.fullFrameWidth,
@@ -146,7 +334,18 @@ final class MetalPreprocessor {
             right: Double(oriented.width),
             bottom: Double(oriented.height)
         )
+        guard let fullFrameTransform = setCompositionNetRecordedTransform(
+            tensorID: CameraTensorTransformContract.setCompositionNetFullFrameTensorID,
+            orientation: orientation,
+            sourcePixelSize: orientedSourceSize,
+            destinationPixelSize: fullFrameTarget
+        ) else {
+            return nil
+        }
+
         let subjectCrop: [Double]
+        var subjectCropTransform: CameraTensorTransform?
+        var subjectCropWindow: SETCompositionNetCropWindow?
         if roi.present {
             guard let cropBounds = setCompositionNetClippedSquareBounds(
                 for: roi,
@@ -164,6 +363,28 @@ final class MetalPreprocessor {
                 right: cropBounds.right,
                 bottom: cropBounds.bottom
             )
+            let subjectTarget = CGSize(
+                width: SETCompositionNetContract.subjectCropWidth,
+                height: SETCompositionNetContract.subjectCropHeight
+            )
+            guard let transform = setCompositionNetRecordedTransform(
+                tensorID: CameraTensorTransformContract.setCompositionNetSubjectCropTensorID,
+                orientation: orientation,
+                sourcePixelSize: CGSize(
+                    width: cropBounds.right - cropBounds.left,
+                    height: cropBounds.bottom - cropBounds.top
+                ),
+                destinationPixelSize: subjectTarget
+            ) else {
+                return nil
+            }
+            subjectCropTransform = transform
+            subjectCropWindow = SETCompositionNetCropWindow(
+                left: cropBounds.left,
+                top: cropBounds.top,
+                right: cropBounds.right,
+                bottom: cropBounds.bottom
+            )
         } else {
             subjectCrop = Array(
                 repeating: 0.0,
@@ -171,7 +392,16 @@ final class MetalPreprocessor {
                     * SETCompositionNetContract.subjectCropHeight * 3
             )
         }
-        return (fullFrameRGB: fullFrame, subjectCropRGB: subjectCrop)
+        return SETCompositionNetRGBTensorBundle(
+            fullFrameRGB: fullFrame,
+            subjectCropRGB: subjectCrop,
+            transforms: SETCompositionNetTensorTransformRecord(
+                fullFrameTransform: fullFrameTransform,
+                subjectCropTransform: subjectCropTransform,
+                subjectCropWindow: subjectCropWindow,
+                orientedSourcePixelSize: orientedSourceSize
+            )
+        )
     }
 
     private func setCompositionNetResizedPixelBuffer(
@@ -179,7 +409,7 @@ final class MetalPreprocessor {
         orientation: CGImagePropertyOrientation,
         targetSize: CGSize,
         cropRect: CGRect? = nil
-    ) -> CVPixelBuffer? {
+    ) -> SETCompositionNetRenderedRaster? {
         guard targetSize.width.isFinite, targetSize.height.isFinite,
               targetSize.width > 0, targetSize.height > 0 else {
             return nil
@@ -189,8 +419,11 @@ final class MetalPreprocessor {
         guard cropped.extent.width > 0, cropped.extent.height > 0 else {
             return nil
         }
-        let scaleX = targetSize.width / cropped.extent.width
-        let scaleY = targetSize.height / cropped.extent.height
+        // The applied source is the extent Core Image really sampled after
+        // orientation/cropping; the applied scales are the ones used below.
+        let appliedSourceRect = cropped.extent
+        let scaleX = targetSize.width / appliedSourceRect.width
+        let scaleY = targetSize.height / appliedSourceRect.height
         let scaled = cropped.transformed(by: .init(scaleX: scaleX, y: scaleY))
         let rendered = scaled.transformed(
             by: .init(translationX: -scaled.extent.minX, y: -scaled.extent.minY)
@@ -220,7 +453,77 @@ final class MetalPreprocessor {
             bounds: CGRect(origin: .zero, size: targetSize),
             colorSpace: CGColorSpace(name: CGColorSpace.sRGB)
         )
-        return outputBuffer
+        return SETCompositionNetRenderedRaster(
+            buffer: outputBuffer,
+            appliedSourceRect: appliedSourceRect,
+            appliedDestinationSize: targetSize,
+            appliedScaleX: Double(scaleX),
+            appliedScaleY: Double(scaleY)
+        )
+    }
+
+    /// Records the frozen recipe transform for one tensor, rejecting an unknown
+    /// tensor id, a non-finite/degenerate size, a substituted aspect-fill
+    /// recipe, or any geometry that the N11 contract does not admit. Returns
+    /// nil instead of a plausible-looking value.
+    func setCompositionNetRecordedTransform(
+        tensorID: String,
+        orientation: CGImagePropertyOrientation,
+        sourcePixelSize: CGSize,
+        destinationPixelSize: CGSize
+    ) -> CameraTensorTransform? {
+        guard let tensorOrientation = cameraTensorOrientation(for: orientation),
+              let transform = CameraTensorTransformContract.recipe(
+                forTensorID: tensorID,
+                orientation: tensorOrientation,
+                sourcePixelSize: sourcePixelSize,
+                destinationPixelSize: destinationPixelSize
+              ),
+              CameraTensorTransformContract.validate(transform).isEmpty else {
+            return nil
+        }
+        return transform
+    }
+
+    /// Records the transform only when its scale equals the scale the renderer
+    /// actually applied. A recorded/produced mismatch fails closed rather than
+    /// publishing provenance that does not describe the tensor.
+    private func recordedTransform(
+        matching raster: SETCompositionNetRenderedRaster,
+        tensorID: String,
+        orientation: CGImagePropertyOrientation,
+        targetSize: CGSize
+    ) -> CameraTensorTransform? {
+        guard let transform = setCompositionNetRecordedTransform(
+            tensorID: tensorID,
+            orientation: orientation,
+            sourcePixelSize: raster.appliedSourceSize,
+            destinationPixelSize: targetSize
+        ),
+        abs(transform.scaleX - raster.appliedScaleX) <= 1e-9,
+        abs(transform.scaleY - raster.appliedScaleY) <= 1e-9 else {
+            return nil
+        }
+        return transform
+    }
+
+    /// Maps the eight ImageIO orientations onto the frozen N11 orientation
+    /// enum. An unknown orientation fails closed instead of being folded into
+    /// a nearby value.
+    private func cameraTensorOrientation(
+        for orientation: CGImagePropertyOrientation
+    ) -> CameraTensorOrientationV1? {
+        switch orientation {
+        case .up: return .up
+        case .upMirrored: return .upMirrored
+        case .down: return .down
+        case .downMirrored: return .downMirrored
+        case .leftMirrored: return .leftMirrored
+        case .right: return .right
+        case .rightMirrored: return .rightMirrored
+        case .left: return .left
+        @unknown default: return nil
+        }
     }
 
     /// Converts the BGRA camera transport into logical RGB values in [0, 1].

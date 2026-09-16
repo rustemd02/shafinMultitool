@@ -19,6 +19,9 @@ for path in motion_files:
 ui_text = '\n'.join(p.read_text(errors='ignore') for p in Path('shafinMultitoolUITests').glob('*.swift'))
 videos = re.findall(r'leader|Leader|motion|Motion', ui_text)
 print(f"MOTION EVIDENCE: {len(motion_files)} UI files, {len(videos)} motion references in UI tests")
+if not motion_files:
+    print("MOTION EVIDENCE FAIL: 0 UI files were scanned — nothing was checked for unguarded animation")
+    sys.exit(1)
 if unguarded:
     print(f"FAIL: {len(unguarded)} unguarded animations:")
     for u in unguarded[:8]: print('  ', u)

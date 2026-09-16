@@ -11,6 +11,35 @@ enum CameraOverlayAnalysisStatus: String, Equatable, Sendable {
 
 }
 
+/// Conversation controls around the single accepted advice. The action audit
+/// keeps repeat/skip/pause outside the corrective taxonomy: they never map to
+/// `SemanticActionType`/`ActionTypeV1` and never become a new motor action.
+/// Sighted users already get the visible Continue (skip) control; these typed
+/// labels exist so VoiceOver can expose the same vocabulary and so a refusal
+/// never requires explaining a diagnosis.
+enum CameraCoachCycleControl: String, CaseIterable, Equatable, Sendable {
+    case repeatHint
+    case skipHint
+    case pauseHints
+    case resumeHints
+
+    var copyKey: SETCopyKey {
+        switch self {
+        case .repeatHint: return .cameraHintRepeat
+        case .skipHint: return .cameraHintSkip
+        case .pauseHints: return .cameraHintPause
+        case .resumeHints: return .cameraHintResume
+        }
+    }
+
+    /// Cycle controls are deliberately not motor actions.
+    var isMotorAction: Bool { false }
+
+    func label(locale: Locale) -> String {
+        copyKey.localizedString(locale: locale)
+    }
+}
+
 /// Inputs consumed by the one existing presentation projection. These are
 /// all owner outputs: lifecycle/pause/lens state, planner decision, episode
 /// boundary, verifier result and the effective governor/scheduler snapshot.
@@ -61,7 +90,12 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
         case liveSeeking = "S04"
         case stableTip = "S06"
         case explanation = "S07"
+        case actionObserved = "S08"
+        case verification = "S09"
+        case verificationImproved = "S10a"
+        case verificationNotImproved = "S10b"
         case keepAsIs = "S10c"
+        case abstention = "S11"
         case lensSwitching = "L01"
         case pauseLoading = "P01"
         case pauseSuccess = "P02"
@@ -89,6 +123,7 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
     let showsWhy: Bool
     let isFallback: Bool
     let liveHintID: String?
+    let episodeToken: CoachingEpisodeToken?
     let targetRegion: NormalizedRect?
     let overlayHint: OverlayHint?
     let eventID: String?
@@ -110,15 +145,35 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
     /// remains a localized owner action and exit is always the existing close.
     var primaryAction: String? { actionInstruction }
 
+    var canContinueEpisode: Bool {
+        guard episodeToken != nil,
+              analysisStatus == .healthy,
+              !isLimited else { return false }
+        switch state {
+        case .verificationImproved, .verificationNotImproved, .keepAsIs, .abstention:
+            return true
+        case .starting, .interrupted, .failed, .liveSeeking, .stableTip,
+             .explanation, .actionObserved, .verification, .lensSwitching,
+             .pauseLoading, .pauseSuccess, .pauseEmpty, .pauseFailure, .resuming:
+            return false
+        }
+    }
+
     var recoveryAction: String? {
         switch state {
         case .failed:
             return SETCopyKey.retry.localizedString(locale: .current)
         case .interrupted:
             return SETCopyKey.cameraResume.localizedString(locale: .current)
+        case .actionObserved, .verification:
+            return nil
+        case .verificationImproved, .verificationNotImproved, .abstention:
+            return SETCopyKey.cameraContinue.localizedString(locale: .current)
+        case .keepAsIs:
+            return episodeToken == nil ? nil : SETCopyKey.cameraContinue.localizedString(locale: .current)
         case .pauseLoading, .pauseSuccess, .pauseEmpty, .pauseFailure, .resuming:
             return SETCopyKey.cameraResume.localizedString(locale: .current)
-        case .starting, .liveSeeking, .stableTip, .explanation, .keepAsIs, .lensSwitching:
+        case .starting, .liveSeeking, .stableTip, .explanation, .lensSwitching:
             return nil
         }
     }
@@ -136,6 +191,53 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
 
     var accessibilityLabel: String {
         visibleCopy.joined(separator: ". ")
+    }
+
+    /// Whether the owner actually compared the before/after frames. `comparable`
+    /// covers the measured outcomes; `unknown` is the honest incomparable
+    /// status. Kept distinct from the outcome so neither is shown as the other.
+    enum VerificationClarity: String, CaseIterable, Equatable, Sendable {
+        case comparable
+        case unknown
+
+        var copyKey: SETCopyKey {
+            switch self {
+            case .comparable: return .cameraStatusComparable
+            case .unknown: return .cameraStatusUnknown
+            }
+        }
+
+        func label(locale: Locale) -> String {
+            copyKey.localizedString(locale: locale)
+        }
+    }
+
+    var verificationClarity: VerificationClarity? {
+        switch state {
+        case .verificationImproved, .verificationNotImproved:
+            return .comparable
+        case .abstention:
+            return .unknown
+        case .starting, .interrupted, .failed, .liveSeeking, .stableTip,
+             .explanation, .actionObserved, .verification, .keepAsIs,
+             .lensSwitching, .pauseLoading, .pauseSuccess, .pauseEmpty,
+             .pauseFailure, .resuming:
+            return nil
+        }
+    }
+
+    /// Cycle vocabulary currently meaningful for this state. Never a motor
+    /// action; skip mirrors the visible Continue control.
+    var availableCycleControls: [CameraCoachCycleControl] {
+        var controls: [CameraCoachCycleControl] = []
+        if !visibleCopy.isEmpty {
+            controls.append(.repeatHint)
+        }
+        if canContinueEpisode {
+            controls.append(.skipHint)
+            controls.append(.pauseHints)
+        }
+        return controls
     }
 
     static var safeFallbackPresentation: CameraOverlayUXPresentation {
@@ -191,11 +293,11 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
             )
         }
 
-        let shouldShowSpatialAdvice = mapped.baseState == .stableTip
+        let canShowStableAdvice = mapped.baseState == .stableTip
             && context.analysisStatus == .healthy
             && !context.performance.isLimited
-            && context.hasSpatialEvidence
-        if mapped.baseState == .stableTip && !shouldShowSpatialAdvice {
+            && (context.hasSpatialEvidence || isAdmittedFrameGlobalHint(liveHint))
+        if mapped.baseState == .stableTip && !canShowStableAdvice {
             return seeking(
                 locale: locale,
                 effectivePerformanceMode: context.performance.mode,
@@ -203,14 +305,18 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
             )
         }
 
+        let previewGeometry = CoachingEpisodeCoordinator.previewGeometry(
+            for: context.episodeState,
+            actionID: liveHint.coachingEpisodeActionID,
+            subjectIdentity: liveHint.subjectIdentity,
+            observedSourceRegion: liveHint.observedSourceRegion,
+            targetRegion: liveHint.targetRegion
+        )
         let mappedOverlayHint: OverlayHint?
-        if shouldShowSpatialAdvice, liveHint.actionType != nil {
-            let targetRegion = context.episodeState.baseline == nil
-                ? liveHint.overlayHint?.targetRegion
-                : frozenTargetRegion(for: context.episodeState, liveHint: liveHint)
+        if canShowStableAdvice, liveHint.actionType != nil {
             mappedOverlayHint = safeOverlayHint(
                 from: liveHint.overlayHint,
-                targetRegion: targetRegion
+                targetRegion: previewGeometry.targetRegion
             )
         } else {
             mappedOverlayHint = nil
@@ -229,6 +335,7 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
             showsWhy: mapped.showsWhy,
             isFallback: liveHint.isFallback,
             liveHintID: liveHint.id,
+            episodeToken: context.episodeState.token,
             targetRegion: mappedOverlayHint?.targetRegion,
             overlayHint: mappedOverlayHint,
             // A live hint ID is reusable across frames/episodes. Marker
@@ -320,19 +427,28 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
             )
         }
 
-        if let verificationResult = context.verificationResult {
-            switch verificationResult.decision {
-            case .incomparable:
-                return fallback(
-                    locale: locale,
-                    effectivePerformanceMode: context.performance.mode,
-                    analysisStatus: context.analysisStatus
-                )
-            case .comparable(let outcome):
-                if outcome == .fixed {
-                    return status(state: .keepAsIs, copy: .cameraKeep, locale: locale, context: context)
-                }
-            }
+        let matchingVerificationResult = context.verificationResult.flatMap { result -> ActionVerificationResult? in
+            guard context.episodeState.token == result.token else { return nil }
+            return result
+        }
+        if let episodePresentation = episodePresentation(
+            for: context,
+            verificationResult: matchingVerificationResult,
+            locale: locale
+        ) {
+            return episodePresentation
+        }
+
+        // An active coordinator episode owns the rail even when its baseline
+        // is temporarily unusable or the runtime has entered ECO/limited
+        // analysis. Do not let a frame-local KEEP (or a stale corrective hint
+        // below) replace that bounded owner projection.
+        if isActiveEpisodePhase(context.episodeState.phase) {
+            return seeking(
+                locale: locale,
+                effectivePerformanceMode: context.performance.mode,
+                analysisStatus: context.analysisStatus
+            )
         }
 
         switch context.decision {
@@ -349,11 +465,179 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
         }
     }
 
+    /// Projects the coordinator-owned episode before consulting any current
+    /// planner decision. A transient frame-local KEEP therefore cannot replace
+    /// the accepted typed action or its token while movement is still being
+    /// observed, and verifier outcomes remain tied to that same token.
+    private static func episodePresentation(
+        for context: CameraOverlayUXContext,
+        verificationResult: ActionVerificationResult?,
+        locale: Locale
+    ) -> CameraOverlayUXPresentation? {
+        guard context.episodeState.phase == .awaitingMovement
+                || context.episodeState.phase == .collectingStableAfterFrames
+                || context.episodeState.phase == .readyForVerification,
+              let token = context.episodeState.token,
+              let baseline = context.episodeState.baseline else {
+            return nil
+        }
+
+        let geometry = CoachingEpisodeCoordinator.previewGeometry(
+            for: context.episodeState,
+            actionID: nil,
+            subjectIdentity: nil,
+            observedSourceRegion: nil,
+            targetRegion: nil
+        )
+        let acceptedOverlayHint: OverlayHint?
+        if context.analysisStatus == .healthy, !context.performance.isLimited {
+            acceptedOverlayHint = episodeOverlayHint(
+                for: baseline.actionID,
+                token: token,
+                targetRegion: geometry.targetRegion
+            )
+        } else {
+            acceptedOverlayHint = nil
+        }
+
+        if context.episodeState.phase == .readyForVerification,
+           let verificationResult {
+            switch verificationResult.decision {
+            case .incomparable:
+                return fallback(
+                    copy: .cameraVerificationIncomparable,
+                    state: .abstention,
+                    baseState: .abstention,
+                    locale: locale,
+                    effectivePerformanceMode: context.performance.mode,
+                    analysisStatus: context.analysisStatus,
+                    episodeToken: token
+                )
+            case .comparable(let outcome):
+                switch outcome {
+                case .fixed:
+                    return resultPresentation(
+                        state: .verificationImproved,
+                        copy: .cameraVerificationFixed,
+                        context: context,
+                        token: token,
+                        targetRegion: nil,
+                        overlayHint: nil,
+                        locale: locale
+                    )
+                case .improved:
+                    return resultPresentation(
+                        state: .verificationImproved,
+                        copy: .cameraVerificationImproved,
+                        context: context,
+                        token: token,
+                        targetRegion: geometry.targetRegion,
+                        overlayHint: acceptedOverlayHint,
+                        locale: locale
+                    )
+                case .unchanged:
+                    return resultPresentation(
+                        state: .verificationNotImproved,
+                        copy: .cameraVerificationUnchanged,
+                        context: context,
+                        token: token,
+                        targetRegion: geometry.targetRegion,
+                        overlayHint: acceptedOverlayHint,
+                        locale: locale
+                    )
+                case .worse:
+                    return resultPresentation(
+                        state: .verificationNotImproved,
+                        copy: .cameraVerificationWorse,
+                        context: context,
+                        token: token,
+                        targetRegion: geometry.targetRegion,
+                        overlayHint: acceptedOverlayHint,
+                        locale: locale
+                    )
+                }
+            }
+        }
+
+        guard context.analysisStatus == .healthy,
+              !context.performance.isLimited,
+              let actionKey = SETCameraCopy.actionKey(forCanonicalActionID: baseline.actionID) else {
+            return nil
+        }
+
+        let progressCopy: SETCopyKey
+        switch context.episodeState.phase {
+        case .awaitingMovement:
+            progressCopy = .cameraEpisodeAwaitingMovement
+        case .collectingStableAfterFrames:
+            progressCopy = .cameraEpisodeCollecting
+        case .readyForVerification:
+            progressCopy = .cameraEpisodeChecking
+        case .idle, .cancelled, .expired:
+            return nil
+        }
+
+        return CameraOverlayUXPresentation(
+            state: context.episodeState.phase == .awaitingMovement
+                ? .stableTip
+                : context.episodeState.phase == .collectingStableAfterFrames
+                    ? .actionObserved
+                    : .verification,
+            baseState: .stableTip,
+            observation: progressCopy.localizedString(locale: locale),
+            actionInstruction: context.episodeState.phase == .readyForVerification
+                ? nil
+                : actionKey.localizedString(locale: locale),
+            explanation: nil,
+            supportingObservation: ecoCopy(for: context.performance.mode, locale: locale),
+            showsWhy: false,
+            isFallback: false,
+            // The active rail is episode-owned; a fresh frame-local hint ID
+            // must not become its visible identity during KEEP continuity.
+            liveHintID: nil,
+            episodeToken: token,
+            targetRegion: geometry.targetRegion,
+            overlayHint: acceptedOverlayHint,
+            eventID: token.rawValue.uuidString,
+            effectivePerformanceMode: context.performance.mode,
+            analysisStatus: context.analysisStatus
+        )
+    }
+
+    private static func resultPresentation(
+        state: State,
+        copy: SETCopyKey,
+        context: CameraOverlayUXContext,
+        token: CoachingEpisodeToken,
+        targetRegion: NormalizedRect?,
+        overlayHint: OverlayHint?,
+        locale: Locale
+    ) -> CameraOverlayUXPresentation {
+        CameraOverlayUXPresentation(
+            state: state,
+            baseState: .stableTip,
+            observation: copy.localizedString(locale: locale),
+            actionInstruction: nil,
+            explanation: nil,
+            supportingObservation: ecoCopy(for: context.performance.mode, locale: locale),
+            showsWhy: false,
+            isFallback: false,
+            liveHintID: nil,
+            episodeToken: token,
+            targetRegion: targetRegion,
+            overlayHint: overlayHint,
+            eventID: overlayHint == nil ? nil : token.rawValue.uuidString,
+            effectivePerformanceMode: context.performance.mode,
+            analysisStatus: context.analysisStatus
+        )
+    }
+
     private static func status(
         state: State,
         copy: SETCopyKey,
         locale: Locale,
-        context: CameraOverlayUXContext
+        context: CameraOverlayUXContext,
+        episodeToken: CoachingEpisodeToken? = nil
     ) -> CameraOverlayUXPresentation {
         CameraOverlayUXPresentation(
             state: state,
@@ -365,6 +649,7 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
             showsWhy: false,
             isFallback: false,
             liveHintID: nil,
+            episodeToken: episodeToken,
             targetRegion: nil,
             overlayHint: nil,
             eventID: nil,
@@ -388,6 +673,7 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
             showsWhy: false,
             isFallback: false,
             liveHintID: nil,
+            episodeToken: nil,
             targetRegion: nil,
             overlayHint: nil,
             eventID: nil,
@@ -397,20 +683,25 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
     }
 
     private static func fallback(
+        copy: SETCopyKey = .cameraFallback,
+        state: State = .liveSeeking,
+        baseState: State = .liveSeeking,
         locale: Locale,
         effectivePerformanceMode: CameraEffectivePerformanceMode = .nominal,
-        analysisStatus: CameraOverlayAnalysisStatus = .healthy
+        analysisStatus: CameraOverlayAnalysisStatus = .healthy,
+        episodeToken: CoachingEpisodeToken? = nil
     ) -> CameraOverlayUXPresentation {
         CameraOverlayUXPresentation(
-            state: .liveSeeking,
-            baseState: .liveSeeking,
-            observation: SETCopyKey.cameraFallback.localizedString(locale: locale),
+            state: state,
+            baseState: baseState,
+            observation: copy.localizedString(locale: locale),
             actionInstruction: nil,
             explanation: nil,
             supportingObservation: ecoCopy(for: effectivePerformanceMode, locale: locale),
             showsWhy: false,
             isFallback: true,
             liveHintID: nil,
+            episodeToken: episodeToken,
             targetRegion: nil,
             overlayHint: nil,
             eventID: nil,
@@ -491,6 +782,25 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
         isUsableIdentifier(liveHint.id) && isUsableIdentifier(liveHint.frameId)
     }
 
+    /// Frame-global copy may remain useful when no subject geometry exists,
+    /// but only for an admitted typed movement family. Unknown or
+    /// subject-bound hints still fail closed when spatial evidence is absent.
+    private static func isAdmittedFrameGlobalHint(_ liveHint: LiveHintPresentation) -> Bool {
+        let typedActionID = liveHint.semanticActionType?.rawValue
+            ?? liveHint.technicalActionType?.rawValue
+            ?? liveHint.actionType?.semanticActionType.rawValue
+        guard let typedActionID,
+              let actionFamily = UserMovementObserver.actionFamily(for: typedActionID),
+              actionFamily == .horizonRotation || actionFamily == .stability,
+              liveHint.subjectIdentity == nil,
+              liveHint.observedSourceRegion == nil,
+              liveHint.targetRegion == nil,
+              liveHint.overlayHint?.targetRegion == nil else {
+            return false
+        }
+        return true
+    }
+
     private static func isLinkedEvidence(
         _ projection: CameraLinkedEvidenceProjection,
         to liveHint: LiveHintPresentation
@@ -560,6 +870,58 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
         )
     }
 
+    /// The episode's baseline action remains the only source of directional
+    /// marker meaning after the current frame has published KEEP or no hint.
+    /// The target rectangle is still the coordinator's frozen preview
+    /// projection; no fresh detector geometry is admitted here.
+    private static func episodeOverlayHint(
+        for actionID: String,
+        token: CoachingEpisodeToken,
+        targetRegion: NormalizedRect?
+    ) -> OverlayHint? {
+        guard let targetRegion = safeRegion(from: targetRegion),
+              let direction = canonicalSubjectDisplacementDirection(for: actionID),
+              let overlayDirection = overlayDirection(for: direction) else {
+            return nil
+        }
+
+        return OverlayHint(
+            id: "episode-arrow-\(token.rawValue.uuidString)",
+            kind: .arrow,
+            targetRegion: targetRegion,
+            direction: overlayDirection
+        )
+    }
+
+    private static func canonicalSubjectDisplacementDirection(
+        for actionID: String
+    ) -> SemanticDirection? {
+        let actionID = actionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let semanticAction = SemanticActionType(rawValue: actionID) {
+            return semanticAction.subjectDisplacementDirection
+        }
+        return ActionTypeV1(rawValue: actionID)?.subjectDisplacementDirection
+    }
+
+    private static func overlayDirection(for direction: SemanticDirection) -> OverlayDirection? {
+        switch direction {
+        case .left: return .left
+        case .right: return .right
+        case .up: return .up
+        case .down: return .down
+        case .forward, .back, .none: return nil
+        }
+    }
+
+    private static func isActiveEpisodePhase(_ phase: CoachingEpisodePhase) -> Bool {
+        switch phase {
+        case .awaitingMovement, .collectingStableAfterFrames, .readyForVerification:
+            return true
+        case .idle, .cancelled, .expired:
+            return false
+        }
+    }
+
     private static func safeRegion(from region: NormalizedRect?) -> NormalizedRect? {
         guard let region, !region.isDegenerate else { return nil }
         return region
@@ -568,31 +930,6 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
     private static func ecoCopy(for mode: CameraEffectivePerformanceMode,
                                 locale: Locale) -> String? {
         mode == .eco ? SETCopyKey.cameraEco.localizedString(locale: locale) : nil
-    }
-
-    /// Baseline geometry is frozen by the episode owner. Directional actions
-    /// use the M2-004 subject destination; other subject-bound marks stay on
-    /// the accepted subject region. No mutable per-frame rectangle is allowed
-    /// to replace this geometry once a token exists.
-    private static func frozenTargetRegion(
-        for episodeState: CoachingEpisodeState,
-        liveHint: LiveHintPresentation
-    ) -> NormalizedRect? {
-        guard let baseline = episodeState.baseline,
-              let subjectRegion = baseline.subjectRegion else {
-            return nil
-        }
-        if let semanticAction = SemanticActionType(rawValue: baseline.actionID),
-           let targetRegion = semanticAction.subjectTargetRegion(from: subjectRegion) {
-            return targetRegion
-        }
-        if let legacyAction = ActionTypeV1(rawValue: baseline.actionID) {
-            if let targetRegion = legacyAction.subjectTargetRegion(from: subjectRegion) {
-                return targetRegion
-            }
-        }
-        guard liveHint.overlayHint?.kind == .regionHighlight else { return nil }
-        return subjectRegion
     }
 
 }

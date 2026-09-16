@@ -1,0 +1,190 @@
+{
+  "schema_id": "camera-aadb-source-spec-v1",
+  "spec_version": "1.0.0",
+  "manifest_version": "1.0.0",
+  "source_id": "aadb_official",
+  "source_kind": "aesthetic_attribute_reference",
+  "intake_tier": "research_only",
+  "research_only": true,
+  "human_gold": false,
+  "release_admissible": false,
+  "model_redistribution_cleared": false,
+  "purpose": [
+    "research-only aesthetic and composition pretraining",
+    "auxiliary aesthetic attribute calibration",
+    "composition attribute uncertainty analysis"
+  ],
+  "authority": {
+    "repository": "https://github.com/aimerykong/deepImageAestheticsAnalysis",
+    "commit": "a962a1d8c313cdbec97e51381187ffbaac469b28",
+    "commit_url": "https://github.com/aimerykong/deepImageAestheticsAnalysis/commit/a962a1d8c313cdbec97e51381187ffbaac469b28",
+    "release_readme_url": "https://raw.githubusercontent.com/aimerykong/deepImageAestheticsAnalysis/a962a1d8c313cdbec97e51381187ffbaac469b28/README.md",
+    "official_drive_folder": "https://drive.google.com/drive/folders/0BxeylfSgpk1MOVduWGxyVlJFUHM?resourcekey=0-qecf-sZVexPbF6XLU4Gq_g&usp=sharing"
+  },
+  "research_boundary": {
+    "research_only": true,
+    "human_gold": false,
+    "release_admissible": false,
+    "model_redistribution_cleared": false,
+    "label_boundary": "auxiliary_aesthetic_attributes_only",
+    "raw_media": "external_only",
+    "raw_and_derived_model_redistribution": "not_cleared",
+    "camera_coach_actions": "never_projected",
+    "camera_coach_release_evidence": "never_projected"
+  },
+  "rights": {
+    "status": "research terms and underlying image rights require separate review",
+    "redistribution": "do_not_redistribute_raw_media_or_derivatives",
+    "repository_code_license": "not treated as a license for the image archives",
+    "required_receipts": [
+      "official_source_commit",
+      "per_archive_size_and_sha256",
+      "terms_and_underlying_media_rights_review"
+    ]
+  },
+  "archives": [
+    {
+      "id": "train",
+      "filename": "datasetImages_originalSize.zip",
+      "file_id": "1Viswtzb77vqqaaICAQz9iuZ8OEYCu6-_",
+      "official_link": "https://drive.google.com/open?id=1Viswtzb77vqqaaICAQz9iuZ8OEYCu6-_",
+      "url": "https://drive.usercontent.google.com/download?id=1Viswtzb77vqqaaICAQz9iuZ8OEYCu6-_&export=download&confirm=t",
+      "observed_size_bytes": 2190275815,
+      "size_bytes": null,
+      "sha256": null,
+      "hash_status": "pending_bootstrap",
+      "hash_provenance": "Do not trust the observed size until a full official response is streamed and pinned by --bootstrap-pins."
+    },
+    {
+      "id": "test",
+      "filename": "AADB_newtest_originalSize.zip",
+      "file_id": "115qnIQ-9pl5Vt06RyFue3b6DabakATmJ",
+      "official_link": "https://drive.google.com/open?id=115qnIQ-9pl5Vt06RyFue3b6DabakATmJ",
+      "url": "https://drive.usercontent.google.com/download?id=115qnIQ-9pl5Vt06RyFue3b6DabakATmJ&export=download&confirm=t",
+      "observed_size_bytes": 221891666,
+      "size_bytes": null,
+      "sha256": null,
+      "hash_status": "pending_bootstrap",
+      "hash_provenance": "Do not trust the observed size until a full official response is streamed and pinned by --bootstrap-pins."
+    },
+    {
+      "id": "labels",
+      "filename": "imgListFiles_label.zip",
+      "file_id": "0BxeylfSgpk1MZ0hWWkoxb2hMU3c",
+      "official_link": "https://drive.google.com/open?id=0BxeylfSgpk1MZ0hWWkoxb2hMU3c",
+      "url": "https://drive.usercontent.google.com/download?id=0BxeylfSgpk1MZ0hWWkoxb2hMU3c&export=download&confirm=t",
+      "observed_size_bytes": null,
+      "size_bytes": null,
+      "sha256": null,
+      "hash_status": "pending_bootstrap",
+      "access_status": "unauthenticated_probe_returned_google_interstitial_html",
+      "hash_provenance": "No binary hash is admitted until an authenticated official archive response is streamed and inspected."
+    }
+  ],
+  "reference_archives": [
+    {
+      "id": "warp256",
+      "filename": "datasetImages_warp256.zip",
+      "file_id": "0BxeylfSgpk1MU2RsVXo3bEJWM2c",
+      "official_link": "https://drive.google.com/open?id=0BxeylfSgpk1MU2RsVXo3bEJWM2c",
+      "url": "https://drive.usercontent.google.com/download?id=0BxeylfSgpk1MU2RsVXo3bEJWM2c&export=download&confirm=t&resourcekey=0-ld4H3VhRKKiSUOklGnF1Uw",
+      "size_bytes": 138076608,
+      "sha256": "a31adc66fd47396cabcb581e66fa3e72b38814d6957b22bc3e2edab9e77126d2",
+      "image_count_observed": 9958,
+      "role": "official_reference_only; not mixed with original-size train/test admission"
+    }
+  ],
+  "metadata": [
+    {
+      "path": "AADBinfo.mat",
+      "url": "https://raw.githubusercontent.com/aimerykong/deepImageAestheticsAnalysis/a962a1d8c313cdbec97e51381187ffbaac469b28/AADBinfo.mat",
+      "size_bytes": 179433,
+      "sha256": "307e6b84666f3901ac7c56d3fc058859634517cc8f11acc0db8865ab22d4b567",
+      "git_blob_sha1": "8056556b5c7a89b778fe403c63f295eb415ffcda"
+    },
+    {
+      "path": "AADBstatistics.m",
+      "url": "https://raw.githubusercontent.com/aimerykong/deepImageAestheticsAnalysis/a962a1d8c313cdbec97e51381187ffbaac469b28/AADBstatistics.m",
+      "size_bytes": 2062,
+      "sha256": "3a3efab0e712f26c836127c286206ab5e4d5b238cd16134b81dd103bbef63f40",
+      "git_blob_sha1": "48a1fd73771c2368908a90f12906c922765759eb"
+    },
+    {
+      "path": "README.md",
+      "url": "https://raw.githubusercontent.com/aimerykong/deepImageAestheticsAnalysis/a962a1d8c313cdbec97e51381187ffbaac469b28/README.md",
+      "size_bytes": 2782,
+      "sha256": "17ead50a334644fd9ae4a8da46fa8116ab106726e7b4d8dc59793d102625e099",
+      "git_blob_sha1": "ec66ccf35d1bd0f5cd7a91851f79fe26398bcaeb"
+    }
+  ],
+  "expected_counts": {
+    "train": 8458,
+    "test": 1000,
+    "warp256_reference": 9958
+  },
+  "compact_mode": {
+    "archive_id": "warp256",
+    "matched_images": 9458,
+    "excluded_legacy_extras": 500,
+    "projection": "overall_score_only_from_AADBinfo.mat",
+    "attributes_require_archive": "imgListFiles_label.zip; no attributes are invented in compact mode",
+    "deduplication": {
+      "algorithm": "sha256_of_source_file_before_camera_source_intake",
+      "winner_order": [
+        "split (train before test)",
+        "source_id",
+        "source_record_id",
+        "source_image_name"
+      ],
+      "cross_split_duplicates": "exclude the later split; record every loser and winner in the compact receipt",
+      "name_binding": "exact warp256 basename must equal the normalized AADBinfo name; retained winner basename is bound to inventory relative_path",
+      "admitted_count": "9458 minus actual duplicate-linked exclusions"
+    }
+  },
+  "labels": {
+    "archive_role": "upstream_auxiliary_attributes_only",
+    "selected_splits": ["train", "test_new"],
+    "test_file_prefix": "imgListTestNewRegression_<Attribute>.txt",
+    "legacy_test_split_ignored": true,
+    "required_attribute_files": [
+      "Content",
+      "Object",
+      "Light",
+      "ColorHarmony",
+      "VividColor",
+      "DoF",
+      "MotionBlur",
+      "RuleOfThirds",
+      "BalacingElements",
+      "Repetition",
+      "Symmetry"
+    ],
+    "attribute_projection": {
+      "interesting_content": "Content",
+      "object_emphasis": "Object",
+      "lighting": "Light",
+      "color_harmony": "ColorHarmony",
+      "vivid_color": "VividColor",
+      "shallow_dof": "DoF",
+      "motion_blur": "MotionBlur",
+      "rule_of_thirds": "RuleOfThirds",
+      "balancing_element": "BalacingElements",
+      "repetition": "Repetition",
+      "symmetry": "Symmetry"
+    },
+    "preservation": "overall score and raw trailing rater/uncertainty fields are retained; no action or quality decision labels are inferred"
+  },
+  "outputs": {
+    "raw_manifest": "raw-manifest.jsonl",
+    "inventory": "inventory.jsonl",
+    "silver_manifest": "silver-manifest.jsonl",
+    "receipt": "receipts/aadb-source-receipt.json",
+    "compact_receipt": "receipts/aadb-compact-receipt.json",
+    "archive_staging": "removed only after successful extraction, intake, projection, and receipt"
+  },
+  "raw_manifest": {
+    "fields": ["image_id", "path"],
+    "path_root": "external AADB data root",
+    "label_boundary": "AADB scores and attributes remain auxiliary aesthetic/composition references only."
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "artifacts": [
+    {
+      "bytes": 463537,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/m4-001-fullruntime-174-drift-r1-technical-override.jsonl",
+      "sha256": "8c0f936f773ca307d9211f524f77e904f5d4344087eb048baf708fa128684582"
+    },
+    {
+      "bytes": 9082,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/ab-comparison.json",
+      "sha256": "ffaf76214d7db862d99554ac0d6b5a3708699e0dbe3bd01134d3830c9fb2bbfc"
+    },
+    {
+      "bytes": 127465,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/label-drift-report.json",
+      "sha256": "9bddbb9729cf099fb681cb740d8c21fe92c049ab18bbb555cba133b067fbb624"
+    },
+    {
+      "bytes": 15763,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/label-drift-report.md",
+      "sha256": "898cdbbfb056c7445a35bac31f98b80ff77d14ed1ace04388d038139fad559f1"
+    },
+    {
+      "bytes": 78768,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/drift-rows.jsonl",
+      "sha256": "213c0b514bbec82a7f8d88192ece4e541181065603f72f63532a472a671d5a57"
+    },
+    {
+      "bytes": 529668,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/scored/candidate_outputs.jsonl",
+      "sha256": "5c54297b0384f0f157cb3d941cc2dc34347c329cc29b867089456230ff8f7073"
+    },
+    {
+      "bytes": 158195,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/scored/case_results.jsonl",
+      "sha256": "9ad5f28560eb5c362a54fface3131b161732b19dbaebd1325876f2e992047e11"
+    },
+    {
+      "bytes": 855,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/scored/set_metrics.json",
+      "sha256": "b3950912c88098aff5d8272b5c6ac17dd6633f84cfd72461c86d5485a327a353"
+    },
+    {
+      "bytes": 64802,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/scored/bucket_metrics.json",
+      "sha256": "6b6f213b06d379850462de280bab898e22caa0a97aa8b106ecac5b78ea86df3a"
+    },
+    {
+      "bytes": 2504,
+      "path": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/scored/semantic_eval_summary.md",
+      "sha256": "3b4f24d52cc25f2427df4416328a24425ce85c7491d4db97f762d8b68d1d2ddb"
+    }
+  ],
+  "baseline_lane": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174/manifest.json",
+  "captured_at": "2026-09-12T22:38:16+03:00",
+  "claim_scope": "Simulator still-image replay over AI-first-pass labels on a dirty working tree. Not a release measurement, not physical camera evidence, not human gold.",
+  "comparison": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-technical-override/ab-comparison.json",
+  "drift_view": {
+    "edge_neutral_drift_view": "124/174 baseline, 95/174 edge-neutral (docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/label-drift-report.json)",
+    "forbidden_hit_count": 24,
+    "good_frame_overcorrection": 13,
+    "strict_drift": "94/174"
+  },
+  "edge_neutral_lane": "docs/cameraanalysis/eval/camera-baseline-v0/drift-174-calibrated-edge-neutral/manifest.json",
+  "lane_id": "camera-label-drift-174-technical-override",
+  "purpose": "Record the still-replay metrics and the explicit A/B control run for the dominant-technical-quality override of a good pause verdict, on top of the object edge-pressure calibration.",
+  "schema_version": 1,
+  "status": "measured_alignment_candidate_research_only"
+}

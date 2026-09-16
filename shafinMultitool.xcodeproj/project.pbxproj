@@ -64,6 +64,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				Multitool2Module/Models/CoreML/SETCompositionNet-Stage2-Local.mlpackage,
 				Resources/Circle.rcproject,
 				Resources/DeviceBenchmark,
 				Resources/Fixtures,
