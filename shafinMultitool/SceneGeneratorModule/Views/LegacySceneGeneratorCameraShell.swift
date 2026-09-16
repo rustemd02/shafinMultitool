@@ -226,10 +226,17 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         backgroundView.addSubview(arContainerView)
         arContainerView.clipsToBounds = true
         arContainerView.snp.makeConstraints { make in
-            make.centerY.equalToSuperview()
-            make.leadingMargin.equalToSuperview()
+            // Keep the camera and every overlay in the same visible 16:9
+            // canvas. A full-height canvas is wider than an iPad window;
+            // fitting both dimensions also supports narrower multitasking
+            // windows without moving commands outside their viewport.
+            make.centerY.equalTo(view.safeAreaLayoutGuide.snp.centerY)
+            make.leading.equalTo(view.safeAreaLayoutGuide.snp.leading)
+            // Existing controls occupy 56pt, plus their 12pt inset and gap.
+            make.trailing.lessThanOrEqualTo(view.safeAreaLayoutGuide.snp.trailing).offset(-80)
             make.width.equalTo(arContainerView.snp.height).multipliedBy(16.0 / 9.0)
-            make.height.equalToSuperview()
+            make.height.lessThanOrEqualTo(view.safeAreaLayoutGuide.snp.height)
+            make.height.equalTo(view.safeAreaLayoutGuide.snp.height).priority(.high)
         }
 
         embedARView()
@@ -436,10 +443,10 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         backgroundView.addSubview(rightControlStackView)
         rightControlStackView.snp.makeConstraints { make in
             make.width.equalTo(56)
-            make.trailing.equalToSuperview().inset(12)
-            make.centerY.equalToSuperview()
+            make.trailing.equalTo(view.safeAreaLayoutGuide.snp.trailing).inset(12)
+            make.centerY.equalTo(view.safeAreaLayoutGuide.snp.centerY).priority(.high)
             make.top.greaterThanOrEqualTo(settingsBarBackgroundView.snp.bottom).offset(12)
-            make.bottom.lessThanOrEqualToSuperview().inset(12)
+            make.bottom.lessThanOrEqualTo(view.safeAreaLayoutGuide.snp.bottom).inset(12)
         }
 
         configureRailButton(addActorButton, imageName: "plus")
@@ -469,7 +476,9 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
 
         for button in [addActorButton, previewButton, regenerateButton, hintButton, recordButton, stopButton] {
             button.snp.makeConstraints { make in
-                make.height.equalTo(48)
+                // UIStackView gives the hidden record/stop counterpart height
+                // zero. Visible controls keep their size before centering wins.
+                make.height.equalTo(48).priority(999)
             }
         }
 
@@ -645,6 +654,8 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
             viewModel.$isRecording.map { _ in () }.eraseToAnyPublisher(),
             viewModel.$isRecordingStarting.map { _ in () }.eraseToAnyPublisher(),
             viewModel.$isRecordingFinalizing.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$hasPendingRecordingSave.map { _ in () }.eraseToAnyPublisher(),
+            viewModel.$isRecordingSaveRetryInFlight.map { _ in () }.eraseToAnyPublisher(),
             viewModel.$recordingResolutionLabel.map { _ in () }.eraseToAnyPublisher(),
             viewModel.$recordingSourceFPS.map { _ in () }.eraseToAnyPublisher(),
             viewModel.$recordingSoundEnabled.map { _ in () }.eraseToAnyPublisher(),
@@ -1687,6 +1698,18 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
             items: viewModel.storyboardBeatItems,
             selectedID: selectedBeatID,
             axis: .horizontal,
+            cellAccessibility: { item in
+                (
+                    identifier: "storyboard_beat_\(item.beatID)",
+                    label: SETCopyKey.storyboardEditBeat.localizedFormat(
+                        locale: presentationLocale,
+                        arguments: [
+                            item.kindCopyKey.localizedString(locale: presentationLocale),
+                            item.index + 1
+                        ]
+                    )
+                )
+            },
             onSelect: { item in
                 selectStoryboardBeat(item)
             }
@@ -1696,16 +1719,6 @@ private struct LegacySceneGeneratorSwiftUIOverlay: View {
                 isActive: isSelected || item.beatID == activeBeatID,
                 isSelected: isSelected,
                 progress: item.beatID == activeBeatID ? progress : 0
-            )
-            .accessibilityIdentifier("storyboard_beat_\(item.beatID)")
-            .accessibilityLabel(
-                SETCopyKey.storyboardEditBeat.localizedFormat(
-                    locale: presentationLocale,
-                    arguments: [
-                        item.kindCopyKey.localizedString(locale: presentationLocale),
-                        item.index + 1
-                    ]
-                )
             )
         }
         .frame(height: 88)

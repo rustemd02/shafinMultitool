@@ -22,6 +22,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from ml.camera_coach.models import CandidateA, SETCompositionNetManifest  # noqa: E402
+from ml.camera_coach.component_supervision import checkpoint_supervision, export_metadata  # noqa: E402
 
 
 TRAINABLE_HEADS = ["issue_logits", "action_utility_logits", "continuous_target_deltas"]
@@ -132,6 +133,7 @@ def main() -> None:
 
     model, receipt, payload = load_model(args.artifact.resolve(), args.receipt.resolve())
     output_names = tuple(model.contract.output_head_names)
+    component_evidence = export_metadata(checkpoint_supervision(payload, model.contract), model.contract)
     arrays = parity_inputs()
     tensors = tuple(torch.from_numpy(value) for value in arrays)
     wrapper = ExportModel(model, output_names).eval()
@@ -159,6 +161,7 @@ def main() -> None:
             "com.setos.human_gold": "false",
             "com.setos.release_admissible": "false",
             "com.setos.trainable_heads": ",".join(TRAINABLE_HEADS),
+            "com.setos.component_evidence": json.dumps(component_evidence, sort_keys=True, separators=(",", ":")),
             "com.setos.model_contract_sha256": receipt["model_contract_sha256"],
             "com.setos.source_artifact_sha256": receipt["final_artifact"]["sha256"],
             "com.setos.preprocessing_version": model.contract.raw["preprocessing_version"],
@@ -220,6 +223,7 @@ def main() -> None:
         "input_validation": "external_required; traced Python trust-boundary guards are not embedded in the mlprogram",
         "outputs": list(output_names),
         "trainable_heads": payload["trainable_heads"],
+        "component_evidence": component_evidence,
         "untrained_outputs_present": [name for name in output_names if name not in TRAINABLE_HEADS],
         "calibration": "absent",
         "parity_report": str(parity_path.resolve()),

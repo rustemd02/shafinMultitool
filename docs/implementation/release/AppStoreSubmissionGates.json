@@ -1,15 +1,15 @@
 {
-  "claim_scope": "Repository-derived status only. No App Store Connect access, nothing submitted, and no claim that any gate is closed by this audit.",
+  "claim_scope": "Technical execution status bound to named source snapshots and actual artifacts. No App Store Connect actions. Engineering archive, simulator checks, physical checks and product acceptance are separate evidence levels; release_ready remains false.",
   "gates": [
     {
       "evidence": [
-        "Release BUILD SUCCEEDED, 0 ошибок (unsigned, generic/platform=iOS)",
-        "все production-члены компилируются в Release (исправлено в EV-REL-001)"
+        "20260916T152044616359Z-release-archive: xcodebuild archive exit 0, unsigned arm64 device archive, unchanged source fingerprint 1bf1d9290edf71ae543b58236a48205936f8fb296190a47b9f9393e1980b0e8e",
+        "Archive predates the full Camera recording/current-pixel tracking integration; its success does not qualify later source changes. Evidence root: ../setos-backend/local-data/SETOS/verification/release-execution-20260916/"
       ],
       "gate": "Стабильная законченная сборка без заглушек и скрытых зависимостей",
       "missing": [
-        "35 expectation-тестов still-replay падают",
-        "физические camera-потоки не проверены на устройстве"
+        "Свежий совместный Xcode/UI gate для записи Camera и текущей привязки объектов ещё выполняется; поворот Camera требует runtime диагностики",
+        "Camera usefulness, stable target tracking, full generated-scene flow and physical camera/media/AR acceptance remain open"
       ],
       "n": 1,
       "owner": false,
@@ -18,7 +18,8 @@
     {
       "evidence": [
         "xcodebuild Xcode 26.6",
-        "SDK ios 26.5"
+        "SDK ios 26.5",
+        "Apple Upcoming Requirements checked 2026-09-16: since 2026-04-28 submissions require Xcode 26+ and iOS/iPadOS 26 SDK; https://developer.apple.com/news/upcoming-requirements/"
       ],
       "gate": "Сборка актуальным требуемым Apple SDK",
       "missing": [],
@@ -60,12 +61,13 @@
       ],
       "gate": "Privacy Policy URL и политика внутри приложения",
       "missing": [
-        "hosted policy URL отсутствует",
-        "в приложении нет About/Settings-экрана, поэтому in-app страница ещё не подключена (нужен UI-владелец)"
+        "Hosted policy URL requires the existing host/domain configuration",
+        "In-app RU/EN privacy and notices entry is under implementation; technical work is authorized and does not wait on owner approval",
+        "Server content-retention discrepancy is being corrected before finalizing policy promises"
       ],
       "n": 5,
       "owner": true,
-      "status": "blocked"
+      "status": "partial"
     },
     {
       "evidence": [
@@ -73,20 +75,22 @@
       ],
       "gate": "Точные App Privacy answers",
       "missing": [
-        "подтверждение владельцем и ввод в App Store Connect"
+        "Reconcile the old local-only draft with configured Scene requests, installation authentication metadata and actual retention; technical reconciliation is in progress",
+        "Owner enters the qualified answers in App Store Connect after technical completion"
       ],
       "n": 6,
       "owner": true,
-      "status": "draft_delivered"
+      "status": "partial"
     },
     {
       "evidence": [
-        "DETR: Apache 2.0 указана в спецификации модели; NIMA: upstream URL и лицензия в спецификации отсутствуют (зафиксировано в манифесте baseline)"
+        "Five exact font binaries and complete OFL notices, and exact SnapKit source/MIT notice, verified against pinned upstream sources and the actual unsigned Release app",
+        "20260916T152455588085Z-archive-validator-repair: actual bundle gate correctly exits 1 with ten remaining component provenance blockers; all 11 corrupted-copy checks pass and original archive is unchanged"
       ],
       "gate": "Юридическая проверка моделей, датасетов, изображений и bundled assets",
       "missing": [
-        "провенанс и лицензия NIMA",
-        "проверка bundled assets и датасетов"
+        "Source component rows remain pending: circle-usdz, detr-segmentation-model, info-plist-localization, llama-framework, localized-resources, module-assets-catalog, nima-aesthetic-model, person-usdz, privacy-manifest, resource-assets-catalog",
+        "Complete source/weights/asset provenance or a verified replacement; a bundled notice alone is not model or dataset admission"
       ],
       "n": 7,
       "owner": true,
@@ -118,23 +122,28 @@
     },
     {
       "evidence": [
-        "target shafinMultitoolUITests существует",
-        "сертификационный рецепт scripts/run_camera_certification.sh покрывает 195 тестов"
+        "Real XCTest/UI runs retain xcresult, native exit status, source patches/tars and before/after fingerprints; failed and zero-test runs are retained",
+        "tools/release/archive_build.py creates an actual unsigned device archive with a file SHA inventory and arm64 validation; its 11 negative controls pass",
+        "Actual archive manifest SHA256 8588ddf572e12ebab85a39be23873faa8c9347ab9c3ba4820734e8cf2b57b84c; bundle validation now completes and reports the known provenance failures"
       ],
       "gate": "Настоящий UI-test target, CI-gate, clean Archive и Validate",
       "missing": [
-        "clean Archive и Validate требуют distribution-identity",
-        "CI-gate как обязательный чек не настроен"
+        "Rebuild the final source snapshot after integration and close source/bundle admission blockers",
+        "Distribution signing/export requires a matching certificate/profile; current engineering archive is unsigned",
+        "CI required-check configuration is not established"
       ],
       "n": 10,
       "owner": true,
       "status": "partial"
     },
     {
-      "evidence": [],
+      "evidence": [
+        "iPhone 13 Pro is paired, Developer Mode/DDI ready; last inspection reports passcodeRequired=true",
+        "Owned isolated iPhone 17e and iPad A16 simulators are used for UI checks; these do not qualify physical capture or tracking"
+      ],
       "gate": "Проверка на физических устройствах (первый запуск, отказы, offline, запись, нагрев, память, background)",
       "missing": [
-        "физическое устройство недоступно; симулятором не подменяется"
+        "Owner unlock and a matching development provisioning profile are needed for installation; then execute real camera/audio/AR/thermal/background procedures"
       ],
       "n": 11,
       "owner": true,
@@ -174,15 +183,17 @@
     "metadata_and_screenshots": "deferred",
     "submission": "explicit GO required"
   },
-  "report_id": "appstore-submission-gates-2026-09-12",
+  "report_id": "appstore-submission-gates-2026-09-16",
   "source_of_gates": "docs/app-store-product-plan.md раздел 13 (13 обязательных ворот перед отправкой)",
-  "status_note": "The agent-side prerequisites (ExportOptions.plist, export-compliance declaration, localized usage descriptions, Release build) are done; the remaining gates wait on the owner decisions above.",
+  "status_note": "Technical work continues under the 2026-09-16 authorization and master plan v2. The dated owner decisions are historical publishing/account constraints, not a reason to stop implementation. The archive and completed checks do not establish release readiness; current recording/tracking, privacy/retention, model quality, provenance and physical acceptance work remain open.",
+  "release_ready": false,
+  "artifact_index": "../setos-backend/local-data/SETOS/verification/release-execution-20260916/RUNNING_CHECKPOINT.md",
   "summary": {
-    "blocked_or_open": 3,
+    "blocked_or_open": 2,
     "not_started_or_na": 2,
     "owner_gated": 9,
-    "partial_or_draft": 5,
+    "partial_or_draft": 6,
     "satisfied": 3
   },
-  "utc": "2026-09-12T20:56:11+00:00"
+  "utc": "2026-09-16T15:43:00+00:00"
 }

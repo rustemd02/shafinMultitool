@@ -40,12 +40,13 @@ final class SETGeneratorProductionUITests: XCTestCase {
         // tree (label ЗАКРЫТЬ); address it by label to stay identifier-stable.
         let errorClose = app.buttons.matching(NSPredicate(format: "label == 'ЗАКРЫТЬ' OR identifier == 'generator_error_close'")).firstMatch
         if errorClose.waitForExistence(timeout: 3) {
+            assertVisibleHitTarget(errorClose)
             errorClose.tap()
-            // Let the band-dismissal animation finish before the next tap;
-            // otherwise the sheet presentation races the SwiftUI transition.
-            _ = sceneButton.waitForExistence(timeout: 2)
+            XCTAssertTrue(errorClose.waitForNonExistence(timeout: 3))
         }
 
+        assertRailControlsVisible()
+        assertVisibleHitTarget(sceneButton)
         sceneButton.tap()
         let inputTitle = app.descendants(matching: .any)["generator_input_title"]
         XCTAssertTrue(
@@ -61,6 +62,10 @@ final class SETGeneratorProductionUITests: XCTestCase {
 
         app.buttons["generator_input_cancel"].tap()
         XCTAssertTrue(sceneButton.waitForExistence(timeout: launchTimeout))
+        XCUIDevice.shared.orientation = .landscapeRight
+        assertVisibleHitTarget(sceneButton)
+        assertVisibleHitTarget(app.buttons["generator_back_button"])
+        assertRailControlsVisible()
 
         // Back returns to the library root without tearing down the shell.
         app.buttons["generator_back_button"].tap()
@@ -434,16 +439,32 @@ final class SETGeneratorProductionUITests: XCTestCase {
         launchStoryboardApp(fixture: "storyboard.result", locale: "ru")
         openLibraryAndCreateScene(named: "SET-UITest-Storyboard-RU-\(UUID().uuidString.prefix(6))")
 
+        let errorClose = app.buttons["generator_error_close"]
+        if errorClose.waitForExistence(timeout: 3) {
+            assertVisibleHitTarget(errorClose)
+            errorClose.tap()
+            XCTAssertTrue(errorClose.waitForNonExistence(timeout: 3))
+        }
+
         let trayToggle = app.buttons["storyboard_tray_toggle"]
         XCTAssertTrue(trayToggle.waitForExistence(timeout: launchTimeout))
+        let firstBeat = app.buttons["storyboard_beat_beat_1"].firstMatch
+        // Regular-width workspaces initially open the tray. Capture each
+        // named state explicitly instead of assuming the iPhone default.
+        if firstBeat.exists {
+            trayToggle.tap()
+            XCTAssertFalse(firstBeat.exists)
+        }
         attachPackage6Screenshot(named: "storyboard-result-ru-landscape-tray-collapsed")
+        assertRailControlsVisible(hasGeneratedScene: true)
 
         trayToggle.tap()
-        let firstBeat = app.descendants(matching: .any)["storyboard_beat_beat_1"]
         XCTAssertTrue(firstBeat.waitForExistence(timeout: launchTimeout))
+        assertVisibleHitTarget(trayToggle)
+        assertVisibleHitTarget(firstBeat)
         attachPackage6Screenshot(named: "storyboard-result-ru-landscape-tray-expanded")
 
-        let secondBeat = app.descendants(matching: .any)["storyboard_beat_beat_2"].firstMatch
+        let secondBeat = app.buttons["storyboard_beat_beat_2"].firstMatch
         XCTAssertTrue(secondBeat.waitForExistence(timeout: launchTimeout))
         secondBeat.tap()
         let editor = app.descendants(matching: .any)["storyboard_editor_sheet"]
@@ -459,15 +480,83 @@ final class SETGeneratorProductionUITests: XCTestCase {
 
         let trayToggle = app.buttons["storyboard_tray_toggle"]
         XCTAssertTrue(trayToggle.waitForExistence(timeout: launchTimeout))
-        trayToggle.tap()
-        let secondBeat = app.descendants(matching: .any)["storyboard_beat_beat_2"].firstMatch
+        let secondBeat = app.buttons["storyboard_beat_beat_2"].firstMatch
+        if !secondBeat.exists {
+            trayToggle.tap()
+        }
         XCTAssertTrue(secondBeat.waitForExistence(timeout: launchTimeout))
+        assertVisibleHitTarget(trayToggle)
+        assertVisibleHitTarget(secondBeat)
         secondBeat.tap()
         XCTAssertTrue(
             app.descendants(matching: .any)["storyboard_editor_sheet"].waitForExistence(timeout: launchTimeout),
             "Reduce Motion selection must still hand off to the real editor."
         )
         attachPackage6Screenshot(named: "storyboard-selection-reflow-en-landscape-reduce-motion")
+    }
+
+    private func assertRailControlsVisible(
+        hasGeneratedScene: Bool = false,
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        // Preview and regenerate are intentionally absent from an empty scene.
+        // The generated-scene fixture exercises the complete five-button rail.
+        var identifiers = ["generator_mark_object_button", "generator_hint_button", "generator_record_button"]
+        if hasGeneratedScene {
+            identifiers += ["generator_preview_button", "generator_regenerate_button"]
+        } else {
+            XCTAssertFalse(app.buttons["generator_preview_button"].exists, file: file, line: line)
+            XCTAssertFalse(app.buttons["generator_regenerate_button"].exists, file: file, line: line)
+        }
+        for identifier in identifiers {
+            let control = app.buttons[identifier]
+            XCTAssertTrue(control.waitForExistence(timeout: launchTimeout), file: file, line: line)
+            // Unsupported AR capture stays disabled in the simulator. Its
+            // button must still retain the same complete, visible geometry.
+            assertVisibleHitTarget(control, requiresHitTesting: control.isEnabled, file: file, line: line)
+        }
+    }
+
+    private func assertVisibleHitTarget(
+        _ element: XCUIElement, requiresHitTesting: Bool = true,
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        var previousFrame: CGRect?
+        var previousViewport: CGRect?
+        var lastObservation = "No visible accessibility frame"
+        let predicate = NSPredicate { [weak self] _, _ in
+            guard let self, element.exists, (!requiresHitTesting || element.isHittable) else {
+                previousFrame = nil
+                previousViewport = nil
+                return false
+            }
+            let frame = element.frame
+            let viewport = app.windows.firstMatch.frame
+            lastObservation = "frame=\(frame), viewport=\(viewport)"
+            let valid = frame.width >= 44 && frame.height >= 44
+                && frame.minX >= viewport.minX - 1 && frame.minY >= viewport.minY - 1
+                && frame.maxX <= viewport.maxX + 1 && frame.maxY <= viewport.maxY + 1
+            // Orientation updates precede UIKit's presentation transform.
+            // Require the real 44pt frame in two matching observations, not
+            // an arbitrary delay or the transient animated frame.
+            let settled = valid && previousFrame == frame && previousViewport == viewport
+            previousFrame = valid ? frame : nil
+            previousViewport = valid ? viewport : nil
+            return settled
+        }
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+        let result = XCTWaiter.wait(for: [expectation], timeout: 5)
+        if result != .completed {
+            let hierarchy = XCTAttachment(string: app.debugDescription)
+            hierarchy.name = "Scene hit-target failure: \(element.identifier)"
+            hierarchy.lifetime = .keepAlways
+            add(hierarchy)
+        }
+        XCTAssertEqual(
+            result, .completed,
+            "The command must settle inside the viewport with a hit target of at least 44pt. \(lastObservation)",
+            file: file, line: line
+        )
     }
 
     func testStoryboardFixtureValidationAndDeleteConfirmation() {

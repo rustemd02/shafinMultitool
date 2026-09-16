@@ -126,14 +126,119 @@ class DBService {
             do {
                 let store = try RecordingArtifactStore(fileManager: fileManager)
                 self.recordingArtifactStore = .success(store)
-                // M7-021: the persistence owner is the first cold-launch
-                // consumer of the shared recordings root, so pending/finalizing
-                // promotions converge here — before any workspace can observe
-                // a half-promoted take. Best-effort: classification failures
-                // are logged and leave the journal for the next launch.
-                store.performColdLaunchMaintenance()
             } catch {
                 self.recordingArtifactStore = .failure(error)
+            }
+        }
+        // Only production initialization performs launch maintenance. Tests
+        // with injected roots can invoke the same entry point explicitly.
+        if recordingArtifactStore == nil {
+            performRecordingMaintenance()
+        }
+    }
+
+    /// The persistence owner completes both halves of a journaled promotion
+    /// before a workspace opens: filesystem commit, then project reference.
+    /// This is also the explicit retry boundary for injected stores/tests.
+    func performRecordingMaintenance() {
+        persistenceQueue.sync {
+            guard case .success(let artifactStore) = recordingArtifactStore else { return }
+            do {
+                for outcome in try artifactStore.recoverPendingRecordings() {
+                    print("Recording recovery: \(outcome)")
+                }
+            } catch {
+                print("Recording recovery deferred: \(error)")
+            }
+            do {
+                let pending = try artifactStore.pendingReferenceAcknowledgements()
+                let byProject = Dictionary(grouping: pending, by: \.projectID)
+                for projectID in byProject.keys.sorted(by: { $0.uuidString < $1.uuidString }) {
+                    do {
+                        try persistRecoveredRecordingReferencesOnQueue(byProject[projectID] ?? [], store: artifactStore)
+                    } catch {
+                        // Preserve this tombstone and continue with other takes.
+                        print("Recording reference recovery deferred: \(error)")
+                    }
+                }
+            } catch {
+                print("Recording reference inventory deferred: \(error)")
+            }
+            do {
+                let candidates = try artifactStore.retentionInventory(
+                    now: Date(),
+                    pendingMaxAge: RecordingArtifactStore.defaultPendingRetentionWindow
+                )
+                _ = try artifactStore.applyRetention(removing: candidates)
+            } catch {
+                print("Recording retention deferred: \(error)")
+            }
+        }
+    }
+
+    private func persistRecoveredRecordingReferencesOnQueue(
+        _ acknowledgements: [RecordingArtifactStore.PendingReferenceAcknowledgement],
+        store: RecordingArtifactStore
+    ) throws {
+        guard let projectID = acknowledgements.first?.projectID else { return }
+        // Never mutate a live owner's snapshot or recreate a deleted project.
+        guard !projectLeases.isLeased(projectID: projectID) else { return }
+        let directory = try unifiedSceneProjectsDirectoryURL()
+        guard let projectURL = try findUnifiedProjectFileURL(id: projectID, in: directory) else { return }
+        let stored = try loadUnifiedSceneProjectFile(projectURL)
+        var recovered = stored.project
+        for acknowledgement in acknowledgements {
+            let reference = acknowledgement.reference
+            guard acknowledgement.projectID == projectID,
+                  let url = store.resolve(reference, ownedBy: projectID),
+                  isDecodableMovieOnQueue(at: url) else { continue }
+            let existing = stored.project.recordingReferences.filter { $0.recordingID == reference.recordingID }
+            if let persisted = existing.first {
+                guard existing.count == 1, persisted.relativePath == reference.relativePath else {
+                    throw PendingRecordingJournalError.journalCorrupt(recordingID: reference.recordingID)
+                }
+                // An already persisted matching reference is independent of the
+                // journal's old generation and needs no project mutation.
+                try store.acknowledgePersistedReference(persisted, projectID: projectID)
+                continue
+            }
+            guard let expected = acknowledgement.expectedProjectUpdatedAt,
+                  expected == stored.project.updatedAt else {
+                // Legacy/unbound intent or an intervening edit/removal cannot
+                // authorize silent reattachment. Preserve the recoverable file
+                // and tombstone for an explicit owner retry.
+                continue
+            }
+            if !recovered.recordingReferences.contains(where: { $0.recordingID == reference.recordingID }) {
+                recovered.recordingReferences.append(reference)
+            }
+        }
+        guard recovered.recordingReferences != stored.project.recordingReferences else { return }
+        // All eligible takes bound to this same baseline commit together, so
+        // our own first recovery save cannot invalidate its sibling takes.
+        recovered.updatedAt = Date()
+        let archivedWorldMap = try preservedWorldMapDataOnQueue(stored: stored, directory: directory)
+        let data = try JSONEncoder().encode(
+            UnifiedSceneProjectFile(project: recovered, archivedWorldMap: archivedWorldMap)
+        )
+        // Merge only the recording into the latest stored aggregate on the
+        // existing queue. Do not replay a stale Camera/AR project snapshot.
+        try saveUnifiedSceneProjectOnQueue(
+            encoded: data,
+            project: recovered,
+            expectedUpdatedAt: stored.project.updatedAt
+        )
+    }
+
+    private func acknowledgeSavedRecordingReferencesOnQueue(_ project: UnifiedSceneProject) {
+        guard case .success(let artifactStore) = recordingArtifactStore else { return }
+        for reference in project.recordingReferences {
+            do {
+                try artifactStore.acknowledgePersistedReference(reference, projectID: project.id)
+            } catch {
+                // The JSON save already committed. A cleanup error must not
+                // report it as failed or remove the retryable tombstone.
+                print("Recording reference acknowledgement deferred: \(error)")
             }
         }
     }
@@ -342,13 +447,19 @@ class DBService {
                 }
 
                 let stored = try loadUnifiedSceneProjectFile(projectURL)
-                let mapData = try? preservedWorldMapDataOnQueue(stored: stored, directory: directory)
+                let mapData = try preservedWorldMapDataOnQueue(stored: stored, directory: directory)
                 let worldMap: ARWorldMap?
                 if let mapData {
-                    worldMap = try? NSKeyedUnarchiver.unarchivedObject(
+                    // A missing optional map is valid, but existing map bytes
+                    // must decode before the router can restore the workspace.
+                    // Otherwise opening silently discards the saved AR frame.
+                    guard let decodedMap = try NSKeyedUnarchiver.unarchivedObject(
                         ofClass: ARWorldMap.self,
                         from: mapData
-                    )
+                    ) else {
+                        return .failure(.persistence)
+                    }
+                    worldMap = decodedMap
                 } else {
                     worldMap = nil
                 }
@@ -572,6 +683,11 @@ class DBService {
 
         try createUnifiedSceneProjectsDirectory()
         try projectData.write(to: projectURL, options: [.atomic])
+
+        // Shared Camera + AR commit boundary. Conflict/encoding/write failures
+        // above never acknowledge; successful saves acknowledge only references
+        // actually included in the authoritative aggregate.
+        acknowledgeSavedRecordingReferencesOnQueue(project)
 
         let mapURL = directory.appendingPathComponent(worldMapFilename(for: project.id))
         try? fileManager.removeItem(at: mapURL)

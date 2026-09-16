@@ -23,6 +23,8 @@ final class SceneBundlePipelineTests: XCTestCase {
         private(set) var generatePlanAsyncCallCount = 0
         private(set) var generateEventTableCallCount = 0
         private(set) var generateEventTableAsyncCallCount = 0
+        var patchResult: SceneV9PatchProviderResult?
+        private(set) var patchCallCount = 0
 
         init(
             result: ScenePlanProviderResult?,
@@ -90,6 +92,15 @@ final class SceneBundlePipelineTests: XCTestCase {
                 eventTable: service.buildEventTable(from: result.plan, slotCatalog: slotCatalog),
                 reasonCodes: result.reasonCodes + ["test.stub_event_table_from_plan"]
             )
+        }
+
+        func generateEventPatchResultAsync(
+            description: String, markedObjects: [MarkedObject], anchors: SourceAnchorBundle,
+            state: SceneChunkState?, slotCatalog: SceneV9SlotCatalog,
+            eventTable: SceneV9EventTable, verifierIssues: [String]
+        ) async -> SceneV9PatchProviderResult? {
+            patchCallCount += 1
+            return patchResult
         }
     }
 
@@ -2911,12 +2922,14 @@ final class SceneBundlePipelineTests: XCTestCase {
             }
         }
         defaults.set("v9_full", forKey: modeKey)
+        let eventOrigin = fixtureEventContributor()
 
         let provider = StubLocalProvider(result: simpleProviderResult()) { _, _, _, _, slotCatalog in
             SceneV9EventProviderResult(
                 slotCatalog: slotCatalog,
                 eventTable: SceneV9EventTable(contractVersion: "sg_v9_event_table_v1", rows: []),
-                reasonCodes: ["test_event_provider"]
+                reasonCodes: ["test_event_provider"],
+                generationContributors: [eventOrigin]
             )
         }
         let pipeline = SceneBundlePipeline(
@@ -2926,7 +2939,7 @@ final class SceneBundlePipelineTests: XCTestCase {
             planCompiler: ScenePlanCompiler()
         )
 
-        _ = await pipeline.parseAsync(
+        let result = await pipeline.parseAsync(
             description: "Марина стоит у стола.",
             markedObjects: [],
             mode: .full,
@@ -2952,6 +2965,10 @@ final class SceneBundlePipelineTests: XCTestCase {
         XCTAssertEqual(provider.generatePlanAsyncCallCount, 0)
         XCTAssertEqual(provider.generatePlanCallCount, 0)
         XCTAssertEqual(provider.generateEventTableAsyncCallCount, 1)
+        let origins = result.sceneChunks.compactMap(\.generationProvenance).flatMap(\.contributors)
+        XCTAssertTrue(origins.contains(eventOrigin))
+        XCTAssertFalse(result.sceneChunks.isEmpty)
+        XCTAssertFalse(result.sceneChunks.contains(where: \.usedFallbackPlanner))
     }
 
     @MainActor
@@ -2985,6 +3002,7 @@ final class SceneBundlePipelineTests: XCTestCase {
     }
 
     func testV9FullBudgetKeepsSuccessfulProviderResultAndEmitsReasonCode() async throws {
+        let eventOrigin = fixtureEventContributor()
         let modeKey = "scene_generator_v9_runtime_mode"
         let budgetKey = "scene_generator_v9_chunk_budget_ms"
         let defaults = UserDefaults.standard
@@ -3047,7 +3065,8 @@ final class SceneBundlePipelineTests: XCTestCase {
                         ]
                     ),
                     patchOps: nil,
-                    reasonCodes: ["v9.event_provider_test_payload"]
+                    reasonCodes: ["v9.event_provider_test_payload"],
+                    generationContributors: [eventOrigin]
                 )
             }
         )
@@ -3094,6 +3113,100 @@ final class SceneBundlePipelineTests: XCTestCase {
         let walkActions = script.actions.filter { $0.type == .walk }
         XCTAssertEqual(walkActions.count, 2)
         XCTAssertTrue(reasons.contains("provider:v9.event_provider_test_payload"))
+        XCTAssertTrue(result.sceneChunks.compactMap(\.generationProvenance).flatMap(\.contributors).contains(eventOrigin))
+    }
+
+    func testV9ProvenanceIncludesOnlyAcceptedPatchThatChangedOutput() async throws {
+        let defaults = UserDefaults.standard
+        let settings: [String: Any] = [
+            "scene_generator_v9_runtime_mode": "v9_full",
+            "scene_generator_v9_patch_retry_enabled": true,
+            "scene_generator_v9_chunk_budget_ms": 5_000.0
+        ]
+        let previous: [String: Any?] = Dictionary(
+            uniqueKeysWithValues: settings.keys.map { ($0, defaults.object(forKey: $0)) }
+        )
+        for (key, value) in settings { defaults.set(value, forKey: key) }
+        defer {
+            for key in settings.keys {
+                if let value = previous[key] ?? nil { defaults.set(value, forKey: key) }
+                else { defaults.removeObject(forKey: key) }
+            }
+        }
+
+        let eventOrigin = fixtureEventContributor()
+        let patchOrigin = SceneGenerationContributor.localModel(SceneLocalGenerationReceipt(
+            stage: .patchOps, artifact: nil,
+            promptSHA256: String(repeating: "c", count: 64),
+            grammarSHA256: nil, grammarApplied: false, maximumTokens: 32,
+            temperature: 0.05, samplingProfile: "fixture-patch-only"
+        ))
+        for (field, value, shouldRecord) in [
+            ("sourceSpan", "Марина стоит.", false), // accepted no-op
+            ("sourceSpan", "Source changed by accepted patch", true),
+            ("actorSlot", "unknown_actor", false) // worse verifier result
+        ] {
+            let provider = StubLocalProvider(result: nil) { _, _, _, _, slots in
+                guard let actorSlot = slots.actorSlots.first?.slotID else {
+                    XCTFail("The fallback must create a real actor slot before event generation")
+                    return nil
+                }
+                return SceneV9EventProviderResult(
+                    slotCatalog: slots,
+                    eventTable: SceneV9EventTable(contractVersion: "sg_v9_event_table_v1", rows: [
+                        .init(
+                            rowID: "row_1", beatSlot: "invalid_beat",
+                            actorSlot: actorSlot, actionType: .stand,
+                            targetSlot: nil, holdingObjectSlot: nil, dialogueText: nil,
+                            describedActionText: nil, sourceSpan: "Марина стоит.", confidence: 0.9
+                        )
+                    ]),
+                    generationContributors: [eventOrigin]
+                )
+            }
+            provider.patchResult = SceneV9PatchProviderResult(
+                patchOps: SceneV9PatchOps(contractVersion: "sg_v9_patch_ops_v1", ops: [
+                    .init(op: .replace, rowID: "row_1", field: field, value: value)
+                ]),
+                generationContributors: [patchOrigin]
+            )
+            let pipeline = SceneBundlePipeline(
+                anchorExtractor: SceneAnchorExtractor(), metadataExtractor: SceneMetadataExtractor(),
+                localProvider: provider, planCompiler: ScenePlanCompiler()
+            )
+            let output = await pipeline.parseAsync(
+                description: "Марина стоит.", markedObjects: [], mode: .full,
+                previousState: nil as ScriptDocumentState?
+            ) { text, _, _ in
+                ParsingResult(
+                    script: SceneScript(
+                        actors: [.init(id: "actor_1", type: .human, name: "Марина")], objects: [],
+                        beats: [.init(id: "beat_1", actions: [.init(id: "action_1", actorId: "actor_1", type: .stand)])],
+                        spatialRelations: [], originalDescription: text
+                    ),
+                    diagnostics: .empty,
+                    generationProvenance: .direct(
+                        sourceText: text, contributors: [.deterministicRules(componentVersion: "fixture-base")]
+                    )
+                )
+            }
+            XCTAssertEqual(provider.patchCallCount, 1, "The patch must actually run for \(field)=\(value)")
+            XCTAssertFalse(output.sceneChunks.isEmpty)
+            let origins = output.sceneChunks.compactMap(\.generationProvenance).flatMap(\.contributors)
+            XCTAssertTrue(origins.contains(eventOrigin))
+            XCTAssertEqual(origins.contains(patchOrigin), shouldRecord, "Only a changed, accepted output owns patch identity")
+        }
+    }
+
+    private func fixtureEventContributor() -> SceneGenerationContributor {
+        .localModel(SceneLocalGenerationReceipt(
+            stage: .eventTable,
+            artifact: SceneLocalModelArtifact(filename: "fixture.gguf", sha256: String(repeating: "f", count: 64), byteCount: 12),
+            promptSHA256: String(repeating: "a", count: 64),
+            grammarSHA256: String(repeating: "b", count: 64),
+            grammarApplied: true, maximumTokens: 64, temperature: 0.05,
+            samplingProfile: "fixture-only"
+        ))
     }
 
     func testV9FixableVerifierIssuePolicy() {
@@ -3438,13 +3551,13 @@ final class SceneBundlePipelineTests: XCTestCase {
     }
 
     @MainActor
-    func testStoryboardActorDragCommitChangesOnlySelectedBeatPoints() throws {
+    func testStoryboardActorDragCommitChangesOnlySelectedBeatPoints() async throws {
         let viewModel = makeStoryboardViewModel()
         viewModel.openStoryboardEditor(for: "beat_3")
         let oldActor = try XCTUnwrap(viewModel.plannedScene?.placedActors.first { $0.actorId == "actor_2" })
         let newPosition = Position3D(x: 1.35, y: 0, z: -0.75)
 
-        let committed = viewModel.commitStoryboardActorDrag(actorID: "actor_2", beatID: "beat_3", to: newPosition)
+        let committed = await viewModel.commitStoryboardActorDrag(actorID: "actor_2", beatID: "beat_3", to: newPosition)
 
         XCTAssertTrue(committed)
         let updatedActor = try XCTUnwrap(viewModel.plannedScene?.placedActors.first { $0.actorId == "actor_2" })
@@ -3460,7 +3573,7 @@ final class SceneBundlePipelineTests: XCTestCase {
     }
 
     @MainActor
-    func testStoryboardActorTrackDragWithoutActiveBeatMovesWholeActorPath() throws {
+    func testStoryboardActorTrackDragWithoutActiveBeatMovesWholeActorPath() async throws {
         let viewModel = makeStoryboardViewModel()
         let oldScene = try XCTUnwrap(viewModel.plannedScene)
         let oldActor = try XCTUnwrap(oldScene.placedActors.first { $0.actorId == "actor_2" })
@@ -3471,7 +3584,7 @@ final class SceneBundlePipelineTests: XCTestCase {
             z: oldActor.initialPosition.z - 0.25
         )
 
-        let committed = viewModel.commitStoryboardActorTrackDrag(
+        let committed = await viewModel.commitStoryboardActorTrackDrag(
             actorID: "actor_2",
             from: oldActor.initialPosition.simdVector,
             to: newPosition
@@ -3494,10 +3607,10 @@ final class SceneBundlePipelineTests: XCTestCase {
     }
 
     @MainActor
-    func testStoryboardActorDragRequiresActiveBeatAndBeatParticipation() throws {
+    func testStoryboardActorDragRequiresActiveBeatAndBeatParticipation() async throws {
         let viewModel = makeStoryboardViewModel()
         let oldScene = viewModel.plannedScene
-        let rejectedWithoutSheet = viewModel.commitStoryboardActorDrag(
+        let rejectedWithoutSheet = await viewModel.commitStoryboardActorDrag(
             actorID: "actor_2",
             beatID: "beat_3",
             to: Position3D(x: 2, y: 0, z: 2)
@@ -3533,7 +3646,7 @@ final class SceneBundlePipelineTests: XCTestCase {
         )
         viewModel.openStoryboardEditor(for: "beat_empty_stand")
         let sceneBeforeEmptyBeatDrag = viewModel.plannedScene
-        let rejectedWithoutBeatPoint = viewModel.commitStoryboardActorDrag(
+        let rejectedWithoutBeatPoint = await viewModel.commitStoryboardActorDrag(
             actorID: "actor_1",
             beatID: "beat_empty_stand",
             to: Position3D(x: 3, y: 0, z: 3)

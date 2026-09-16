@@ -52,7 +52,7 @@ protocol RecordingMicrophonePermissionChecking: Sendable {
 struct SystemMicrophonePermissionChecker: RecordingMicrophonePermissionChecking {
     func microphoneAvailable() async -> Bool {
         let permission = AVAudioApplication.shared.recordPermission
-        return permission == .granted || permission == .undetermined
+        return permission == .granted
     }
 }
 
@@ -71,8 +71,16 @@ protocol RecordingAudioSessionChecking: Sendable {
 /// Production check against the serialized coordinator: an interrupted or
 /// missing lease state must not host a new sound-required take.
 struct CoordinatorAudioSessionChecker: RecordingAudioSessionChecking {
+    let coordinator: AudioSessionCoordinator
+
+    init(coordinator: AudioSessionCoordinator = .shared) {
+        self.coordinator = coordinator
+    }
+
     func audioSessionAvailable() async -> Bool {
-        await AudioSessionCoordinator.shared.state != .interrupted
+        guard let lease = await coordinator.currentLease,
+              lease.purpose == .recording else { return false }
+        return await coordinator.ownsActiveLease(lease)
     }
 }
 

@@ -95,6 +95,12 @@ final class RecordingArtifactStore: @unchecked Sendable {
 
     private let fileManager: FileManager
 
+    // DBService and capture owners can hold different store instances over
+    // the same root. Serialize promotion/acknowledgement and Pending deletion
+    // in this process; a per-instance lock would leave that race open. These
+    // synchronous filesystem operations never run in the per-frame path.
+    private static let artifactMutationLock = NSRecursiveLock()
+
 #if DEBUG
     /// Fault injection is compiled only for the focused persistence tests. It
     /// is deliberately owned by the artifact boundary so tests can exercise a
@@ -108,6 +114,8 @@ final class RecordingArtifactStore: @unchecked Sendable {
         case beforeJournalWrite
         case afterJournalWrite
         case afterRename
+        case afterPromotionMarked
+        case beforeJournalRemoval
         case afterJournalRemoval
     }
 
@@ -249,13 +257,25 @@ final class RecordingArtifactStore: @unchecked Sendable {
 
     func makePendingURL() throws -> URL {
         while true {
-            let candidate = pendingDirectoryURL
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension("mov")
-            if !fileManager.fileExists(atPath: candidate.path) {
-                return candidate
+            let recordingID = UUID()
+            do {
+                return try makePendingURL(recordingID: recordingID)
+            } catch RecordingArtifactStoreError.destinationConflict {
+                continue
             }
         }
+    }
+
+    /// New callers use the same identity for the Pending basename and writer
+    /// configuration. Recovery still supports older, differently named files.
+    func makePendingURL(recordingID: UUID) throws -> URL {
+        let candidate = pendingDirectoryURL
+            .appendingPathComponent(recordingID.uuidString)
+            .appendingPathExtension("mov")
+        guard fileType(at: candidate) == nil else {
+            throw RecordingArtifactStoreError.destinationConflict
+        }
+        return candidate
     }
 
     /// M7-017: free-space check against the conservative budget model. The
@@ -305,13 +325,17 @@ final class RecordingArtifactStore: @unchecked Sendable {
     /// no existing destination is ever overwritten.
     ///
     /// M7-019/M7-020: the move is journaled atomically BEFORE the rename and
-    /// the record is removed only after the move committed, so every crash
+    /// the record remains until DBService acknowledges its persisted reference,
+    /// so every crash
     /// point converges on recovery to one valid reference or one recoverable
     /// pending state — never a duplicate reference or an orphan file.
     func promoteFinalizedArtifact(
         _ artifact: RecordingArtifact,
-        projectID: UUID
+        projectID: UUID,
+        expectedProjectUpdatedAt: Date? = nil
     ) throws -> SceneRecordingReference {
+        Self.artifactMutationLock.lock()
+        defer { Self.artifactMutationLock.unlock() }
         let reference = SceneRecordingReference(
             recordingID: artifact.id.rawValue,
             relativePath: relativePath(for: artifact.id.rawValue, projectID: projectID),
@@ -337,7 +361,8 @@ final class RecordingArtifactStore: @unchecked Sendable {
             recordingID: artifact.id.rawValue,
             projectID: projectID,
             sourceName: sourceName,
-            destinationRelativePath: reference.relativePath
+            destinationRelativePath: reference.relativePath,
+            expectedProjectUpdatedAt: expectedProjectUpdatedAt
         )
 
         let destinationName = "\(artifact.id.rawValue.uuidString).mov"
@@ -441,9 +466,8 @@ final class RecordingArtifactStore: @unchecked Sendable {
             throw RecordingArtifactStoreError.fileSystemFailure
         }
 
-        // The move committed; the journal record is the crash-recovery
-        // tombstone and must be removed only now (`.afterRename` fault point
-        // lives inside the finish helper).
+        // The move committed. Keep its tombstone until the project reference
+        // is durable (`.afterRename` lives inside the finish helper).
         try finishPromotionJournalEntry(recordingID: artifact.id.rawValue)
         return reference
     }
@@ -498,8 +522,8 @@ final class RecordingArtifactStore: @unchecked Sendable {
     enum RecordingRecoveryOutcome: Equatable, Sendable {
         /// The promotion was resumable and completed now.
         case completed(SceneRecordingReference)
-        /// The destination already holds this take (crash after commit); the
-        /// journal tombstone was removed.
+        /// The destination already holds this take (crash after commit); its
+        /// tombstone still awaits the project's durable reference acknowledgement.
         case alreadyPromoted(recordingID: UUID)
         /// The journal record is undecodable; surfaced for user-honest
         /// reporting, never silently deleted.
@@ -509,6 +533,8 @@ final class RecordingArtifactStore: @unchecked Sendable {
         /// The retry budget is exhausted or the record is already failed; the
         /// pending file (if any) is preserved for user-visible recovery.
         case failedEntry(recordingID: UUID)
+        /// A recoverable filesystem/identity failure must not block later records.
+        case deferred(recordingID: UUID)
     }
 
     /// M7-021: classifies and converges every journal record after a cold
@@ -521,6 +547,8 @@ final class RecordingArtifactStore: @unchecked Sendable {
         maxRetryCount: Int = PendingRecordingJournalEntry.maxRetryCount,
         mediaMetadata: (@Sendable (URL) -> (duration: TimeInterval?, hasAudio: Bool))? = AppleRecordingMediaMetadataProbe.probe
     ) throws -> [RecordingRecoveryOutcome] {
+        Self.artifactMutationLock.lock()
+        defer { Self.artifactMutationLock.unlock() }
         var outcomes: [RecordingRecoveryOutcome] = []
 
         for result in try journal.allEntries() {
@@ -531,11 +559,15 @@ final class RecordingArtifactStore: @unchecked Sendable {
             case let .failure(.fileSystemFailure):
                 continue
             case let .success(entry):
-                outcomes.append(try recoverEntry(
-                    entry,
-                    maxRetryCount: maxRetryCount,
-                    mediaMetadata: mediaMetadata
-                ))
+                do {
+                    outcomes.append(try recoverEntry(
+                        entry,
+                        maxRetryCount: maxRetryCount,
+                        mediaMetadata: mediaMetadata
+                    ))
+                } catch {
+                    outcomes.append(.deferred(recordingID: entry.recordingID))
+                }
             }
         }
         return outcomes
@@ -546,23 +578,27 @@ final class RecordingArtifactStore: @unchecked Sendable {
         maxRetryCount: Int,
         mediaMetadata: (@Sendable (URL) -> (duration: TimeInterval?, hasAudio: Bool))?
     ) throws -> RecordingRecoveryOutcome {
+        let sourceName = try validatedPendingSourceName(for: entry)
         guard entry.state != .failed else {
             return .failedEntry(recordingID: entry.recordingID)
         }
 
         let projectID = entry.projectID
-        let destinationURL = projectsDirectoryURL
-            .appendingPathComponent(projectID.uuidString, isDirectory: true)
-            .appendingPathComponent("\(entry.recordingID.uuidString).mov")
-        let destinationInformation = try? destinationURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-        let destinationIsRegular = destinationInformation?.isRegularFile == true
+        let reference = SceneRecordingReference(
+            recordingID: entry.recordingID,
+            relativePath: entry.destinationRelativePath
+        )
 
         // The committed-destination case: the promotion crashed after the
         // move (or the record outlived a completed take). Converge by
-        // removing the tombstone and reporting once.
-        if destinationIsRegular {
-            try journal.remove(recordingID: entry.recordingID)
+        // retaining the tombstone until the project reference is saved.
+        if resolve(reference, ownedBy: projectID) != nil {
+            try journal.record(entry.updating(state: .promoted, at: Date()))
             return .alreadyPromoted(recordingID: entry.recordingID)
+        }
+        let destinationURL = applicationSupportDirectoryURL.appendingPathComponent(entry.destinationRelativePath)
+        if fileType(at: destinationURL) != nil {
+            throw RecordingArtifactStoreError.destinationConflict
         }
         if entry.state == .promoted {
             // A promoted record without a destination means the bytes are
@@ -571,11 +607,14 @@ final class RecordingArtifactStore: @unchecked Sendable {
             return .missingArtifact(recordingID: entry.recordingID)
         }
 
-        let sourceURL = applicationSupportDirectoryURL
-            .appendingPathComponent(entry.sourceTempPath)
-        let sourceInformation = try? sourceURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-        let sourceIsRegular = sourceInformation?.isRegularFile == true
-        guard sourceIsRegular else {
+        let sourceURL = pendingDirectoryURL.appendingPathComponent(sourceName)
+        guard !containsSymlink(in: sourceURL, relativeTo: recordingsDirectoryURL) else {
+            throw RecordingArtifactStoreError.pendingSourceSymlink
+        }
+        guard isRegular(sourceURL) else {
+            if fileType(at: sourceURL) != nil {
+                throw RecordingArtifactStoreError.pendingSourceNotRegular
+            }
             // Neither bytes are reachable: nothing to recover.
             try journal.remove(recordingID: entry.recordingID)
             return .missingArtifact(recordingID: entry.recordingID)
@@ -601,13 +640,79 @@ final class RecordingArtifactStore: @unchecked Sendable {
             hasAudio: metadata?.hasAudio ?? false
         )
         do {
-            let reference = try promoteFinalizedArtifact(artifact, projectID: projectID)
+            let reference = try promoteFinalizedArtifact(
+                artifact,
+                projectID: projectID,
+                expectedProjectUpdatedAt: entry.expectedProjectUpdatedAt
+            )
             return .completed(reference)
         } catch {
             // The promotion failed again; the record keeps its incremented
             // retry count and the pending file is preserved.
             throw error
         }
+    }
+
+    struct PendingReferenceAcknowledgement: Equatable, Sendable {
+        let projectID: UUID
+        let reference: SceneRecordingReference
+        let expectedProjectUpdatedAt: Date?
+    }
+
+    /// Enumerates only journaled committed moves, never all project media.
+    /// Probing the destination restores metadata even after a rename crash.
+    func pendingReferenceAcknowledgements(
+        mediaMetadata: (@Sendable (URL) -> (duration: TimeInterval?, hasAudio: Bool))? = AppleRecordingMediaMetadataProbe.probe
+    ) throws -> [PendingReferenceAcknowledgement] {
+        Self.artifactMutationLock.lock()
+        defer { Self.artifactMutationLock.unlock() }
+        var acknowledgements: [PendingReferenceAcknowledgement] = []
+        for result in try journal.allEntries() {
+            guard case let .success(entry) = result, entry.state == .promoted,
+                  (try? validatedPendingSourceName(for: entry)) != nil else { continue }
+            let locator = SceneRecordingReference(
+                recordingID: entry.recordingID,
+                relativePath: entry.destinationRelativePath
+            )
+            guard let url = resolve(locator, ownedBy: entry.projectID) else { continue }
+            let metadata = mediaMetadata?(url)
+            acknowledgements.append(PendingReferenceAcknowledgement(
+                projectID: entry.projectID,
+                reference: SceneRecordingReference(
+                    recordingID: entry.recordingID,
+                    relativePath: entry.destinationRelativePath,
+                    duration: metadata?.duration,
+                    hasAudio: metadata?.hasAudio ?? false
+                ),
+                expectedProjectUpdatedAt: entry.expectedProjectUpdatedAt
+            ))
+        }
+        return acknowledgements
+    }
+
+    /// Called only after DBService has saved/read the authoritative project
+    /// reference. A failed acknowledgement is retryable; it never undoes a save.
+    func acknowledgePersistedReference(
+        _ reference: SceneRecordingReference,
+        projectID: UUID
+    ) throws {
+        Self.artifactMutationLock.lock()
+        defer { Self.artifactMutationLock.unlock() }
+        guard let entry = try journal.entry(for: reference.recordingID) else { return }
+        _ = try validatedPendingSourceName(for: entry)
+        guard entry.state == .promoted,
+              entry.projectID == projectID,
+              entry.destinationRelativePath == reference.relativePath,
+              resolve(reference, ownedBy: projectID) != nil else {
+            throw PendingRecordingJournalError.journalCorrupt(recordingID: reference.recordingID)
+        }
+#if DEBUG
+        try consumePromotionFault(.beforeJournalRemoval)
+#endif
+        try journal.remove(recordingID: reference.recordingID)
+#if DEBUG
+        try consumePromotionFault(.afterJournalRemoval)
+#endif
     }
 
     // MARK: - M7-023 retention policy
@@ -633,6 +738,9 @@ final class RecordingArtifactStore: @unchecked Sendable {
     /// are proposed. The caller deletes via ``applyRetention``.
     func retentionInventory(now: Date,
                             pendingMaxAge: TimeInterval) throws -> [RecordingRetentionCandidate] {
+        Self.artifactMutationLock.lock()
+        defer { Self.artifactMutationLock.unlock() }
+        let journalBySource = try validatedJournalByPendingSource()
         let pendingFD = try openOptionalDirectory(at: pendingDirectoryURL.path)
         guard let pendingFD else { return [] }
         defer { close(pendingFD) }
@@ -642,7 +750,7 @@ final class RecordingArtifactStore: @unchecked Sendable {
             guard isRegular(entry.information) else { continue }
             guard let recordingID = recordingIDOfPendingName(entry.name) else { continue }
 
-            let journalRecord = try journal.entry(for: recordingID)
+            let journalRecord = journalBySource[entry.name]
             if let journalRecord, journalRecord.state != .failed {
                 // A live promotion intent is never retention-deleted.
                 continue
@@ -667,13 +775,17 @@ final class RecordingArtifactStore: @unchecked Sendable {
     /// recording IDs actually removed.
     @discardableResult
     func applyRetention(removing candidates: [RecordingRetentionCandidate]) throws -> [UUID] {
+        Self.artifactMutationLock.lock()
+        defer { Self.artifactMutationLock.unlock() }
+        // Resolve ownership by source path, including old basename != ID files.
+        let journalBySource = try validatedJournalByPendingSource()
         let pendingFD = try openDirectory(at: pendingDirectoryURL.path)
         defer { close(pendingFD) }
 
         var removed: [UUID] = []
         for candidate in candidates {
-            guard isInside(candidate.url.standardizedFileURL,
-                           root: pendingDirectoryURL.standardizedFileURL),
+            guard candidate.url.standardizedFileURL.deletingLastPathComponent()
+                    == pendingDirectoryURL.standardizedFileURL,
                   let name = candidate.url.pathComponents.last,
                   recordingIDOfPendingName(name) == candidate.recordingID else {
                 continue
@@ -682,8 +794,14 @@ final class RecordingArtifactStore: @unchecked Sendable {
                   isRegular(information) else {
                 continue
             }
-            if let journalRecord = try journal.entry(for: candidate.recordingID),
+            let journalRecord = journalBySource[name]
+            if let journalRecord,
                journalRecord.state != .failed {
+                continue
+            }
+            // A stale/forged reason may not unlink a failed entry as an orphan.
+            guard (journalRecord == nil && candidate.reason == .expiredPending)
+                || (journalRecord?.state == .failed && candidate.reason == .expiredFailedEntry) else {
                 continue
             }
 
@@ -694,8 +812,8 @@ final class RecordingArtifactStore: @unchecked Sendable {
                 if errno == ENOENT { continue }
                 throw RecordingArtifactStoreError.fileSystemFailure
             }
-            if candidate.reason == .expiredFailedEntry {
-                try journal.remove(recordingID: candidate.recordingID)
+            if let journalRecord {
+                try journal.remove(recordingID: journalRecord.recordingID)
             }
             removed.append(candidate.recordingID)
         }
@@ -726,6 +844,9 @@ final class RecordingArtifactStore: @unchecked Sendable {
     /// skipped with its reason. Directories are never traversed and symlinks
     /// are never followed (fstatat AT_SYMLINK_NOFOLLOW).
     func orphanInventory() throws -> [RecordingOrphanCandidate] {
+        Self.artifactMutationLock.lock()
+        defer { Self.artifactMutationLock.unlock() }
+        let journalBySource = try validatedJournalByPendingSource()
         let pendingFD = try openOptionalDirectory(at: pendingDirectoryURL.path)
         guard let pendingFD else { return [] }
         defer { close(pendingFD) }
@@ -754,7 +875,7 @@ final class RecordingArtifactStore: @unchecked Sendable {
                 continue
             }
             if isRegular(entry.information) {
-                if try journal.entry(for: recordingID) != nil {
+                if journalBySource[entry.name] != nil {
                     inventory.append(RecordingOrphanCandidate(
                         name: entry.name, recordingID: recordingID,
                         classification: .skipped(reason: "journalReference")
@@ -781,6 +902,9 @@ final class RecordingArtifactStore: @unchecked Sendable {
     /// because names come from readdir and unlinks are dirfd-relative.
     @discardableResult
     func removeOrphans(_ inventory: [RecordingOrphanCandidate]) throws -> [UUID] {
+        Self.artifactMutationLock.lock()
+        defer { Self.artifactMutationLock.unlock() }
+        let journalBySource = try validatedJournalByPendingSource()
         let pendingFD = try openDirectory(at: pendingDirectoryURL.path)
         defer { close(pendingFD) }
 
@@ -790,7 +914,7 @@ final class RecordingArtifactStore: @unchecked Sendable {
                   recordingIDOfPendingName(candidate.name) == recordingID else { continue }
             guard let information = statEntry(at: pendingFD, name: candidate.name),
                   isRegular(information) else { continue }
-            if try journal.entry(for: recordingID) != nil { continue }
+            if journalBySource[candidate.name] != nil { continue }
 
             let result = candidate.name.withCString { namePointer in
                 unlinkat(pendingFD, namePointer, 0)
@@ -809,6 +933,8 @@ final class RecordingArtifactStore: @unchecked Sendable {
     /// a record for a deleted project can never recover, so it must not
     /// linger. Removal is best-effort per record.
     func removeProjectJournalRecords(projectID: UUID) {
+        Self.artifactMutationLock.lock()
+        defer { Self.artifactMutationLock.unlock() }
         guard let entries = try? journal.allEntries() else { return }
         for result in entries {
             guard case let .success(entry) = result,
@@ -824,11 +950,40 @@ final class RecordingArtifactStore: @unchecked Sendable {
         return uuid.uuidString == uuidString ? uuid : nil
     }
 
+    private func validatedPendingSourceName(for entry: PendingRecordingJournalEntry) throws -> String {
+        let prefix = "Recordings/Pending/"
+        guard entry.sourceTempPath.hasPrefix(prefix),
+              entry.destinationRelativePath == relativePath(for: entry.recordingID, projectID: entry.projectID) else {
+            throw PendingRecordingJournalError.journalCorrupt(recordingID: entry.recordingID)
+        }
+        let name = String(entry.sourceTempPath.dropFirst(prefix.count))
+        guard recordingIDOfPendingName(name) != nil else {
+            throw PendingRecordingJournalError.journalCorrupt(recordingID: entry.recordingID)
+        }
+        return name
+    }
+
+    /// An undecodable/ambiguous journal cannot prove any source unreferenced.
+    /// Every destructive Pending operation takes this same fail-closed path.
+    private func validatedJournalByPendingSource() throws -> [String: PendingRecordingJournalEntry] {
+        var entries: [String: PendingRecordingJournalEntry] = [:]
+        for result in try journal.allEntries() {
+            let entry = try result.get()
+            let name = try validatedPendingSourceName(for: entry)
+            guard entries[name] == nil else {
+                throw PendingRecordingJournalError.journalCorrupt(recordingID: entry.recordingID)
+            }
+            entries[name] = entry
+        }
+        return entries
+    }
+
     /// Writes (or resumes) the atomic `.promoting` record before the move.
     private func beginPromotionJournalEntry(recordingID: UUID,
                                             projectID: UUID,
                                             sourceName: String,
-                                            destinationRelativePath: String) throws {
+                                            destinationRelativePath: String,
+                                            expectedProjectUpdatedAt: Date?) throws {
 #if DEBUG
         try consumePromotionFault(.beforeJournalWrite)
 #endif
@@ -838,6 +993,7 @@ final class RecordingArtifactStore: @unchecked Sendable {
         if let existing = try journal.entry(for: recordingID) {
             guard existing.recordingID == recordingID,
                   existing.projectID == projectID,
+                  existing.sourceTempPath == sourceTempPath,
                   existing.destinationRelativePath == destinationRelativePath else {
                 // A different transaction owns this record identity; never
                 // overwrite another take's journal entry.
@@ -847,7 +1003,9 @@ final class RecordingArtifactStore: @unchecked Sendable {
             // in-process retry). The bounded retry budget is owned by cold
             // recovery (M7-021), not by the hot promotion path, so concurrent
             // promotions of one take cannot exhaust it.
-            entry = existing.updating(state: .promoting, at: now)
+            // Preserve the original project generation. A retry may not turn
+            // an old/unbound intent into authority over a newer project.
+            entry = existing.updating(state: existing.state == .promoted ? .promoted : .promoting, at: now)
         } else {
             let sourceURL = pendingDirectoryURL
                 .appendingPathComponent(sourceName, isDirectory: false)
@@ -868,7 +1026,8 @@ final class RecordingArtifactStore: @unchecked Sendable {
                 state: .promoting,
                 retryCount: 0,
                 createdAt: now,
-                updatedAt: now
+                updatedAt: now,
+                expectedProjectUpdatedAt: expectedProjectUpdatedAt
             )
         }
         try journal.record(entry)
@@ -877,16 +1036,18 @@ final class RecordingArtifactStore: @unchecked Sendable {
 #endif
     }
 
-    /// Removes the promotion record after a committed (or already committed)
-    /// move. A removal failure leaves the record with a regular committed
-    /// destination — recovery (M7-021) converges without duplicating.
+    /// The filesystem commit is only phase one. Phase two is DBService's
+    /// persisted-reference acknowledgement; until then retain the tombstone.
     private func finishPromotionJournalEntry(recordingID: UUID) throws {
 #if DEBUG
         try consumePromotionFault(.afterRename)
 #endif
-        try journal.remove(recordingID: recordingID)
+        guard let entry = try journal.entry(for: recordingID) else {
+            throw PendingRecordingJournalError.journalCorrupt(recordingID: recordingID)
+        }
+        try journal.record(entry.updating(state: .promoted, at: Date()))
 #if DEBUG
-        try consumePromotionFault(.afterJournalRemoval)
+        try consumePromotionFault(.afterPromotionMarked)
 #endif
     }
 

@@ -137,6 +137,68 @@ final class CameraConfidenceCalibratorTests: XCTestCase {
 
     // MARK: - Expected calibration error
 
+    func testProductionEvidenceRequiresMatchingInputContract() {
+        let action = SemanticActionType.shiftFrameRight.rawValue
+        let scoped = CameraEpisodeCalibrationFixture.calibrator
+        let evidence = scoped.calibratedEvidence(rawScore: 0.8, actionID: action,
+                                                 inputVersion: .boundedPlanConfidenceV1)
+        XCTAssertEqual(evidence?.probability ?? .nan, 0.848, accuracy: 1e-12)
+        XCTAssertTrue(evidence?.calibrationReference.hasPrefix("cal1:") == true)
+        XCTAssertNil(scoped.calibratedEvidence(rawScore: 0.8, actionID: action,
+                                               inputVersion: .technicalStabilityConfidenceV1))
+        XCTAssertNil(CameraConfidenceCalibrator.unavailable.calibratedEvidence(
+            rawScore: 0.99, actionID: action, inputVersion: .boundedPlanConfidenceV1
+        ))
+        XCTAssertNil(CameraConfidenceCalibrator(schema: identitySchema).calibratedEvidence(
+            rawScore: 0.99, actionID: "level_horizon", inputVersion: .boundedPlanConfidenceV1
+        ), "historical interpolation tables without producer provenance cannot certify an episode")
+        for raw in [Double.nan, .infinity, -0.01, 1.01] {
+            XCTAssertNil(scoped.calibratedEvidence(rawScore: raw, actionID: action,
+                                                   inputVersion: .boundedPlanConfidenceV1))
+        }
+    }
+
+    func testInvalidOrMisattributedCurvesCannotProduceProbabilities() {
+        let invalidCurves = [
+            CameraCalibrationCurveV1(actionID: "other", version: 1,
+                                     knots: [knot(0, 0.1), knot(1, 0.9)], domainLow: 0, domainHigh: 1),
+            CameraCalibrationCurveV1(actionID: "action", version: 0,
+                                     knots: [knot(0, 0.1), knot(1, 0.9)], domainLow: 0, domainHigh: 1),
+            CameraCalibrationCurveV1(actionID: "action", version: 1,
+                                     knots: [knot(0, 0.9), knot(1, 0.1)], domainLow: 0, domainHigh: 1),
+            CameraCalibrationCurveV1(actionID: "action", version: 1,
+                                     knots: [knot(0, .nan)], domainLow: 0, domainHigh: 1)
+        ]
+        for curve in invalidCurves {
+            let calibrator = CameraConfidenceCalibrator(schema: .init(entries: ["action": curve]))
+            XCTAssertEqual(calibrator.calibratedProbability(rawLogit: 0.9, actionID: "action"), .unavailable)
+            XCTAssertNil(calibrator.calibrationReference(actionID: "action", inputVersion: .boundedPlanConfidenceV1))
+        }
+    }
+
+    func testCalibrationReferenceBindsCurveBytesNotJustDeclaredVersion() throws {
+        let action = SemanticActionType.shiftFrameRight.rawValue
+        let original = CameraEpisodeCalibrationFixture.calibrator
+        let curve = try XCTUnwrap(original.schema.entries[action])
+        let changedCurve = CameraCalibrationCurveV1(
+            actionID: action, version: curve.version,
+            knots: [knot(0, 0.02), knot(0.5, 0.60), knot(1, 0.98)],
+            domainLow: curve.domainLow, domainHigh: curve.domainHigh,
+            inputVersion: curve.inputVersion
+        )
+        let changed = CameraConfidenceCalibrator(schema: .init(entries: [action: changedCurve]))
+        let originalReference = try XCTUnwrap(original.calibrationReference(actionID: action,
+                                                                            inputVersion: .boundedPlanConfidenceV1))
+        let changedReference = try XCTUnwrap(changed.calibrationReference(actionID: action,
+                                                                         inputVersion: .boundedPlanConfidenceV1))
+        XCTAssertNotEqual(originalReference, changedReference)
+        let decoded = try JSONDecoder().decode(CameraActionCalibrationSchemaV1.self,
+                                                from: JSONEncoder().encode(original.schema))
+        XCTAssertEqual(originalReference, CameraConfidenceCalibrator(schema: decoded).calibrationReference(
+            actionID: action, inputVersion: .boundedPlanConfidenceV1
+        ))
+    }
+
     func testPerfectCalibrationYieldsZeroECE() {
         // One perfectly-calibrated point per bin center: bin mean predicted
         // == bin mean actual == center, so the total error is exactly 0.

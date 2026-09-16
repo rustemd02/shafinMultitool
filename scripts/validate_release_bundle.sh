@@ -386,7 +386,6 @@ validate_privacy() {
 validate_acknowledgements() {
     local acknowledgement_markdown="$REPO_ROOT/Pods/Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool-acknowledgements.markdown"
     local acknowledgement_plist="$REPO_ROOT/Pods/Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool-acknowledgements.plist"
-    local built_ack_inventory="$TEMP_ROOT/built-acknowledgements.list"
 
     printf 'STAGE 8: CocoaPods acknowledgements\n'
     require_file "app-target CocoaPods acknowledgement markdown" "$acknowledgement_markdown"
@@ -401,17 +400,13 @@ validate_acknowledgements() {
         fail "app-target CocoaPods acknowledgement source contains forbidden ARVideoKit"
     fi
 
-    if ! find "$APP_ROOT" \( -type d -name Settings.bundle -o -type f -name Acknowledgements.plist \) -print0 > "$built_ack_inventory"; then
-        fail "could not inspect built acknowledgement surface"
+    if ! python3 "$COMPONENT_STATUS_VALIDATOR" --repo-root "$REPO_ROOT" --snapkit-only --app "$APP_ROOT"; then
+        fail "SnapKit source provenance or exact bundled MIT copyright/license notice failed"
     fi
-    if IFS= read -r -d '' built_ack_path < "$built_ack_inventory"; then
-        printf 'ACK_BUILT_SURFACE: found %s; source proof=%s\n' "${built_ack_path#"$APP_ROOT/"}" "$acknowledgement_markdown"
-    else
-        printf 'ACK_BUILT_SURFACE: no Settings.bundle or Acknowledgements.plist; source-level proof=%s\n' "$acknowledgement_markdown"
-    fi
+    printf 'ACK_BUILT_SURFACE: SnapKit-LICENSE.txt; exact upstream MIT notice verified\n'
     printf 'ACK_SOURCE: %s\n' "$acknowledgement_markdown"
     printf 'ACK_SCOPE: CocoaPods acknowledgement assertion covers SnapKit only; llama/CoreML/media provenance is not treated as CocoaPods coverage\n'
-    printf 'PASS CocoaPods acknowledgements: SnapKit present, ARVideoKit absent\n'
+    printf 'PASS CocoaPods acknowledgements: exact SnapKit MIT notice bundled, ARVideoKit absent\n'
 }
 
 validate_component_status() {
@@ -431,7 +426,7 @@ validate_component_status() {
     if [ "$(grep -Ec '^KNOWN_BLOCKER_COUNT=[0-9]+$' "$status_log" || true)" -ne 1 ]; then
         fail "component status validator failed without a stable KNOWN_BLOCKER_COUNT metric"
     fi
-    KNOWN_BLOCKER_COUNT="$(extract_metric KNOWN_BLOCKER_COUNT "$status_log")"
+    KNOWN_BLOCKER_COUNT="$(sed -n 's/^KNOWN_BLOCKER_COUNT=\([0-9][0-9]*\)$/\1/p' "$status_log")"
     if [ "$(grep -Ec '^KNOWN_BLOCKER: ' "$status_log" || true)" -ne "$KNOWN_BLOCKER_COUNT" ]; then
         fail "component status validator blocker rows do not match KNOWN_BLOCKER_COUNT"
     fi

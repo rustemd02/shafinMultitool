@@ -168,6 +168,10 @@ private struct GeneratorLeaderOverlay: View {
 private struct GeneratorErrorBand: View {
     @ObservedObject var viewModel: SceneGeneratorViewModel
 
+    private var needsRecordingSaveRetry: Bool {
+        viewModel.hasPendingRecordingSave && viewModel.recordingSaveFailure != nil
+    }
+
     var body: some View {
             VStack(alignment: .leading, spacing: SETSpacing.x3) {
                 Text(SETCopyKey.generatorErrorTitle.localizedTextKey)
@@ -176,12 +180,23 @@ private struct GeneratorErrorBand: View {
                 .setDisplayTracking()
                 .foregroundStyle(.setTextPrimary)
 
-            Text(viewModel.errorMessage ?? "")
+            Text(needsRecordingSaveRetry
+                 ? viewModel.localizedCopy(.generatorRecordingSavePending)
+                 : (viewModel.errorMessage ?? ""))
                 .font(SETTypography.uiBodyFont())
                 .foregroundStyle(.setTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let recovery = viewModel.recordingPermissionRecovery {
+            if needsRecordingSaveRetry {
+                SETDigitalAction(
+                    title: viewModel.isRecordingSaveRetryInFlight ? .generatorRecordingSaveSaving : .generatorRecordingSaveRetry,
+                    action: { Task { await viewModel.retryPendingRecordingSave() } }
+                )
+                .disabled(viewModel.isRecordingSaveRetryInFlight)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("generator_recording_save_retry")
+                .accessibilityLabel(SETCopyKey.generatorRecordingSaveRetry.localizedTextKey)
+            } else if let recovery = viewModel.recordingPermissionRecovery {
                 switch recovery {
                 case .openSettings:
                     SETDigitalAction(title: .openSettings, action: openSettings)
@@ -197,7 +212,7 @@ private struct GeneratorErrorBand: View {
                 }
             }
 
-            if viewModel.recordingVideoOnlyRecoveryAvailable {
+            if !needsRecordingSaveRetry, viewModel.recordingVideoOnlyRecoveryAvailable {
                 SETDigitalAction(
                     title: .generatorRecordWithoutSound,
                     action: viewModel.startRecordingWithoutSound
@@ -206,25 +221,29 @@ private struct GeneratorErrorBand: View {
                 .accessibilityLabel(SETCopyKey.generatorRecordWithoutSound.localizedTextKey)
             }
 
-            ZStack(alignment: .bottom) {
-                Button {
-                    viewModel.clearGeneratorError()
-                } label: {
-                    Text(SETCopyKey.commonClose.localizedTextKey)
-                        .font(SETTypography.uiBodyFont(weight: .semibold))
-                        .foregroundStyle(.setWarmWhite)
-                        .underline()
-                        .frame(minHeight: SETComponentMetric.minimumHitTarget)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("generator_error_close")
-                .accessibilityLabel(SETCopyKey.commonClose.localizedTextKey)
+            if !needsRecordingSaveRetry {
+                ZStack(alignment: .bottom) {
+                    Button {
+                        viewModel.clearGeneratorError()
+                    } label: {
+                        Text(SETCopyKey.commonClose.localizedTextKey)
+                            .font(SETTypography.uiBodyFont(weight: .semibold))
+                            .foregroundStyle(.setWarmWhite)
+                            .underline()
+                            .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                                   minHeight: SETComponentMetric.minimumHitTarget)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("generator_error_close")
+                    .accessibilityLabel(SETCopyKey.commonClose.localizedTextKey)
 
-                // One underline annotation on the recovery action.
-                GlassMarkGuide(kind: .underline, color: .setOrange)
-                    .frame(height: SETSpacing.x2)
-                    .padding(.horizontal, SETSpacing.x2)
-                    .offset(y: SETSpacing.x1)
+                    // One underline annotation on the recovery action.
+                    GlassMarkGuide(kind: .underline, color: .setOrange)
+                        .frame(height: SETSpacing.x2)
+                        .padding(.horizontal, SETSpacing.x2)
+                        .offset(y: SETSpacing.x1)
+                }
             }
         }
         .padding(SETSpacing.x4)

@@ -8,12 +8,13 @@ import XCTest
 @MainActor
 final class CommercialShellLifecycleAdapterTests: XCTestCase {
 
-    func testBackgroundReachesActiveCameraRouteExactlyOncePerEvent() {
+    func testBackgroundReachesActiveCameraRouteExactlyOncePerEvent() async {
         var backgroundCount = 0
-        let shell = makeShell(cameraBackground: { backgroundCount += 1 })
+        let entered = expectation(description: "camera background owner entered")
+        let shell = makeShell(cameraBackground: { backgroundCount += 1; entered.fulfill() })
 
         shell.handleSceneDidEnterBackground()
-
+        await fulfillment(of: [entered], timeout: 2)
         XCTAssertEqual(backgroundCount, 1)
     }
 
@@ -72,28 +73,59 @@ final class CommercialShellLifecycleAdapterTests: XCTestCase {
         XCTAssertNotEqual(coordinator.endedIdentifiers.first, .invalid)
     }
 
-    func testBackgroundWithoutRoutesBeginsAndImmediatelyEndsLease() {
+    func testIdleCameraBackgroundEndsLeaseAfterAwaitedDispatch() async {
         let shell = makeShell(cameraBackground: {})
         let coordinator = FakeSceneBackgroundTaskCoordinator()
         shell.backgroundTaskCoordinator = coordinator
+        let ended = expectation(description: "background lease ended")
+        coordinator.onEnd = { ended.fulfill() }
 
         shell.handleSceneDidEnterBackground()
+        await fulfillment(of: [ended], timeout: 2)
 
         XCTAssertEqual(coordinator.beginCount, 1)
         XCTAssertEqual(coordinator.endedIdentifiers.count, 1)
     }
 
-    func testBackgroundLeaseEndsOnlyOncePerIdentifier() {
+    func testOverlappingBackgroundDispatchesEndEachLeaseExactlyOnce() async {
         let shell = makeShell(cameraBackground: {})
         let coordinator = FakeSceneBackgroundTaskCoordinator()
         shell.backgroundTaskCoordinator = coordinator
+        let ended = expectation(description: "both background leases ended")
+        ended.expectedFulfillmentCount = 2
+        coordinator.onEnd = { ended.fulfill() }
 
         shell.handleSceneDidEnterBackground()
         shell.handleSceneDidEnterBackground()
+        await fulfillment(of: [ended], timeout: 2)
 
         XCTAssertEqual(coordinator.beginCount, 2)
         XCTAssertEqual(coordinator.endedIdentifiers.count, 2)
         XCTAssertEqual(Set(coordinator.endedIdentifiers).count, 2, "a stale lease cannot end a newer one")
+    }
+
+    func testCameraBackgroundLeaseRemainsActiveUntilRecorderFlushCompletes() async {
+        let entered = expectation(description: "recording finalization is held")
+        let ended = expectation(description: "lease ended after persistence")
+        var continuation: CheckedContinuation<Void, Never>?
+        let shell = makeShell(cameraBackground: {
+            await withCheckedContinuation { waiter in
+                continuation = waiter
+                entered.fulfill()
+            }
+        })
+        let coordinator = FakeSceneBackgroundTaskCoordinator()
+        coordinator.onEnd = { ended.fulfill() }
+        shell.backgroundTaskCoordinator = coordinator
+        shell.handleSceneDidEnterBackground()
+        await fulfillment(of: [entered], timeout: 2)
+        XCTAssertEqual(coordinator.beginCount, 1)
+        XCTAssertTrue(coordinator.endedIdentifiers.isEmpty,
+                      "The background CPU lease covers finalization and saving")
+        continuation?.resume()
+        continuation = nil
+        await fulfillment(of: [ended], timeout: 2)
+        XCTAssertEqual(coordinator.endedIdentifiers.count, 1)
     }
 
     func testForegroundRecheckStillReachesBlockedCameraEntry() async {
@@ -133,7 +165,7 @@ final class CommercialShellLifecycleAdapterTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeShell(cameraBackground: @escaping @MainActor () -> Void) -> CommercialShellViewController {
+    private func makeShell(cameraBackground: @escaping @MainActor () async -> Void) -> CommercialShellViewController {
         CommercialShellComposition(
             cameraCoachBuilder: {
                 CommercialCameraCoachRoute(
@@ -203,6 +235,7 @@ private final class LifecycleFakeIntroStore: CameraCoachIntroStore {
 
 /// M7-015: deterministic background-task lease for lifecycle tests.
 private final class FakeSceneBackgroundTaskCoordinator: SceneBackgroundTaskCoordinating {
+    var onEnd: (() -> Void)?
     private(set) var beginCount = 0
     private(set) var endedIdentifiers: [UIBackgroundTaskIdentifier] = []
     private var nextIdentifier = UIBackgroundTaskIdentifier(rawValue: 77)
@@ -219,5 +252,6 @@ private final class FakeSceneBackgroundTaskCoordinator: SceneBackgroundTaskCoord
 
     func end(_ identifier: UIBackgroundTaskIdentifier) {
         endedIdentifiers.append(identifier)
+        onEnd?()
     }
 }

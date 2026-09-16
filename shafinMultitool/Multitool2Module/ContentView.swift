@@ -70,13 +70,37 @@ struct ContentView: View {
                 thermal.nextBudget().heavyModelsEnabled
             }
         )
+        let permissions = PermissionCoordinator(client: SystemPermissionClient())
         return CameraCoachDependencies(
             cameraManager: cameraManager,
             viewModel: CameraViewModel(cameraManager: cameraManager,
-                                       analysisPipeline: pipeline),
-            permissionClient: PermissionCoordinator(client: SystemPermissionClient()),
+                                       analysisPipeline: pipeline,
+                                       recordingCoordinatorFactory: makeRecordingCoordinatorFactory(
+                                           cameraManager: cameraManager, permissions: permissions
+                                       )),
+            permissionClient: permissions,
             introStore: UserDefaultsCameraCoachIntroStore()
         )
+    }
+
+    /// Production and injected capture routes use the same recording owner.
+    /// Available device formats decide whether the capture can start a take.
+    static func makeRecordingCoordinatorFactory(
+        cameraManager: CameraManager, permissions: any PermissionClient
+    ) -> @MainActor () throws -> CameraCoachRecordingCoordinator {
+        {
+            let artifactStore = try RecordingArtifactStore()
+            return CameraCoachRecordingCoordinator(
+                capture: cameraManager, artifactStore: artifactStore,
+                persistence: CameraRecordingDBAdapter(artifactStore: artifactStore),
+                permissions: permissions,
+                projectName: {
+                    SETCopyKey.cameraRecordingProjectName.localizedString(locale: .current)
+                        + " " + Date().formatted(date: .abbreviated, time: .standard)
+                        + " " + String(UUID().uuidString.prefix(4))
+                }
+            )
+        }
     }
 
     var body: some View {

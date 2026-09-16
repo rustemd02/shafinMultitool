@@ -24,16 +24,19 @@ final class SceneGenerationClientTests: XCTestCase {
     private func client(
         maximumPolls: Int = 5,
         baseURL: URL = SceneGenerationClientTests.validBaseURL,
-        token: String? = "test-token"
+        token: String? = "test-token",
+        tokenProvider: SceneServiceTokenProviding? = nil,
+        withTransferPolicy: Bool = true
     ) -> SceneGenerationClient {
         var configuration = SceneGenerationClientConfiguration.placeholder
         configuration.baseURL = baseURL
         configuration.pollIntervalSeconds = 0
         configuration.maximumPolls = maximumPolls
+        configuration.transferPolicy = withTransferPolicy ? SceneTransferPolicyFixture.policy(for: configuration) : nil
         return SceneGenerationClient(
             configuration: configuration,
             session: session,
-            tokenProvider: StaticTokenProvider(token: token)
+            tokenProvider: tokenProvider ?? StaticTokenProvider(token: token)
         )
     }
 
@@ -136,6 +139,66 @@ final class SceneGenerationClientTests: XCTestCase {
             SceneCreateJobRequest.self,
             from: try bodyData(from: request)
         )
+    }
+
+    private func fixtureMarker() throws -> MarkedObject {
+        let marker = MarkedObject(name: "table", position: Position3D(x: 0, y: 0, z: -1))
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(marker)) as? [String: Any])
+        object["id"] = "deadbeef-0000-0000-0000-000000000001"
+        return try JSONDecoder().decode(MarkedObject.self, from: JSONSerialization.data(withJSONObject: object))
+    }
+
+    private final class ClarificationProbe {
+        var issuedPayload: SceneClarificationPayload?
+        var answers: [SceneClarificationAPIPayload] = []
+        var deleteCount = 0
+        var createCount = 0
+    }
+
+    private func installClarificationJob() -> ClarificationProbe {
+        let probe = ClarificationProbe()
+        var createdRequest: SceneCreateJobRequest?
+        var createKey: String?
+        SceneClientStub.handler = { request in
+            let isCreate = request.httpMethod == "POST" && request.url?.path.hasSuffix("/jobs") == true
+            if isCreate {
+                probe.createCount += 1
+                createdRequest = try self.decodedCreateRequest(from: request)
+                createKey = request.value(forHTTPHeaderField: "Idempotency-Key")
+            }
+            let body = try XCTUnwrap(createdRequest)
+            let key = try XCTUnwrap(createKey)
+            let question = SceneClarificationPayload(
+                id: "question_subject", requestID: body.requestID, epoch: 7,
+                prompt: "Who is the main subject?", targetReference: nil,
+                options: [.init(id: "first", label: "First subject"), .init(id: "second", label: "Second subject")],
+                allowsFreeText: true, maximumFreeTextCharacters: 160,
+                observedDiagnostics: [], attempt: 0
+            )
+            probe.issuedPayload = question
+            var fixture: String
+            var overrides: [String: Any] = [:]
+            if isCreate {
+                fixture = "job-valid-pending.json"
+            } else if request.httpMethod == "DELETE" {
+                probe.deleteCount += 1
+                fixture = "job-valid-cancelled.json"
+            } else if request.httpMethod == "POST" {
+                XCTAssertTrue(request.url?.path.hasSuffix("/clarification-answer") == true)
+                probe.answers.append(try JSONDecoder().decode(SceneClarificationAPIPayload.self, from: self.bodyData(from: request)))
+                fixture = "job-valid-running.json"
+            } else if probe.answers.isEmpty {
+                fixture = "job-valid-awaiting-clarification.json"
+                overrides["clarification"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(question))
+            } else {
+                fixture = "job-valid-complete.json"
+            }
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                try self.responseData(fixture: fixture, request: body, idempotencyKey: key, overrides: overrides)
+            )
+        }
+        return probe
     }
 
     private func assertRejected(
@@ -435,7 +498,7 @@ final class SceneGenerationClientTests: XCTestCase {
                 statusCode: 410,
                 httpVersion: nil,
                 headerFields: nil
-            )!, Data())
+            )!, Data(#"{"code":"kill_switch","message":"Generation is temporarily disabled."}"#.utf8))
         }
         do {
             _ = try await client().pollToTerminal(
@@ -446,6 +509,73 @@ final class SceneGenerationClientTests: XCTestCase {
             XCTFail("expected kill-switch abort")
         } catch let error as SceneGenerationClientError {
             XCTAssertEqual(error, .killSwitchEngaged)
+        }
+    }
+
+    func testExpiredContentIsTypedForAllOwnedJobOperationsWithoutRetry() async throws {
+        for operation in 0..<4 {
+            SceneClientStub.reset()
+            SceneClientStub.handler = { request in
+                (HTTPURLResponse(url: request.url!, statusCode: 410, httpVersion: nil, headerFields: nil)!,
+                 Data(#"{"code":"content_expired","message":"Job content has expired."}"#.utf8))
+            }
+            await assertRejected(expected: .contentExpired) {
+                let sut = client()
+                switch operation {
+                case 0: _ = try await sut.createJob(body: createBody(), idempotencyKey: "idem.expired")
+                case 1: _ = try await sut.pollJob(jobID: "job_demo001")
+                case 2: _ = try await sut.answerClarification(jobID: "job_demo001", answer: clarificationAnswer(), idempotencyKey: "idem.expired.answer")
+                default: _ = try await sut.cancelJob(jobID: "job_demo001")
+                }
+            }
+            XCTAssertEqual(SceneClientStub.callCount, 1, "Expiry never authorizes an automatic retry")
+        }
+    }
+
+    func testUnknownOrMalformedGoneResponseCannotClaimKillSwitch() async throws {
+        for body in ["", "{}", #"{"code":"future_code","message":"Gone"}"#, #"{"code":"content_expired"}"#] {
+            SceneClientStub.reset()
+            SceneClientStub.handler = { request in
+                (HTTPURLResponse(url: request.url!, statusCode: 410, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+            }
+            await assertRejected(expected: .unexpectedGoneResponse) {
+                _ = try await client().pollJob(jobID: "job_demo001")
+            }
+            XCTAssertEqual(SceneClientStub.callCount, 1)
+        }
+    }
+
+    func testProductionRemoteOutcomePreservesGoneDecisionWithoutCreatingReplacementJob() async throws {
+        for (code, expected) in [
+            ("content_expired", SceneRemoteGenerationFailure.contentExpired),
+            ("kill_switch", .serviceDisabled),
+            ("future_code", .invalidServiceResponse)
+        ] {
+            SceneClientStub.reset()
+            var methods: [String] = []
+            SceneClientStub.handler = { request in
+                methods.append(request.httpMethod ?? "")
+                if request.httpMethod == "POST" {
+                    let payload = try self.responseData(
+                        fixture: "job-valid-pending.json",
+                        request: self.decodedCreateRequest(from: request),
+                        idempotencyKey: request.value(forHTTPHeaderField: "Idempotency-Key")
+                    )
+                    return (HTTPURLResponse(url: request.url!, statusCode: 201, httpVersion: nil, headerFields: nil)!, payload)
+                }
+                let payload = try JSONSerialization.data(withJSONObject: ["code": code, "message": "Gone"])
+                return (HTTPURLResponse(url: request.url!, statusCode: 410, httpVersion: nil, headerFields: nil)!, payload)
+            }
+            let outcome = await client().generateRemotePlanOutcome(
+                description: "A person stands still.", markedObjects: [], anchors: .empty,
+                state: nil, clarificationHandler: nil, transferConsentHandler: { $0.approval }
+            )
+            guard case .failed(let failure) = outcome else {
+                XCTFail("Terminal remote failure must reach the production request owner")
+                continue
+            }
+            XCTAssertEqual(failure, expected)
+            XCTAssertEqual(methods, ["POST", "GET"], "No replacement job, follow-up polling or cleanup replay")
         }
     }
 
@@ -526,15 +656,248 @@ final class SceneGenerationClientTests: XCTestCase {
             )!, payload)
         }
         let provider = client()
-        let result = await provider.generateRemotePlan(
+        let result = await provider.generateConsentedRemotePlan(
             description: "MARA approaches the marked table.",
-            markedObjects: [],
+            markedObjects: [try fixtureMarker()],
             anchors: SourceAnchorBundle.empty,
             state: nil
         )
         XCTAssertNotNil(result)
         XCTAssertEqual(result?.reasonCodes, ["remote_plan_used"])
         XCTAssertEqual(result?.usedLegacySceneScriptBridge, true)
+        guard case .remoteService(let receipt)? = result?.generationContributors?.first else {
+            return XCTFail("Validated job identity must accompany its accepted plan")
+        }
+        let submitted = try XCTUnwrap(expectedRequest)
+        let complete = try jobStatus("job-valid-complete.json")
+        XCTAssertEqual(receipt.jobID, complete.jobID)
+        XCTAssertEqual(receipt.requestID, submitted.requestID)
+        XCTAssertEqual(receipt.requestHash, submitted.requestHash)
+        XCTAssertEqual(receipt.idempotencyKey, createIdempotencyKey)
+        XCTAssertEqual(receipt.backendSchemaVersion, submitted.schemaVersionBackend)
+        XCTAssertEqual(receipt.scriptSchemaVersion, complete.result?.schemaVersion)
+        XCTAssertEqual(receipt.modelVersion, submitted.modelVersion)
+        XCTAssertEqual(receipt.promptVersion, submitted.promptVersion)
+        XCTAssertEqual(receipt.providerName, submitted.providerName)
+        XCTAssertEqual(receipt.providerVersion, submitted.providerVersion)
+    }
+
+    @MainActor
+    func testRemoteClarificationPostsActualSecondChoiceWithWireIdentity() async throws {
+        let probe = installClarificationJob()
+        let result = await client().generateConsentedRemotePlan(
+            description: "MARA approaches the marked table.",
+            markedObjects: [try fixtureMarker()], anchors: .empty, state: nil,
+            clarificationHandler: { payload in
+                XCTAssertTrue(probe.answers.isEmpty, "No answer may be posted before the user responds")
+                XCTAssertEqual(payload.options.map(\.id), ["first", "second"])
+                return .choice("second")
+            }
+        )
+        XCTAssertNotNil(result)
+        XCTAssertEqual(probe.createCount, 1)
+        XCTAssertEqual(probe.answers.count, 1)
+        let answer = try XCTUnwrap(probe.answers.first)
+        XCTAssertEqual(answer.selectedOptionID, "second")
+        XCTAssertNil(answer.freeText)
+        XCTAssertEqual(answer.requestID, probe.issuedPayload?.requestID)
+        XCTAssertEqual(answer.epoch, 7)
+        XCTAssertEqual(answer.clarificationID, "question_subject")
+        guard case .remoteService(let receipt)? = result?.generationContributors?.first else {
+            return XCTFail("The clarified result must retain the same job receipt")
+        }
+        XCTAssertEqual(receipt.requestID, answer.requestID)
+        XCTAssertEqual(receipt.idempotencyKey, "gen-\(answer.requestID.uuidString)")
+    }
+
+    @MainActor
+    func testRemoteClarificationPostsFreeTextWithoutInventedOption() async throws {
+        let probe = installClarificationJob()
+        let result = await client().generateConsentedRemotePlan(
+            description: "MARA approaches the marked table.",
+            markedObjects: [try fixtureMarker()], anchors: .empty, state: nil,
+            clarificationHandler: { _ in .freeText("  The person behind the table  ") }
+        )
+        XCTAssertNotNil(result)
+        XCTAssertEqual(probe.answers.count, 1)
+        XCTAssertNil(probe.answers.first?.selectedOptionID)
+        XCTAssertEqual(probe.answers.first?.freeText, "The person behind the table")
+    }
+
+    func testRemoteClarificationWithoutUserHandlerCancelsJobWithoutAnswer() async {
+        let probe = installClarificationJob()
+        let result = await client().generateConsentedRemotePlan(
+            description: "Someone approaches.", markedObjects: [], anchors: .empty, state: nil
+        )
+        XCTAssertNil(result)
+        XCTAssertTrue(probe.answers.isEmpty)
+        XCTAssertEqual(probe.deleteCount, 1)
+        XCTAssertEqual(probe.createCount, 1)
+    }
+
+    @MainActor
+    func testRemoteClarificationRejectsUnknownOptionBeforePost() async {
+        let probe = installClarificationJob()
+        let result = await client().generateConsentedRemotePlan(
+            description: "Someone approaches.", markedObjects: [], anchors: .empty, state: nil,
+            clarificationHandler: { _ in .choice("unobserved-choice") }
+        )
+        XCTAssertNil(result)
+        XCTAssertTrue(probe.answers.isEmpty)
+        XCTAssertEqual(probe.deleteCount, 1)
+    }
+
+    @MainActor
+    func testCancelledRemoteQuestionRejectsLateAnswerAndDeletesSameJob() async {
+        let probe = installClarificationJob()
+        let presented = expectation(description: "question presented")
+        var answerContinuation: CheckedContinuation<SceneClarificationAnswer?, Never>?
+        let provider = client()
+        let task = Task {
+            await provider.generateConsentedRemotePlan(
+                description: "Someone approaches.", markedObjects: [], anchors: .empty, state: nil,
+                clarificationHandler: { _ in
+                    await withCheckedContinuation { continuation in
+                        answerContinuation = continuation
+                        presented.fulfill()
+                    }
+                }
+            )
+        }
+        await fulfillment(of: [presented], timeout: 3)
+        task.cancel()
+        answerContinuation?.resume(returning: .choice("second"))
+        let result = await task.value
+        XCTAssertNil(result)
+        XCTAssertTrue(probe.answers.isEmpty)
+        XCTAssertEqual(probe.deleteCount, 1)
+        XCTAssertEqual(probe.createCount, 1)
+    }
+
+    private final class TransferTokenProbe: SceneServiceTokenProviding, @unchecked Sendable {
+        private let lock = NSLock()
+        private var acquisitions = 0
+        var callCount: Int { lock.withLock { acquisitions } }
+        func currentServiceToken() async -> String? {
+            lock.withLock { acquisitions += 1 }
+            return "test-token"
+        }
+    }
+
+    @MainActor
+    func testMissingPolicyStopsBeforeConsentEnrollmentAndContentTransport() async {
+        let tokens = TransferTokenProbe()
+        var prompts = 0
+        let outcome = await client(tokenProvider: tokens, withTransferPolicy: false).generateRemotePlanOutcome(
+            description: "Private scene text.", markedObjects: [], anchors: .empty, state: nil,
+            clarificationHandler: nil, transferConsentHandler: { request in prompts += 1; return request.approval }
+        )
+        guard case .failed(.transferPolicyUnavailable) = outcome else { return XCTFail("Incomplete policy must remain a typed failure") }
+        XCTAssertEqual(prompts, 0)
+        XCTAssertEqual(tokens.callCount, 0)
+        XCTAssertEqual(SceneClientStub.callCount, 0)
+    }
+
+    @MainActor
+    func testNoHandlerDeclineAndMismatchedApprovalNeverAcquireTokenOrSubmitContent() async {
+        let tokens = TransferTokenProbe()
+        let handlers: [SceneRemoteTransferConsentHandler?] = [
+            nil, { _ in nil },
+            { request in .init(requestID: UUID(), requestHash: request.requestHash, policyFingerprint: request.policyFingerprint) },
+            { request in .init(requestID: request.requestID, requestHash: "different-content", policyFingerprint: request.policyFingerprint) },
+            { request in .init(requestID: request.requestID, requestHash: request.requestHash, policyFingerprint: "different-policy") }
+        ]
+        for handler in handlers {
+            let provider: RemoteScenePlanProvider = client(tokenProvider: tokens)
+            let outcome = await provider.generateRemotePlanOutcome(
+                description: "Private scene text.", markedObjects: [], anchors: .empty, state: nil,
+                clarificationHandler: nil, transferConsentHandler: handler
+            )
+            guard case .failed(.transferDeclined) = outcome else { return XCTFail("No matching agreement must stop the transfer") }
+        }
+        XCTAssertEqual(tokens.callCount, 0)
+        XCTAssertEqual(SceneClientStub.callCount, 0)
+    }
+
+    func testLegacyNoninteractiveEntryCannotSilentlyAuthorizeTransfer() async {
+        let tokens = TransferTokenProbe()
+        let result = await client(tokenProvider: tokens).generateRemotePlan(
+            description: "Private scene text.", markedObjects: [], anchors: .empty, state: nil
+        )
+        XCTAssertNil(result)
+        XCTAssertEqual(tokens.callCount, 0)
+        XCTAssertEqual(SceneClientStub.callCount, 0)
+    }
+
+    @MainActor
+    func testCancelledConsentRejectsLateApprovalWithoutEnrollmentOrCleanupRequest() async {
+        let tokens = TransferTokenProbe()
+        let presented = expectation(description: "transfer consent presented")
+        var pending: CheckedContinuation<SceneRemoteTransferApproval?, Never>?
+        var shown: SceneRemoteTransferRequest?
+        let provider = client(tokenProvider: tokens)
+        let task = Task {
+            await provider.generateRemotePlanOutcome(
+                description: "Private scene text.", markedObjects: [], anchors: .empty, state: nil,
+                clarificationHandler: nil, transferConsentHandler: { request in
+                    shown = request
+                    return await withCheckedContinuation { continuation in
+                        pending = continuation
+                        presented.fulfill()
+                    }
+                }
+            )
+        }
+        await fulfillment(of: [presented], timeout: 3)
+        XCTAssertEqual(tokens.callCount, 0)
+        XCTAssertEqual(SceneClientStub.callCount, 0)
+        task.cancel()
+        pending?.resume(returning: shown?.approval)
+        _ = await task.value
+        XCTAssertEqual(tokens.callCount, 0)
+        XCTAssertEqual(SceneClientStub.callCount, 0)
+    }
+
+    @MainActor
+    func testOneConsentCoversPollingAndClarificationOfOnlyItsOriginalJob() async throws {
+        let probe = installClarificationJob()
+        var consents: [SceneRemoteTransferRequest] = []
+        let result = await client().generateRemotePlanOutcome(
+            description: "MARA approaches the marked table.", markedObjects: [try fixtureMarker()],
+            anchors: .empty, state: nil, clarificationHandler: { _ in .choice("second") },
+            transferConsentHandler: { request in
+                XCTAssertEqual(probe.createCount, 0)
+                consents.append(request)
+                return request.approval
+            }
+        )
+        guard case .plan(let plan) = result else { return XCTFail("Explicit approval must reach the existing job pipeline") }
+        XCTAssertEqual(consents.count, 1)
+        XCTAssertEqual(probe.createCount, 1)
+        XCTAssertEqual(probe.answers.count, 1)
+        guard case .remoteService(let receipt)? = plan.generationContributors?.first else { return XCTFail("Missing job receipt") }
+        XCTAssertEqual(receipt.requestID, consents.first?.requestID)
+        XCTAssertEqual(receipt.requestHash, consents.first?.requestHash)
+        XCTAssertEqual(consents.first?.scriptText, "MARA approaches the marked table.")
+        XCTAssertEqual(consents.first?.markedObjectIDs, [try fixtureMarker().canonicalMarkedObjectID])
+    }
+
+    @MainActor
+    func testEarlierConsentCannotAuthorizeANewJobEvenWithTheSameText() async {
+        let tokens = TransferTokenProbe()
+        let provider = client(tokenProvider: tokens)
+        var oldApproval: SceneRemoteTransferApproval?
+        _ = await provider.generateRemotePlanOutcome(
+            description: "Same scene.", markedObjects: [], anchors: .empty, state: nil,
+            clarificationHandler: nil, transferConsentHandler: { request in oldApproval = request.approval; return nil }
+        )
+        let result = await provider.generateRemotePlanOutcome(
+            description: "Same scene.", markedObjects: [], anchors: .empty, state: nil,
+            clarificationHandler: nil, transferConsentHandler: { _ in oldApproval }
+        )
+        guard case .failed(.transferDeclined) = result else { return XCTFail("Each new job requires its own approval") }
+        XCTAssertEqual(tokens.callCount, 0)
+        XCTAssertEqual(SceneClientStub.callCount, 0)
     }
 
     func testInvalidJobIDsAreRejectedBeforeTransport() async throws {
@@ -828,6 +1191,93 @@ final class SceneGenerationClientTests: XCTestCase {
             XCTAssertEqual(SceneClientStub.callCount, 0)
         }
     }
+
+    func testUnauthorizedCreateRetriesSamePayloadAndIdempotencyAfterTokenRotation() async throws {
+        let body = try createBody()
+        let idempotencyKey = "idem.rotation.create"
+        let response = try responseData(fixture: "job-valid-pending.json", request: body, idempotencyKey: idempotencyKey)
+        let tokens = RenewalTokenProvider(replacement: "renewed-token")
+        var payloads: [Data] = []
+        var keys: [String?] = []
+        var authorizations: [String?] = []
+        SceneClientStub.handler = { request in
+            payloads.append(try self.bodyData(from: request))
+            keys.append(request.value(forHTTPHeaderField: "Idempotency-Key"))
+            authorizations.append(request.value(forHTTPHeaderField: "Authorization"))
+            let rejected = request.value(forHTTPHeaderField: "Authorization") == "Bearer initial-token"
+            return (HTTPURLResponse(url: request.url!, statusCode: rejected ? 401 : 201,
+                                    httpVersion: nil, headerFields: nil)!, rejected ? Data("{}".utf8) : response)
+        }
+        let status = try await client(tokenProvider: tokens).createJob(body: body, idempotencyKey: idempotencyKey)
+        XCTAssertEqual(status.requestID, body.requestID)
+        XCTAssertEqual(SceneClientStub.callCount, 2)
+        XCTAssertEqual(payloads.count, 2)
+        XCTAssertEqual(payloads.first, payloads.last)
+        XCTAssertEqual(keys, [idempotencyKey, idempotencyKey])
+        XCTAssertEqual(authorizations, ["Bearer initial-token", "Bearer renewed-token"])
+        let rejected = await tokens.rejections
+        XCTAssertEqual(rejected, ["initial-token"])
+    }
+
+    func testUnauthorizedExistingJobOperationsKeepJobAndAnswerOnRetry() async throws {
+        let pending = try jobStatus("job-valid-pending.json")
+        let answer = SceneClarificationAPIPayload(clarificationID: "clarification_demo001",
+                                                 requestID: pending.requestID, epoch: 0,
+                                                 selectedOptionID: "option_demo001", freeText: nil)
+        for operation in 0..<3 {
+            SceneClientStub.reset()
+            let tokens = RenewalTokenProvider(replacement: "renewed-token")
+            let response = try responseData(fixture: operation == 2 ? "job-valid-cancelled.json" : "job-valid-pending.json")
+            var paths: [String?] = []
+            var payloads: [Data] = []
+            SceneClientStub.handler = { request in
+                paths.append(request.url?.path)
+                if operation == 1 { payloads.append(try self.bodyData(from: request)) }
+                let rejected = request.value(forHTTPHeaderField: "Authorization") == "Bearer initial-token"
+                return (HTTPURLResponse(url: request.url!, statusCode: rejected ? 401 : 200,
+                                        httpVersion: nil, headerFields: nil)!, rejected ? Data("{}".utf8) : response)
+            }
+            let sut = client(tokenProvider: tokens)
+            switch operation {
+            case 0: _ = try await sut.pollJob(jobID: pending.jobID)
+            case 1: _ = try await sut.answerClarification(jobID: pending.jobID, answer: answer, idempotencyKey: "idem.answer")
+            default: _ = try await sut.cancelJob(jobID: pending.jobID)
+            }
+            XCTAssertEqual(SceneClientStub.callCount, 2)
+            XCTAssertEqual(paths.first, paths.last)
+            if operation == 1 {
+                XCTAssertEqual(payloads.count, 2)
+                XCTAssertEqual(payloads.first, payloads.last)
+            }
+        }
+    }
+
+    func testAuthenticationRecoveryIsBoundedAndNeverReusesRejectedToken() async throws {
+        for replacement in [nil, "initial-token", "invalid token", "renewed-token"] as [String?] {
+            SceneClientStub.reset()
+            let tokens = RenewalTokenProvider(replacement: replacement)
+            SceneClientStub.handler = { request in
+                (HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!, Data("{}".utf8))
+            }
+            await assertRejected(expected: .jobFailed(.providerError)) {
+                _ = try await client(tokenProvider: tokens).pollJob(jobID: "job_demo001")
+            }
+            XCTAssertEqual(SceneClientStub.callCount, replacement == "renewed-token" ? 2 : 1)
+            let rejected = await tokens.rejections
+            XCTAssertEqual(rejected.count, 1)
+        }
+    }
+}
+
+private actor RenewalTokenProvider: SceneServiceTokenProviding {
+    let replacement: String?
+    private(set) var rejections: [String] = []
+    init(replacement: String?) { self.replacement = replacement }
+    func currentServiceToken() async -> String? { "initial-token" }
+    func replacementServiceToken(afterRejecting token: String) async -> String? {
+        rejections.append(token)
+        return replacement
+    }
 }
 
 private struct StaticTokenProvider: SceneServiceTokenProviding {
@@ -865,4 +1315,18 @@ private final class SceneClientStub: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+private extension SceneGenerationClient {
+    func generateConsentedRemotePlan(
+        description: String, markedObjects: [MarkedObject], anchors: SourceAnchorBundle,
+        state: SceneChunkState?, clarificationHandler: SceneRemoteClarificationHandler? = nil
+    ) async -> ScenePlanProviderResult? {
+        guard case .plan(let plan) = await generateRemotePlanOutcome(
+            description: description, markedObjects: markedObjects, anchors: anchors,
+            state: state, clarificationHandler: clarificationHandler,
+            transferConsentHandler: { $0.approval }
+        ) else { return nil }
+        return plan
+    }
 }

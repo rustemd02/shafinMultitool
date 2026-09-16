@@ -418,26 +418,135 @@ protocol LocalScenePlanProvider {
         eventTable: SceneV9EventTable,
         verifierIssues: [String]
     ) async -> SceneV9PatchOps?
+
+    func generateEventPatchResultAsync(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog,
+        eventTable: SceneV9EventTable,
+        verifierIssues: [String]
+    ) async -> SceneV9PatchProviderResult?
+}
+
+/// Terminal remote decisions must survive the optional local-fallback seam.
+/// They are request results, not semantic scene data or shared parser state.
+enum SceneRemoteGenerationFailure: Equatable, Sendable {
+    case contentExpired
+    case serviceDisabled
+    case invalidServiceResponse
+    case transferPolicyUnavailable
+    case transferDeclined
+}
+
+enum SceneRemotePlanOutcome {
+    case plan(ScenePlanProviderResult)
+    case unavailable
+    case failed(SceneRemoteGenerationFailure)
 }
 
 protocol RemoteScenePlanProvider {
+    func generateRemotePlanOutcome(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        clarificationHandler: SceneRemoteClarificationHandler?,
+        transferConsentHandler: SceneRemoteTransferConsentHandler?
+    ) async -> SceneRemotePlanOutcome
+
+    func generateRemotePlanOutcome(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        clarificationHandler: SceneRemoteClarificationHandler?
+    ) async -> SceneRemotePlanOutcome
+
     func generateRemotePlan(
         description: String,
         markedObjects: [MarkedObject],
         anchors: SourceAnchorBundle,
         state: SceneChunkState?
     ) async -> ScenePlanProviderResult?
+
+    func generateRemotePlan(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        clarificationHandler: SceneRemoteClarificationHandler?
+    ) async -> ScenePlanProviderResult?
+}
+
+/// A question is answered by the existing generation owner. The callback is
+/// scoped to one parse invocation; no shared parser property can replace it
+/// while an older request is suspended.
+typealias SceneRemoteClarificationHandler = @MainActor @Sendable (SceneClarificationPayload) async -> SceneClarificationAnswer?
+
+extension RemoteScenePlanProvider {
+    func generateRemotePlanOutcome(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        clarificationHandler: SceneRemoteClarificationHandler?,
+        transferConsentHandler: SceneRemoteTransferConsentHandler?
+    ) async -> SceneRemotePlanOutcome {
+        // Non-network fixture/local providers preserve their established seam.
+        // SceneGenerationClient overrides this entry and admits every transfer.
+        await generateRemotePlanOutcome(
+            description: description, markedObjects: markedObjects, anchors: anchors,
+            state: state, clarificationHandler: clarificationHandler
+        )
+    }
+
+    func generateRemotePlanOutcome(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        clarificationHandler: SceneRemoteClarificationHandler?
+    ) async -> SceneRemotePlanOutcome {
+        guard let result = await generateRemotePlan(
+            description: description, markedObjects: markedObjects,
+            anchors: anchors, state: state, clarificationHandler: clarificationHandler
+        ) else { return .unavailable }
+        return .plan(result)
+    }
+
+    func generateRemotePlan(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        clarificationHandler: SceneRemoteClarificationHandler?
+    ) async -> ScenePlanProviderResult? {
+        await generateRemotePlan(
+            description: description,
+            markedObjects: markedObjects,
+            anchors: anchors,
+            state: state
+        )
+    }
 }
 
 struct ScenePlanProviderResult {
     let plan: ScenePlanIR
     let usedLegacySceneScriptBridge: Bool
     let reasonCodes: [String]
+    let generationContributors: [SceneGenerationContributor]?
 
-    init(plan: ScenePlanIR, usedLegacySceneScriptBridge: Bool, reasonCodes: [String] = []) {
+    init(
+        plan: ScenePlanIR, usedLegacySceneScriptBridge: Bool,
+        reasonCodes: [String] = [],
+        generationContributors: [SceneGenerationContributor]? = nil
+    ) {
         self.plan = plan
         self.usedLegacySceneScriptBridge = usedLegacySceneScriptBridge
         self.reasonCodes = reasonCodes
+        self.generationContributors = generationContributors?.isEmpty == false ? generationContributors : nil
     }
 }
 
@@ -446,21 +555,47 @@ struct SceneV9EventProviderResult {
     let eventTable: SceneV9EventTable
     let patchOps: SceneV9PatchOps?
     let reasonCodes: [String]
+    let generationContributors: [SceneGenerationContributor]?
 
     init(
         slotCatalog: SceneV9SlotCatalog,
         eventTable: SceneV9EventTable,
         patchOps: SceneV9PatchOps? = nil,
-        reasonCodes: [String] = []
+        reasonCodes: [String] = [],
+        generationContributors: [SceneGenerationContributor]? = nil
     ) {
         self.slotCatalog = slotCatalog
         self.eventTable = eventTable
         self.patchOps = patchOps
         self.reasonCodes = reasonCodes
+        self.generationContributors = generationContributors?.isEmpty == false ? generationContributors : nil
     }
 }
 
+struct SceneV9PatchProviderResult {
+    let patchOps: SceneV9PatchOps
+    let generationContributors: [SceneGenerationContributor]?
+}
+
 extension LocalScenePlanProvider {
+    /// Adapts existing providers without guessing an identity for their output.
+    func generateEventPatchResultAsync(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog,
+        eventTable: SceneV9EventTable,
+        verifierIssues: [String]
+    ) async -> SceneV9PatchProviderResult? {
+        guard let patch = await generateEventPatchOpsAsync(
+            description: description, markedObjects: markedObjects, anchors: anchors,
+            state: state, slotCatalog: slotCatalog, eventTable: eventTable,
+            verifierIssues: verifierIssues
+        ) else { return nil }
+        return SceneV9PatchProviderResult(patchOps: patch, generationContributors: nil)
+    }
+
     func generateEventTable(
         description: String,
         markedObjects: [MarkedObject],

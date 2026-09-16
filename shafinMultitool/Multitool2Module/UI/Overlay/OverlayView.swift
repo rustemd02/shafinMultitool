@@ -159,6 +159,8 @@ struct CameraPreview: UIViewRepresentable {
     var correctiveTargetRegion: NormalizedRect?
     var transformStore: CameraPreviewTransformStore?
     var onSceneTap: ((Double, Double) -> Void)?
+    /// Non-nil only while the user explicitly chooses a focus point.
+    var onFocusPoint: ((CGPoint) -> Void)?
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
@@ -169,6 +171,7 @@ struct CameraPreview: UIViewRepresentable {
         view.correctiveTargetRegion = correctiveTargetRegion
         view.transformStore = transformStore
         view.onSceneTap = onSceneTap
+        view.onFocusPoint = onFocusPoint
         view.setUpSceneTapRecognitionIfNeeded()
         return view
     }
@@ -190,6 +193,7 @@ struct CameraPreview: UIViewRepresentable {
         uiView.correctiveTargetRegion = correctiveTargetRegion
         uiView.transformStore = transformStore
         uiView.onSceneTap = onSceneTap
+        uiView.onFocusPoint = onFocusPoint
         uiView.updateOrientation()
         uiView.updateMappedRegions()
     }
@@ -205,6 +209,7 @@ final class PreviewView: UIView {
     /// mirroring and aspect-fill are handled by the same seam as region
     /// mapping. Coordinates are upper-left normalized scene space.
     var onSceneTap: ((Double, Double) -> Void)?
+    var onFocusPoint: ((CGPoint) -> Void)?
     private var sceneTapRecognizer: UITapGestureRecognizer?
     var subjectRegions: [NormalizedRect] = [] {
         didSet { setNeedsLayout() }
@@ -250,8 +255,17 @@ final class PreviewView: UIView {
     }
 
     @objc private func handleSceneTapGesture(_ recognizer: UITapGestureRecognizer) {
-        guard let onSceneTap else { return }
         let point = recognizer.location(in: self)
+        guard bounds.contains(point) else { return }
+        // Device focus coordinates are AVFoundation's sensor coordinates.
+        // They must not be replaced by the Coach's Vision/scene conversion.
+        if let onFocusPoint {
+            let devicePoint = videoPreviewLayer.captureDevicePointConverted(fromLayerPoint: point)
+            guard CameraProControlPolicy.validDevicePoint(devicePoint) else { return }
+            onFocusPoint(devicePoint)
+            return
+        }
+        guard let onSceneTap else { return }
         guard let scene = CameraPreviewRegionMapper.scenePoint(
             forLayerPoint: point,
             using: { [weak self] probe in

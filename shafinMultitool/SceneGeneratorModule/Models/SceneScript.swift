@@ -228,6 +228,8 @@ struct ParsingDiagnostics: Equatable {
 struct ParsingResult: Equatable {
     let script: SceneScript
     let diagnostics: ParsingDiagnostics
+    var generationProvenance: GenerationProvenance? = nil
+    var remoteFailure: SceneRemoteGenerationFailure? = nil
 }
 
 // MARK: - Scene Actor
@@ -565,23 +567,7 @@ struct PlaybackPathAnnotation: Codable, Equatable {
     var text: String
 }
 
-/// Результат планирования сцены - готовые координаты для размещения
-/// Provenance recorded atomically with every successful generation
-/// commit (M5-030): which generator, model contract, and annotation schema
-/// produced the plan. `nil` on legacy projects decoded before this field
-/// existed.
-struct GenerationProvenance: Codable, Equatable, Sendable {
-    let generatorVersion: String
-    let modelContractVersion: String
-    let schemaVersion: String
-
-    static let current = GenerationProvenance(
-        generatorVersion: "scene-generator-v1",
-        modelContractVersion: SETCompositionNetContract.contractVersion,
-        schemaVersion: "scene-annotation-v1"
-    )
-}
-
+/// Результат планирования сцены — готовые координаты и происхождение.
 struct PlannedScene: Equatable {
     let placedActors: [PlacedActor]
     let placedObjects: [PlacedObject]

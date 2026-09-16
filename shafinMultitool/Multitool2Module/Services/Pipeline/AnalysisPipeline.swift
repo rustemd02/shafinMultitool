@@ -2234,8 +2234,88 @@ struct FeatureSnapshotDetectedObject: Equatable {
     let confidence: Double
 }
 
+extension VisionObjectFrame {
+    var featureProvenance: FeatureSampleProvenance {
+        FeatureSampleProvenance(frameID: frameID, captureGeneration: captureGeneration,
+                                orientation: orientation, samplePresentationTimestamp: samplePTS,
+                                sessionGeneration: sessionGeneration)
+    }
+}
+
+/// Current Vision geometry retains the detector's original semantic clock.
+/// Tracking quality cannot replace detector support or calibrated probability.
+struct FeatureSnapshotDetrTracking: Equatable {
+    let source: VisionObjectFrame
+    let current: VisionObjectFrame
+    let geometryMeasuredAt: Date
+    let qualities: [Float]
+    let geometries: [VisionObjectGeometry]
+    let sourceCandidateCount: Int
+
+    init(source: VisionObjectFrame, current: VisionObjectFrame,
+         geometryMeasuredAt: Date, qualities: [Float], geometries: [VisionObjectGeometry],
+         sourceCandidateCount: Int? = nil) {
+        self.source = source
+        self.current = current
+        self.geometryMeasuredAt = geometryMeasuredAt
+        self.qualities = qualities
+        self.geometries = geometries
+        self.sourceCandidateCount = sourceCandidateCount ?? qualities.count
+    }
+
+    var objectObservationCoverage: ObjectObservationCoverage {
+        sourceCandidateCount == qualities.count ? .complete : .partial
+    }
+
+    var trackingGeometryStatus: ObjectTrackingGeometryStatus {
+        guard !geometries.isEmpty, geometries.count == qualities.count else { return .unavailable }
+        return geometries.contains(where: \.hasClippedTrackingGeometry) ? .clipped : .unclipped
+    }
+}
+
 struct FeatureSnapshotDetrPayload: Equatable {
     let detections: [FeatureSnapshotDetectedObject]
+    let tracking: FeatureSnapshotDetrTracking?
+
+    init(detections: [FeatureSnapshotDetectedObject],
+         tracking: FeatureSnapshotDetrTracking? = nil) {
+        self.detections = detections
+        self.tracking = tracking
+    }
+}
+
+extension FeatureSample where Value == FeatureSnapshotDetrPayload {
+    var hasValidTrackingLinkage: Bool {
+        guard let tracking = value.tracking else { return true }
+        let source = tracking.source
+        let current = tracking.current
+        let captureAge = current.capturedAt.timeIntervalSince(source.capturedAt)
+        let measuredAge = tracking.geometryMeasuredAt.timeIntervalSince(source.capturedAt)
+        let ptsAge = CMTimeGetSeconds(CMTimeSubtract(current.samplePTS, source.samplePTS))
+        return source.isKnown && current.isKnown && source.sharesEpoch(with: current)
+            && source.frameID != current.frameID && provenance == current.featureProvenance
+            && measuredAt == source.capturedAt
+            && captureAge >= 0 && measuredAge >= captureAge
+            && measuredAge <= VisionTracking.maximumObjectSeedAge
+            && ptsAge > 0 && ptsAge <= VisionTracking.maximumObjectSeedAge
+            && !value.detections.isEmpty && tracking.qualities.count == value.detections.count
+            && tracking.sourceCandidateCount >= value.detections.count
+            && tracking.geometries.count == value.detections.count
+            && Set(tracking.geometries.map(\.seedSlot)).count == tracking.geometries.count
+            && tracking.geometries.allSatisfy { $0.seedSlot < tracking.sourceCandidateCount }
+            && zip(tracking.geometries, value.detections).allSatisfy { geometry, detection in
+                geometry == VisionObjectGeometry(seedSlot: geometry.seedSlot,
+                                                  rawBoundingBox: geometry.rawBoundingBox)
+                    && geometry.meetsPublicationArea
+                    && geometry.visibleImageIntersection == detection.boundingBox
+            }
+            && tracking.qualities.allSatisfy {
+                $0.isFinite && $0 >= VisionTracking.minimumObjectTrackingQuality && $0 <= 1
+            }
+            && value.detections.allSatisfy {
+                VisionTracking.validObjectBox($0.boundingBox) && $0.confidence.isFinite
+            }
+    }
 }
 
 struct FeatureSnapshotAestheticPayload: Equatable {
@@ -2303,7 +2383,8 @@ extension PipelineFeatureSnapshotAdapterState {
                            samplePresentationTimestamp: CMTime? = nil,
                            sessionGeneration: UInt64? = nil) -> Self {
         let validDetr: FeatureSample<FeatureSnapshotDetrPayload>? = detr.flatMap { sample in
-            guard let provenance = sample.provenance,
+            guard sample.hasValidTrackingLinkage,
+                  let provenance = sample.provenance,
                   provenance.matches(
                     frameID: frameID,
                     captureGeneration: captureGeneration,
@@ -2466,7 +2547,9 @@ struct PipelineFeatureSnapshotAdapter {
         _ sample: FeatureSample<FeatureSnapshotDetrPayload>?,
         expectedProvenance: FeatureSampleProvenance?
     ) -> FeatureSample<FeatureSnapshotDetrPayload>? {
-        guard let sample, let expectedProvenance else { return sample }
+        guard let sample else { return nil }
+        guard sample.hasValidTrackingLinkage else { return nil }
+        guard let expectedProvenance else { return sample }
         guard let provenance = sample.provenance,
               provenance == expectedProvenance,
               provenance.isKnown else {
@@ -2876,6 +2959,15 @@ struct FeatureSnapshotAggregator {
         }
     }
 
+    /// Preserve counterevidence when the bounded live tracker cannot measure
+    /// every detector foreground candidate. This is a count, not scene completeness.
+    func foregroundObjectCandidateCount(from detections: [DETRDetection]) -> Int {
+        foregroundDetections(from: detections.map {
+            FeatureSnapshotDetectedObject(boundingBox: $0.boundingBox,
+                                          label: $0.label, confidence: Double($0.confidence))
+        }).count
+    }
+
     private func foregroundDetections(from detections: [FeatureSnapshotDetectedObject]) -> [FeatureSnapshotDetectedObject] {
         detections
             .filter(isForegroundDetection)
@@ -2902,7 +2994,7 @@ struct FeatureSnapshotAggregator {
         let area = max(0, Double(detection.boundingBox.width * detection.boundingBox.height))
 
         guard detection.confidence >= 0.12 else { return false }
-        guard area >= 0.003 else { return false }
+        guard area >= VisionObjectGeometry.minimumPublishedArea else { return false }
 
         if structuralBackgroundLabels.contains(label) {
             return false
@@ -3822,6 +3914,7 @@ final class AnalysisPipeline: ObservableObject {
     private let pauseReasoningCoordinator: PauseReasoningCoordinator
     private let visualSemanticEvidenceCoordinator: VisualSemanticEvidenceCoordinator
     private let neuralEvidenceService: NeuralEvidenceInferenceService?
+    private let episodeConfidenceCalibrator: CameraConfidenceCalibrator
 #if DEBUG
     /// Hardware-free tests may replace only the earliest Vision result while
     /// retaining the real CameraManager → RealtimeScheduler → pipeline →
@@ -3895,15 +3988,23 @@ final class AnalysisPipeline: ObservableObject {
     private let taskLock = NSLock()
 
     private var lifecycleGeneration: UInt64 = 0
-    /// R03 observation lane: passively maintained multi-object identities.
-    /// No advice path consumes it yet; wiring continues in the next package.
+    /// Current-frame diagnostics remain in the registry; SubjectTracker is
+    /// the only owner of object target identities and selections.
     private var subjectIdentityRegistry: SubjectIdentityRegistry?
     private var subjectIdentityRegistryGeneration: UInt64?
-    /// CC-O02: the operator's last scene-space tap, stored raw and resolved
-    /// against tracked instances at evaluation time. Guarded by its own lock
-    /// because the write arrives on the main thread while advice evaluation
-    /// reads it on the analysis path.
+    private struct LiveObjectPresentation {
+        let frame: ObjectTrackFrame
+        let evidence: LatestFrameEvidenceStore.Snapshot
+        let pipelineGeneration: UInt64
+        let entityObservations: [UserMovementEntityObservation]
+    }
+    /// Main-actor writes publish one immutable overlay context. The lock also
+    /// protects reads from diagnostic/planner helpers outside actor isolation.
     private let sceneTapEvidenceLock = NSLock()
+    private var lastObjectFrameProvenance: FeatureSampleProvenance?
+    private var objectFramePipelineGeneration: UInt64?
+    private var objectSampleSequence: UInt64 = 0
+    private var presentedObjectFrame: LiveObjectPresentation?
     private var latestSceneTapEvidence: SceneTapEvidence?
     /// CC-I05 session-scoped intent answers; empty by default, so the safety
     /// gate behaves exactly as before until the user answers a prompt.
@@ -3992,6 +4093,7 @@ final class AnalysisPipeline: ObservableObject {
     init(reasoningProvider: ReasoningProvider? = ReasoningProviderFactory.makeDefaultProvider(),
          visualEvidenceProvider: VisualSemanticEvidenceProvider? = VisualSemanticEvidenceProviderFactory.makeDefaultProvider(),
          neuralEvidenceService: NeuralEvidenceInferenceService? = NeuralEvidenceInferenceService.makeDefault(),
+         episodeConfidenceCalibrator: CameraConfidenceCalibrator = .unavailable,
          thermalGovernor: ThermalGovernor = ThermalGovernor(),
          neuralHeavyModelsEnabledProvider: @escaping () -> Bool = { true },
          liveHybridFusionEnabled: Bool = true,
@@ -4000,6 +4102,7 @@ final class AnalysisPipeline: ObservableObject {
         self.pauseReasoningCoordinator = PauseReasoningCoordinator(provider: reasoningProvider)
         self.visualSemanticEvidenceCoordinator = VisualSemanticEvidenceCoordinator(provider: visualEvidenceProvider)
         self.neuralEvidenceService = neuralEvidenceService
+        self.episodeConfidenceCalibrator = episodeConfidenceCalibrator
         self.thermalGovernor = thermalGovernor
         self.neuralHeavyModelsEnabledProvider = neuralHeavyModelsEnabledProvider
         self.liveHybridFusionEnabled = liveHybridFusionEnabled
@@ -4011,6 +4114,7 @@ final class AnalysisPipeline: ObservableObject {
     convenience init(reasoningProvider: ReasoningProvider? = ReasoningProviderFactory.makeDefaultProvider(),
                      visualEvidenceProvider: VisualSemanticEvidenceProvider? = VisualSemanticEvidenceProviderFactory.makeDefaultProvider(),
                      neuralEvidenceService: NeuralEvidenceInferenceService? = NeuralEvidenceInferenceService.makeDefault(),
+                     episodeConfidenceCalibrator: CameraConfidenceCalibrator = .unavailable,
                      thermalGovernor: ThermalGovernor = ThermalGovernor(),
                      neuralHeavyModelsEnabledProvider: @escaping () -> Bool = { true },
                      liveHybridFusionEnabled: Bool = true,
@@ -4021,6 +4125,7 @@ final class AnalysisPipeline: ObservableObject {
             reasoningProvider: reasoningProvider,
             visualEvidenceProvider: visualEvidenceProvider,
             neuralEvidenceService: neuralEvidenceService,
+            episodeConfidenceCalibrator: episodeConfidenceCalibrator,
             thermalGovernor: thermalGovernor,
             neuralHeavyModelsEnabledProvider: neuralHeavyModelsEnabledProvider,
             liveHybridFusionEnabled: liveHybridFusionEnabled,
@@ -4112,72 +4217,240 @@ final class AnalysisPipeline: ObservableObject {
             expectedDetrProvenance: expectedDetrProvenance,
             state: adapterState
         )
+        // Snapshot construction is pure. Only the accepted live presentation
+        // boundary advances object observations; pause/debug/repeated reads do not.
+        return featureSnapshotAggregator.makeSnapshot(from: input)
+    }
+
+    /// Every accepted live presentation contributes exactly one batch, even
+    /// when no subject/object was detected. Call before any motion/advice early
+    /// return; these observations never imply good-frame or action eligibility.
+    @MainActor
+    @discardableResult
+    private func acceptLiveObjectObservation(
+        frameEvidence: LatestFrameEvidenceStore.Snapshot,
+        generation: UInt64
+    ) -> Bool {
+        guard isCurrentLiveEvidence(frameEvidence, generation: generation),
+              let adapterState = frameEvidence.adapterState else { return false }
+        let provenance = FeatureSampleProvenance(
+            frameID: frameEvidence.sourceFrameId,
+            captureGeneration: frameEvidence.lensGeneration,
+            orientation: frameEvidence.orientation,
+            samplePresentationTimestamp: frameEvidence.samplePresentationTimestamp,
+            sessionGeneration: frameEvidence.sessionGeneration
+        )
+        guard provenance.isKnown, provenance.samplePresentationTimestamp.isNumeric else { return false }
+        let input = featureSnapshotAdapter.makeInput(
+            frameId: frameEvidence.sourceFrameId, mode: .live,
+            capturedAt: frameEvidence.capturedAt, evaluatedAt: Date(),
+            expectedDetrProvenance: provenance, state: adapterState
+        )
         let snapshot = featureSnapshotAggregator.makeSnapshot(from: input)
-        let identityObservations = featureSnapshotAggregator.subjectIdentityObservations(from: input)
-        observeSubjectIdentityLane(in: snapshot, observations: identityObservations)
-        return snapshot
+        let observations = featureSnapshotAggregator.subjectIdentityObservations(from: input)
+        return acceptLiveObjectObservation(
+            snapshot: snapshot, observations: observations, provenance: provenance,
+            frameEvidence: frameEvidence, generation: generation
+        )
     }
 
-    /// R03 observation lane: associates the live primary candidate into the
-    /// multi-object identity registry. The registry is recreated on every
-    /// lifecycle generation change (lens/orientation/route fence); a scene
-    /// change additionally ages all identities out via the miss limit.
-    private func observeSubjectIdentityLane(in snapshot: FrameFeatureSnapshot,
-                                             observations: [SubjectIdentityObservation]) {
-        guard snapshot.mode == .live else { return }
-        if subjectIdentityRegistry == nil || subjectIdentityRegistryGeneration != lifecycleGeneration {
-            subjectIdentityRegistry = SubjectIdentityRegistry(generation: lifecycleGeneration)
-            subjectIdentityRegistryGeneration = lifecycleGeneration
+    @MainActor
+    @discardableResult
+    private func acceptLiveObjectObservation(
+        snapshot: FrameFeatureSnapshot,
+        observations: [SubjectIdentityObservation],
+        provenance: FeatureSampleProvenance,
+        frameEvidence: LatestFrameEvidenceStore.Snapshot,
+        generation: UInt64
+    ) -> Bool {
+        guard snapshot.mode == .live, snapshot.frameId == provenance.frameID,
+              provenance.isKnown, provenance.samplePresentationTimestamp.isNumeric else { return false }
+        sceneTapEvidenceLock.lock()
+        defer { sceneTapEvidenceLock.unlock() }
+        let pipelineChanged = objectFramePipelineGeneration != generation
+        if !pipelineChanged, let previous = lastObjectFrameProvenance {
+            guard provenance.captureGeneration >= previous.captureGeneration else { return false }
+            if provenance.captureGeneration == previous.captureGeneration {
+                guard provenance.sessionGeneration == previous.sessionGeneration,
+                      provenance.orientation == previous.orientation,
+                      provenance.frameID != previous.frameID,
+                      CMTimeCompare(provenance.samplePresentationTimestamp,
+                                    previous.samplePresentationTimestamp) > 0 else { return false }
+            }
         }
-        // DETR regions are the multi-object source; the primary candidate
-        // region keeps the lane alive when no object detections are present.
-        let detections: [SubjectIdentityObservation]
+        guard objectSampleSequence < UInt64.max else { return false }
+        objectSampleSequence += 1
+        if pipelineChanged || subjectIdentityRegistryGeneration != provenance.captureGeneration {
+            subjectIdentityRegistry = SubjectIdentityRegistry(generation: provenance.captureGeneration)
+            subjectIdentityRegistryGeneration = provenance.captureGeneration
+            liveSubjectTracker.resetObjects()
+        }
+        objectFramePipelineGeneration = generation
+        lastObjectFrameProvenance = provenance
+
+        let diagnosticObservations: [SubjectIdentityObservation]
         if observations.isEmpty, let region = snapshot.subjectSignals.primaryCandidateRegion {
-            detections = [
-                SubjectIdentityObservation(
-                    region: region,
-                    confidence: snapshot.subjectSignals.primaryCandidateConfidence ?? 0,
-                    label: nil
-                )
-            ]
+            diagnosticObservations = [SubjectIdentityObservation(
+                region: region,
+                confidence: snapshot.subjectSignals.primaryCandidateConfidence ?? 0
+            )]
         } else {
-            detections = observations
+            diagnosticObservations = observations
         }
-        guard !detections.isEmpty else { return }
-        _ = subjectIdentityRegistry?.observe(detections: detections, frameId: snapshot.frameId)
+        _ = subjectIdentityRegistry?.observe(
+            detections: diagnosticObservations, frameId: snapshot.frameId,
+            sampleSequence: objectSampleSequence
+        )
+        // A face/person or saliency fallback is not a rearrangeable object.
+        // Keep its diagnostic registry observation separate from object selection.
+        let objectCandidates = observations.enumerated().compactMap { index, observation -> SubjectCandidate? in
+            guard !observation.isReflection,
+                  observation.label?.lowercased() != "person" else { return nil }
+            return SubjectCandidate(
+                id: observation.entityID ?? "object-observation-\(index)", kind: .object,
+                label: observation.label, region: observation.region,
+                confidence: observation.confidence
+            )
+        }
+        let frame = liveSubjectTracker.acceptObjectFrame(
+            candidates: objectCandidates, frameID: snapshot.frameId,
+            generation: provenance.captureGeneration, sampleSequence: objectSampleSequence,
+            capturedAt: snapshot.capturedAt
+        )
+        presentedObjectFrame = frame.map { objectFrame in
+            let entities = frameEvidence.adapterState?.detr.map { sample in
+                UserMovementEntityProvenance.observations(frame: objectFrame, sample: sample,
+                                                         pipelineGeneration: generation)
+            } ?? []
+            return LiveObjectPresentation(frame: objectFrame, evidence: frameEvidence,
+                                          pipelineGeneration: generation, entityObservations: entities)
+        }
+        latestSceneTapEvidence = nil
+        return true
     }
 
-    /// CC-O02/O05 consumer: how many tracked instance pairs currently overlap.
-    /// `nil` means the identity lane has no evidence for this frame yet, and the
-    /// live quality gate must not suppress object advice on absent evidence.
-    private func liveOverlappingInstancePairCount() -> Int? {
-        guard let summary = subjectIdentityRegistry?.multiObjectSummary() else { return nil }
-        return summary.overlappingTrackIDPairs.count
+    /// Read the same immutable accepted object presentation. An unrelated or
+    /// stale object frame never supplies geometry to a current movement frame.
+    private func liveEntityObservations(frameEvidence: LatestFrameEvidenceStore.Snapshot,
+                                        generation: UInt64, evaluatedAt: Date) -> [UserMovementEntityObservation] {
+        sceneTapEvidenceLock.lock()
+        let presentation = presentedObjectFrame
+        sceneTapEvidenceLock.unlock()
+        guard let presentation, presentation.pipelineGeneration == generation,
+              presentation.frame.frameID == frameEvidence.sourceFrameId,
+              presentation.frame.generation == frameEvidence.lensGeneration,
+              presentation.frame.capturedAt == frameEvidence.capturedAt,
+              ObjectIdentifier(presentation.evidence.pixelBuffer as AnyObject)
+                == ObjectIdentifier(frameEvidence.pixelBuffer as AnyObject),
+              presentation.evidence.adapterState?.detr == frameEvidence.adapterState?.detr,
+              presentation.evidence.orientation == frameEvidence.orientation,
+              presentation.evidence.sessionGeneration == frameEvidence.sessionGeneration,
+              frameEvidence.samplePresentationTimestamp.isNumeric,
+              CMTimeCompare(presentation.evidence.samplePresentationTimestamp,
+                            frameEvidence.samplePresentationTimestamp) == 0,
+              isCurrentLiveEvidence(presentation.evidence, generation: generation) else { return [] }
+        let envelope = frameEvidence.makeEnvelope()
+        // Expired object semantics do not invalidate unrelated frame-global
+        // measurements. They simply contribute no entity observation.
+        return presentation.entityObservations.filter {
+            $0.provenance?.matches(envelope: envelope, pipelineGeneration: generation, asOf: evaluatedAt) == true
+        }
     }
 
-    /// CC-O02 entry point: the operator tapped the preview. The tap is stored
-    /// raw in scene space; the naming decision happens at evaluation time.
+    /// The caller names the evaluated frame. Grace-window or different-frame
+    /// identities cannot contribute an overlap to that frame.
+    private func liveOverlappingInstancePairCount(frameId: String?) -> Int? {
+        sceneTapEvidenceLock.lock()
+        defer { sceneTapEvidenceLock.unlock() }
+        guard let frameId,
+              let provenance = lastObjectFrameProvenance,
+              provenance.frameID == frameId,
+              let registry = subjectIdentityRegistry else { return nil }
+        return registry.multiObjectSummary(
+            frameId: frameId, generation: provenance.captureGeneration
+        ).overlappingTrackIDPairs.count
+    }
+
+    private func objectObservationCoverage(for presentation: LiveObjectPresentation) -> ObjectObservationCoverage {
+        guard let sample = presentation.evidence.adapterState?.detr else { return .unavailable }
+        let measuredCoverage = sample.value.tracking?.objectObservationCoverage ?? .complete
+        guard measuredCoverage == .complete else { return measuredCoverage }
+        // The identity owner can reject a measured rectangle (weak support,
+        // ambiguous association, or invalid geometry). Its omission cannot make
+        // a tap or evaluated object move appear uniquely grounded.
+        guard presentation.frame.currentObjects.count == sample.value.detections.count else { return .partial }
+        return .complete
+    }
+
+    private func liveObjectObservationCoverage(frameId: String?) -> ObjectObservationCoverage {
+        sceneTapEvidenceLock.lock()
+        defer { sceneTapEvidenceLock.unlock() }
+        guard let frameId, let presentation = presentedObjectFrame,
+              presentation.frame.frameID == frameId else { return .unavailable }
+        return objectObservationCoverage(for: presentation)
+    }
+
+    private func objectTrackingGeometryStatus(for presentation: LiveObjectPresentation) -> ObjectTrackingGeometryStatus {
+        presentation.evidence.adapterState?.detr?.value.tracking?.trackingGeometryStatus ?? .unavailable
+    }
+
+    private func liveObjectTrackingGeometryStatus(frameId: String?) -> ObjectTrackingGeometryStatus {
+        sceneTapEvidenceLock.lock()
+        defer { sceneTapEvidenceLock.unlock() }
+        guard let frameId, let presentation = presentedObjectFrame,
+              presentation.frame.frameID == frameId else { return .unavailable }
+        return objectTrackingGeometryStatus(for: presentation)
+    }
+
+    private func liveSubjectIdentitySummary(frameId: String) -> MultiObjectSceneSummary? {
+        sceneTapEvidenceLock.lock()
+        defer { sceneTapEvidenceLock.unlock() }
+        guard let provenance = lastObjectFrameProvenance,
+              provenance.frameID == frameId,
+              let presentation = presentedObjectFrame,
+              presentation.frame.frameID == frameId,
+              objectObservationCoverage(for: presentation) == .complete,
+              objectTrackingGeometryStatus(for: presentation) == .unclipped else { return nil }
+        return subjectIdentityRegistry?.multiObjectSummary(
+            frameId: frameId, generation: provenance.captureGeneration
+        )
+    }
+
+    /// Bind immediately to the accepted analysis geometry published with the
+    /// overlay. AVCaptureVideoPreviewLayer scanout has no exact token here;
+    /// this context deliberately claims only the accepted overlay frame.
+    @MainActor
     func handleSceneTap(normalizedX: Double, normalizedY: Double, now: Date = Date()) {
-        let evidence = SceneTapEvidence(sceneX: normalizedX, sceneY: normalizedY, capturedAt: now)
+        sceneTapEvidenceLock.lock()
+        let presentation = presentedObjectFrame
+        sceneTapEvidenceLock.unlock()
+        let evidence: SceneTapEvidence?
+        if let presentation,
+           objectObservationCoverage(for: presentation) == .complete,
+           objectTrackingGeometryStatus(for: presentation) == .unclipped,
+           isCurrentLiveEvidence(presentation.evidence, generation: presentation.pipelineGeneration) {
+            evidence = SceneTapEvidence(
+                sceneX: normalizedX, sceneY: normalizedY,
+                frame: presentation.frame, now: now
+            )
+        } else {
+            evidence = nil
+        }
         sceneTapEvidenceLock.lock()
         latestSceneTapEvidence = evidence
         sceneTapEvidenceLock.unlock()
     }
 
-    /// CC-O02 consumer: does a fresh operator tap name a tracked instance?
-    /// Resolution runs on the caller's context, next to the other registry
-    /// reads, so it sees the same tracked regions the gate is judging.
-    private func liveTapGroundedObjectTarget(now: Date = Date()) -> Bool {
+    @MainActor
+    private func clearLiveObjectPresentation(resetRegistry: Bool = false) {
         sceneTapEvidenceLock.lock()
-        let evidence = latestSceneTapEvidence
-        sceneTapEvidenceLock.unlock()
-        guard let evidence else { return false }
-        let ageMilliseconds = now.timeIntervalSince(evidence.capturedAt) * 1000
-        guard ageMilliseconds >= 0,
-              ageMilliseconds <= Double(LiveCoachQualityGate.maxVisionFreshnessMilliseconds) else {
-            return false
+        presentedObjectFrame = nil
+        latestSceneTapEvidence = nil
+        if resetRegistry {
+            subjectIdentityRegistry = nil
+            subjectIdentityRegistryGeneration = nil
         }
-        return subjectIdentityRegistry?.instance(atSceneX: evidence.sceneX, y: evidence.sceneY) != nil
+        sceneTapEvidenceLock.unlock()
     }
 
     private func makeDetrFeatureSample(from detections: [DETRDetection],
@@ -4335,6 +4608,12 @@ final class AnalysisPipeline: ObservableObject {
         await drainQueue(highQueue)
         await drainQueue(mediumQueue)
         await drainQueue(lowQueue)
+        await withCheckedContinuation { continuation in
+            highQueue.async { [weak self] in
+                self?.visionTracking.resetObjectTracking()
+                continuation.resume()
+            }
+        }
 
         for task in snapshot.tasks {
             _ = await task.value
@@ -4634,6 +4913,52 @@ final class AnalysisPipeline: ObservableObject {
         )
     }
 
+    private func objectTrackingFrame(context: FrameContext, generation: UInt64) -> VisionObjectFrame {
+        VisionObjectFrame(frameID: makeSourceFrameId(from: context.timestamp),
+                          captureGeneration: context.captureGeneration,
+                          sessionGeneration: context.sessionGeneration,
+                          lifecycleGeneration: generation, orientation: context.orientation,
+                          samplePTS: context.samplePresentationTimestamp, capturedAt: context.capturedAt)
+    }
+
+    /// Callback delivery owns no overlay/feature mutation. The serial high lane
+    /// checks lifecycle again and orders both positive and empty source batches.
+    private func enqueueLiveDetrSeed(_ detections: [DETRDetection],
+                                     context: FrameContext, generation: UInt64) {
+        highQueue.async { [weak self] in
+            guard let self, self.isFrameWorkActive(generation) else { return }
+            let seed = VisionObjectSeed(
+                frame: self.objectTrackingFrame(context: context, generation: generation),
+                pixelBuffer: context.pixelBuffer,
+                detections: self.compositionPriorityDetections(detections),
+                sourceCandidateCount: self.featureSnapshotAggregator.foregroundObjectCandidateCount(from: detections)
+            )
+            self.visionTracking.offerObjectSeed(seed)
+        }
+    }
+
+    private func currentDetrSample(_ batch: VisionObjectTrackingBatch?,
+                                    geometryMeasuredAt: Date) -> FeatureSample<FeatureSnapshotDetrPayload>? {
+        guard let batch else { return nil }
+        let sample = FeatureSample(
+            value: FeatureSnapshotDetrPayload(
+                detections: batch.detections.map {
+                    FeatureSnapshotDetectedObject(boundingBox: $0.boundingBox,
+                                                  label: $0.label, confidence: Double($0.confidence))
+                },
+                tracking: FeatureSnapshotDetrTracking(
+                    source: batch.source, current: batch.current,
+                    geometryMeasuredAt: geometryMeasuredAt, qualities: batch.qualities,
+                    geometries: batch.geometries,
+                    sourceCandidateCount: batch.sourceCandidateCount)
+            ),
+            measuredAt: batch.source.capturedAt,
+            baseConfidence: batch.detections.map { Double($0.confidence) }.max(),
+            provenance: batch.current.featureProvenance
+        )
+        return sample.hasValidTrackingLinkage ? sample : nil
+    }
+
     private func performHigh(context: FrameContext, generation: UInt64) {
         guard isGenerationCurrent(generation),
               isCaptureProvenanceAcceptable(context) else { return }
@@ -4664,6 +4989,14 @@ final class AnalysisPipeline: ObservableObject {
         Telemetry.shared.recordLatency(label: "Vision", duration: visionLatency)
         Telemetry.shared.setActiveModule("Vision", active: false)
 
+        let trackedObjects = visionTracking.trackObjects(
+            pixelBuffer: context.pixelBuffer,
+            frame: objectTrackingFrame(context: context, generation: generation)
+        )
+        let currentObjectSample = currentDetrSample(trackedObjects, geometryMeasuredAt: Date())
+        let currentDetections = currentObjectSample?.value.detections.map {
+            DETRDetection(boundingBox: $0.boundingBox, label: $0.label, confidence: Float($0.confidence))
+        } ?? []
         let primarySubject = primaryVisionSubject(from: trackingResult)
         let normalizedSubjectRegions = trackingResult.subjects.compactMap { subject -> NormalizedRect? in
             let box = subject.boundingBox
@@ -4696,7 +5029,31 @@ final class AnalysisPipeline: ObservableObject {
             )
         }
         let visionBaseConfidence = visionSubjectsPayload.map(\.confidence).max()
+        let selectionSnapshot = featureSnapshotAggregator.makeSnapshot(from: FeatureAggregationInput(
+            frameId: sourceFrameId, mode: .live, capturedAt: context.capturedAt,
+            evaluatedAt: measurementTime, motionState: context.motionState.cameraAnalysisMotionState,
+            shakeLevel: context.shakeLevel,
+            vision: FeatureSample(
+                value: FeatureSnapshotVisionPayload(
+                    subjects: visionSubjectsPayload, saliencyCenter: trackingResult.saliencyCenter,
+                    saliencyRegion: trackingResult.saliencyRegion,
+                    faceCount: trackingResult.faceCount, personCount: trackingResult.personCount),
+                measuredAt: measurementTime,
+                baseConfidence: visionBaseConfidence ?? (trackingResult.saliencyRegion == nil ? nil : 0.48)),
+            horizon: nil, lighting: nil, detr: currentObjectSample, aesthetic: nil
+        ))
+        let objectSubject: DETRDetection? = {
+            guard selectionSnapshot.subjectSignals.primaryCandidateSource == .detr,
+                  let region = selectionSnapshot.subjectSignals.primaryCandidateRegion else { return nil }
+            return currentDetections.first {
+                let box = $0.boundingBox
+                return NormalizedRect(x: Double(box.minX), y: Double(box.minY),
+                                      width: Double(box.width), height: Double(box.height)) == region
+            }
+        }()
 
+        let selectedVisionSubject = selectionSnapshot.subjectSignals.primaryCandidateSource == .vision
+            ? primarySubject : nil
         var frameAdapterState: PipelineFeatureSnapshotAdapterState?
         updateFeatures { features in
             // M2-013: an unavailable horizon contributes no angle claim.
@@ -4704,7 +5061,7 @@ final class AnalysisPipeline: ObservableObject {
             features.horizon.confidence = horizon.isAvailable ? horizon.confidence : 0
             features.motion.shakeLevel = CGFloat(context.shakeLevel)
             features.motion.state = context.motionState
-            if let subject = primarySubject {
+            if let subject = selectedVisionSubject {
                 features.composition = self.compositionFeatures(from: subject.boundingBox)
                 features.composition.saliencyLeftRightBalance = saliencyBalance
                 features.composition.subjectAreaRatio = subject.boundingBox.width * subject.boundingBox.height
@@ -4719,6 +5076,27 @@ final class AnalysisPipeline: ObservableObject {
                 features.subject.isPerson = false
                 features.subject.count = 0
             }
+            if selectedVisionSubject == nil {
+                if let object = objectSubject {
+                    features.composition = self.compositionFeatures(from: object.boundingBox)
+                    features.composition.subjectAreaRatio = object.boundingBox.width * object.boundingBox.height
+                    features.subject.objectName = object.label
+                    features.subject.isFace = false
+                    features.subject.isPerson = false
+                    features.subject.count = currentDetections.count
+                } else {
+                    features.composition.subjectAreaRatio = 0
+                    features.subject.objectName = nil
+                    features.subject.isFace = false
+                    features.subject.isPerson = false
+                    features.subject.count = 0
+                }
+            }
+            // Always replace, including unavailable/empty. An earlier seed box
+            // cannot survive as current geometry through the debug fallback.
+            self.latestDetrSample = currentObjectSample
+            self.debugData.detrDetections = currentDetections
+            self.debugData.detrMeasuredAt = currentObjectSample?.measuredAt
 
             self.debugData.visionSubjects = trackingResult.subjects.map { subject in
                 VisionSubject(
@@ -4818,10 +5196,11 @@ final class AnalysisPipeline: ObservableObject {
 
         Task { @MainActor in
             guard self.isCurrentLiveEvidence(frameEvidence, generation: generation) else { return }
+            _ = self.acceptLiveObjectObservation(frameEvidence: frameEvidence, generation: generation)
             if self.subjectRegions != normalizedSubjectRegions {
                 self.subjectRegions = normalizedSubjectRegions
             }
-            self.overlayState = OverlayState(primaryBoundingBox: primarySubject?.boundingBox,
+            self.overlayState = OverlayState(primaryBoundingBox: selectedVisionSubject?.boundingBox ?? objectSubject?.boundingBox,
                                              horizonAngle: horizon.isAvailable ? horizon.angleDegrees : 0,
                                              horizonConfidence: horizon.isAvailable ? horizon.confidence : 0,
                                              saliencyBalance: saliencyBalance)
@@ -4974,13 +5353,6 @@ final class AnalysisPipeline: ObservableObject {
 
             lastDETRRequest = now
             let detrStart = CACurrentMediaTime()
-            let detrProvenance = FeatureSampleProvenance(
-                frameID: makeSourceFrameId(from: context.timestamp),
-                captureGeneration: context.captureGeneration,
-                orientation: context.orientation,
-                samplePresentationTimestamp: context.samplePresentationTimestamp,
-                sessionGeneration: context.sessionGeneration
-            )
             Telemetry.shared.setActiveModule("DETR", active: true)
             print(
                 "[CA_DEBUG][DETR_REQUEST] lowFrame=\(lowFrameCount) sinceLast=\(debugDouble(timeSinceLastDETR)) " +
@@ -5008,97 +5380,7 @@ final class AnalysisPipeline: ObservableObject {
                     "latencyMs=\(self.debugDouble(detrLatency * 1000)) detections=\(self.debugDetections(detections)) " +
                     "priorityTop=\(self.debugDetection(priorityDetections.first))"
                 )
-                if let top = priorityDetections.first {
-                    var didUseDetrSubject = false
-
-                    self.updateFeatures { features in
-                        guard detrProvenance.isKnown,
-                              self.latestHighFrameProvenance == detrProvenance else { return }
-                        let measurementTime = Date()
-                        self.debugData.detrDetections = detections
-                        self.debugData.detrMeasuredAt = measurementTime
-                        self.latestDetrSample = self.makeDetrFeatureSample(
-                            from: detections,
-                            measuredAt: measurementTime,
-                            provenance: detrProvenance
-                        )
-
-                        guard !self.shouldPreserveVisionSubjectForLiveDetr(features) else { return }
-
-                        didUseDetrSubject = true
-                        features.composition = self.compositionFeatures(from: top.boundingBox)
-                        features.composition.subjectAreaRatio = top.boundingBox.width * top.boundingBox.height
-                        features.subject.objectName = top.label
-                        features.subject.isFace = (top.label.lowercased() == "person")
-                        features.subject.isPerson = (top.label.lowercased() == "person")
-                        features.subject.count = detections.count
-                    }
-                    let didUseDetrSubjectSnapshot = didUseDetrSubject
-                    print(
-                        "[CA_DEBUG][DETR_APPLY] used=\(didUseDetrSubjectSnapshot) " +
-                        "reason=\(didUseDetrSubjectSnapshot ? "priority_subject" : "preserved_vision_subject") " +
-                        "top=\(self.debugDetection(top)) overlay=\(self.debugRect(didUseDetrSubjectSnapshot ? top.boundingBox : self.overlayState.primaryBoundingBox))"
-                    )
-                    Task { @MainActor in
-                        guard self.isGenerationCurrent(generation),
-                              self.isCurrentHighFrameProvenance(detrProvenance) else { return }
-                        if didUseDetrSubjectSnapshot {
-                            if CameraLog.detr {
-                                os_log("🎯 DETR PRIORITY: Using %{public}@ (conf=%.2f) for composition",
-                                       log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
-                                       type: .debug, top.label, top.confidence)
-                            }
-                            self.overlayState.primaryBoundingBox = top.boundingBox
-                        } else {
-                            if CameraLog.detr {
-                                os_log("🎯 DETR PRIORITY: Keeping Vision subject over %{public}@",
-                                       log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
-                                       type: .debug, top.label)
-                            }
-                        }
-                    }
-                } else {
-                    if CameraLog.detr {
-                        os_log("🎯 DETR PRIORITY: No foreground subject for composition",
-                               log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
-                               type: .debug)
-                    }
-                    var shouldClearDetrOverlay = false
-                    self.updateFeatures { features in
-                        guard detrProvenance.isKnown,
-                              self.latestHighFrameProvenance == detrProvenance else { return }
-                        let measurementTime = Date()
-                        self.debugData.detrDetections = detections
-                        self.debugData.detrMeasuredAt = measurementTime
-                        self.latestDetrSample = self.makeDetrFeatureSample(
-                            from: detections,
-                            measuredAt: measurementTime,
-                            provenance: detrProvenance
-                        )
-
-                        guard !self.shouldPreserveVisionSubjectForLiveDetr(features) else { return }
-
-                        shouldClearDetrOverlay = true
-                        if let saliencyCenter = self.debugData.saliencyCenter {
-                            features.composition = self.compositionFeatures(fromSaliency: saliencyCenter)
-                        }
-                        features.composition.subjectAreaRatio = 0
-                        features.subject.objectName = nil
-                        features.subject.count = 0
-                    }
-                    let shouldClearDetrOverlaySnapshot = shouldClearDetrOverlay
-                    print(
-                        "[CA_DEBUG][DETR_APPLY] used=false reason=\(shouldClearDetrOverlaySnapshot ? "cleared_no_priority_subject" : "preserved_vision_subject") " +
-                        "top=none overlay=\(self.debugRect(shouldClearDetrOverlaySnapshot ? nil : self.overlayState.primaryBoundingBox))"
-                    )
-                    Task { @MainActor in
-                        guard self.isGenerationCurrent(generation),
-                              self.isCurrentHighFrameProvenance(detrProvenance) else { return }
-                        if shouldClearDetrOverlaySnapshot {
-                            self.overlayState.primaryBoundingBox = nil
-                        }
-                    }
-                }
+                self.enqueueLiveDetrSeed(detections, context: context, generation: generation)
             }
         }
 
@@ -6712,6 +6994,7 @@ final class AnalysisPipeline: ObservableObject {
         currentCoachingEpisodeEvent = .cancel(.routeExit)
         _ = liveAdviceStabilizer.invalidate(frameID: "release", reason: "release")
         liveSubjectTracker.reset()
+        clearLiveObjectPresentation(resetRegistry: true)
         liveSubjectLifecycleContext = nil
         liveCaptureLifecycleContext = nil
         liveSubjectSource = nil
@@ -7113,7 +7396,12 @@ final class AnalysisPipeline: ObservableObject {
         if !preserveFrameGlobalContinuity {
             resetLiveCoachingEpisodeTransaction(frameID: frameID, reason: reason)
         }
-        liveSubjectTracker.reset()
+        if isCaptureLifecycleChange {
+            liveSubjectTracker.reset()
+            clearLiveObjectPresentation(resetRegistry: true)
+        } else {
+            liveSubjectTracker.resetSubject()
+        }
         liveSubjectSource = nil
         // Subject loss must not erase a valid frame-global quality hint. A
         // capture/lifecycle change still invalidates every visible state;
@@ -7184,7 +7472,8 @@ final class AnalysisPipeline: ObservableObject {
         let candidate: (
             actionID: String,
             safetyFamily: CameraAdviceActionFamily,
-            probability: Double,
+            rawScore: Double,
+            minimumConfidence: Double,
             priorityBand: Int,
             targetPoint: (x: Double, y: Double)?
         )?
@@ -7199,7 +7488,9 @@ final class AnalysisPipeline: ObservableObject {
             candidate = (
                 actionID: semanticAction.rawValue,
                 safetyFamily: migratedSafetyFamily,
-                probability: min(legacyAction.guardrail.minConfidence, plan.planConfidence),
+                rawScore: plan.planConfidence,
+                minimumConfidence: max(legacyAction.guardrail.minConfidence,
+                                       CameraAdviceSafetyGate.defaultMinimumConfidence),
                 priorityBand: legacyAction.priority,
                 targetPoint: migratedFamily == .subjectDisplacement
                     ? snapshot.subjectSignals.primaryCandidateRegion.flatMap { subjectRegion in
@@ -7225,7 +7516,8 @@ final class AnalysisPipeline: ObservableObject {
             candidate = (
                 actionID: TechnicalQualityActionType.stabilizeCamera.rawValue,
                 safetyFamily: .stability,
-                probability: stabilityIssue.confidence,
+                rawScore: stabilityIssue.confidence,
+                minimumConfidence: CameraAdviceSafetyGate.defaultMinimumConfidence,
                 priorityBand: 0,
                 targetPoint: nil
             )
@@ -7303,16 +7595,42 @@ final class AnalysisPipeline: ObservableObject {
         }
 
         let envelope = frameEvidence.makeEnvelope()
-        let calibrationVersion = stabilityAdmission ? "technical-quality-v1" : "bounded-plan-v1"
+        let calibrationInput: CameraCalibrationInputVersion = actionFamily == .stability
+            ? .technicalStabilityConfidenceV1
+            : .boundedPlanConfidenceV1
+        let calibratedCandidate = candidate.flatMap {
+            episodeConfidenceCalibrator.calibratedEvidence(
+                rawScore: $0.rawScore,
+                actionID: $0.actionID,
+                inputVersion: calibrationInput
+            )
+        }
+        let calibrationReference: String?
+        if candidate != nil {
+            calibrationReference = calibratedCandidate?.calibrationReference
+        } else {
+            // A disappearing recommendation has no new probability. Preserve
+            // only the unchanged rule for the active action's measurements.
+            calibrationReference = episodeActionID.flatMap {
+                episodeConfidenceCalibrator.calibrationReference(
+                    actionID: $0,
+                    inputVersion: calibrationInput
+                )
+            }
+        }
+        let objectPipelineGeneration = currentGeneration()
         guard let frame = UserMovementFrame(
             snapshot: snapshot,
             envelope: envelope,
             subjectBinding: binding,
+            entityObservations: liveEntityObservations(frameEvidence: frameEvidence,
+                                                       generation: objectPipelineGeneration, evaluatedAt: evaluatedAt),
+            pipelineGeneration: objectPipelineGeneration,
             evaluatedAt: evaluatedAt,
-            // The bounded plan's probability is already the only admitted
-            // action confidence. Raw model logits never enter this handoff.
-            isCalibrated: true,
-            calibrationVersion: calibrationVersion,
+            // Measured geometry stays intact even when calibration is absent.
+            // A heuristic score or a threshold cannot certify this envelope.
+            isCalibrated: calibrationReference != nil,
+            calibrationVersion: calibrationReference,
             orientation: orientation
         ) else {
             clearLiveCoachingEpisodeObservation(reason: "frame_adapter_rejected")
@@ -7320,7 +7638,7 @@ final class AnalysisPipeline: ObservableObject {
         }
 
         if let candidate {
-            guard candidate.probability.isFinite, candidate.probability >= 0 else {
+            guard candidate.rawScore.isFinite, candidate.rawScore >= 0 else {
                 clearLiveCoachingEpisodeObservation(reason: "probability_invalid")
                 return
             }
@@ -7338,8 +7656,8 @@ final class AnalysisPipeline: ObservableObject {
                     refocusAdviceAdmitted: false,
                     horizonAvailable: snapshot.sources.horizon.available
                         && snapshot.sources.horizon.confidence != nil,
-                    calibratedProbability: candidate.probability,
-                    minimumConfidence: CameraAdviceSafetyGate.defaultMinimumConfidence,
+                    calibratedProbability: calibratedCandidate?.probability,
+                    minimumConfidence: candidate.minimumConfidence,
                     intentionallySuppressedFamilies: intentClarification.suppressedFamilies
                 )
             )
@@ -7360,7 +7678,7 @@ final class AnalysisPipeline: ObservableObject {
                             ? candidate.targetPoint != nil
                             : true,
                         modeAdmitted: true,
-                        calibratedEvidenceAvailable: candidate.probability.isFinite && candidate.probability > 0,
+                        calibratedEvidenceAvailable: calibratedCandidate != nil,
                         // A promised effect needs a supported verifier; an
                         // unmapped action cannot enter the closed loop.
                         verifierSupported: UserMovementObserver.actionFamily(for: candidate.actionID) != nil,
@@ -7371,22 +7689,25 @@ final class AnalysisPipeline: ObservableObject {
                     )
                 ),
                 safetyDecision: safetyDecision,
-                candidates: [
+                candidates: calibratedCandidate.map { evidence in [
                     CameraPlannerCandidate(
                         actionID: candidate.actionID,
                         actionFamily: candidate.safetyFamily,
-                        calibratedProbability: candidate.probability,
+                        calibratedProbability: evidence.probability,
                         priorityBand: candidate.priorityBand,
                         targetPoint: candidate.targetPoint,
                         targetIdentity: subjectTrack?.identity
                     )
-                ],
+                ] } ?? [],
                 goodFrameScore: 0,
                 frameID: snapshot.frameId
             )
             guard boundedDecision.decision == .correct,
                   boundedDecision.actionID == candidate.actionID else {
-                clearLiveCoachingEpisodeObservation(reason: "bounded_plan_blocked")
+                clearLiveCoachingEpisodeObservation(
+                    reason: boundedDecision.blockReason == .calibratedProbabilityMissing
+                        ? "calibration_unavailable" : "bounded_plan_blocked"
+                )
                 return
             }
 
@@ -7427,6 +7748,10 @@ final class AnalysisPipeline: ObservableObject {
             }
         }
 
+        guard calibrationReference != nil else {
+            clearLiveCoachingEpisodeObservation(reason: "calibration_unavailable")
+            return
+        }
         guard liveEpisodeGeneration == lifecycle.generation,
               liveEpisodeOrientation == lifecycle.orientation,
               liveEpisodeSource == binding?.source,
@@ -7638,7 +7963,7 @@ final class AnalysisPipeline: ObservableObject {
         if let previousSource = liveSubjectSource, previousSource != source {
             // Vision and DETR are separate provenance domains. Never carry a
             // track identity across that boundary, even when boxes overlap.
-            liveSubjectTracker.reset()
+            liveSubjectTracker.resetSubject()
         }
         liveSubjectSource = source
 
@@ -7698,7 +8023,7 @@ final class AnalysisPipeline: ObservableObject {
                 generation: generation
             )
         } else if liveSubjectTracker.current?.identity.generation != generation {
-            liveSubjectTracker.reset()
+            liveSubjectTracker.resetSubject()
             return nil
         } else {
             _ = liveSubjectTracker.observe(frameID: frameID, candidates: candidates)
@@ -7860,6 +8185,7 @@ final class AnalysisPipeline: ObservableObject {
     private func resetLiveCoachingEpisodeOwner(frameID: String, reason: String) {
         resetLiveCoachingEpisodeTransaction(frameID: frameID, reason: reason)
         liveSubjectTracker.reset()
+        clearLiveObjectPresentation(resetRegistry: true)
         liveSubjectSource = nil
         liveSceneIdentityState = nil
         liveCaptureLifecycleContext = nil
@@ -7925,6 +8251,7 @@ final class AnalysisPipeline: ObservableObject {
         case "capture_context_changed": return .cameraGenerationChange
         case "scene_cut": return .sceneCut
         case "camera_motion": return .staleEvidence
+        case "calibration_unavailable": return .calibrationUnavailable
         case "invalid_live_envelope", "invalid_selection_context", "frame_adapter_rejected", "bounded_plan_blocked",
              "probability_invalid", "plan_not_actionable": return .staleEvidence
         case "observation_rejected": return .invalidObservation
@@ -8631,7 +8958,7 @@ final class AnalysisPipeline: ObservableObject {
         // correction that cannot be grounded to one instance. Deliberate
         // overlap on a good frame is excluded by the verdict gate above.
         if critique.verdict != .good,
-           let overlapPairCount = liveOverlappingInstancePairCount(),
+           let overlapPairCount = liveOverlappingInstancePairCount(frameId: frameId),
            overlapPairCount > 0 {
             return LiveHintPresentation(
                 id: "lh_live_instance_overlap_\(frameId)",
@@ -8673,8 +9000,9 @@ final class AnalysisPipeline: ObservableObject {
             mode: critique.mode,
             snapshot: snapshot,
             semantics: semantics,
-            overlappingInstancePairCount: liveOverlappingInstancePairCount(),
-            tapGroundedObjectTarget: liveTapGroundedObjectTarget()
+            overlappingInstancePairCount: liveOverlappingInstancePairCount(frameId: snapshot?.frameId),
+            objectObservationCoverage: liveObjectObservationCoverage(frameId: snapshot?.frameId),
+            objectTrackingGeometryStatus: liveObjectTrackingGeometryStatus(frameId: snapshot?.frameId)
         ) else { return false }
 
         switch semanticTip.priorityBand {
@@ -8728,8 +9056,9 @@ final class AnalysisPipeline: ObservableObject {
             mode: critique.mode,
             snapshot: snapshot,
             semantics: semantics,
-            overlappingInstancePairCount: liveOverlappingInstancePairCount(),
-            tapGroundedObjectTarget: liveTapGroundedObjectTarget()
+            overlappingInstancePairCount: liveOverlappingInstancePairCount(frameId: snapshot?.frameId),
+            objectObservationCoverage: liveObjectObservationCoverage(frameId: snapshot?.frameId),
+            objectTrackingGeometryStatus: liveObjectTrackingGeometryStatus(frameId: snapshot?.frameId)
         ) else {
             return false
         }
@@ -8782,8 +9111,9 @@ final class AnalysisPipeline: ObservableObject {
             mode: .live,
             snapshot: snapshot,
             semantics: semantics,
-            overlappingInstancePairCount: liveOverlappingInstancePairCount(),
-            tapGroundedObjectTarget: liveTapGroundedObjectTarget()
+            overlappingInstancePairCount: liveOverlappingInstancePairCount(frameId: snapshot?.frameId),
+            objectObservationCoverage: liveObjectObservationCoverage(frameId: snapshot?.frameId),
+            objectTrackingGeometryStatus: liveObjectTrackingGeometryStatus(frameId: snapshot?.frameId)
         )
     }
 
@@ -10099,8 +10429,9 @@ final class AnalysisPipeline: ObservableObject {
                   mode: snapshot.mode,
                   snapshot: snapshot,
                   semantics: semantics,
-                  overlappingInstancePairCount: liveOverlappingInstancePairCount(),
-                  tapGroundedObjectTarget: liveTapGroundedObjectTarget()
+                  overlappingInstancePairCount: liveOverlappingInstancePairCount(frameId: snapshot.frameId),
+                  objectObservationCoverage: liveObjectObservationCoverage(frameId: snapshot.frameId),
+                  objectTrackingGeometryStatus: liveObjectTrackingGeometryStatus(frameId: snapshot.frameId)
               ),
               let actionType = candidate.actionType else {
             liveSpatialConfirmation = nil
@@ -12788,7 +13119,7 @@ final class AnalysisPipeline: ObservableObject {
         // R03 read-only consumer: multi-object identity state travels on the
         // decision-trace surface only (audience .debug); no advice path reads it.
         if critique.mode == .live,
-           let summary = subjectIdentityRegistry?.multiObjectSummary(),
+           let summary = liveSubjectIdentitySummary(frameId: frameId),
            summary.identityCount > 0 {
             items.append(
                 ExplainabilityTraceItem(
@@ -13942,6 +14273,16 @@ extension AnalysisPipeline {
         pauseTimeoutTriggerLock.lock()
         pauseTimeoutTrigger = nil
         pauseTimeoutTriggerLock.unlock()
+    }
+
+    func testingSetObjectTrackingSequenceFactory(_ factory: @escaping ([CGRect]) -> VisionObjectSequence) {
+        highQueue.sync { visionTracking.setObjectSequenceFactoryForTesting(factory) }
+    }
+
+    func testingDeliverLiveDetrSeed(_ detections: [DETRDetection], context: FrameContext,
+                                    generation: UInt64? = nil) {
+        enqueueLiveDetrSeed(detections, context: context,
+                            generation: generation ?? currentGeneration())
     }
 
     func testingTriggerPauseAnalysisTimeout() {
@@ -15407,14 +15748,52 @@ extension AnalysisPipeline {
         currentGeneration()
     }
 
+    /// Exercises the same capture-store and accepted observation boundary as
+    /// performHigh, without running detectors or the recommendation planner.
+    @MainActor
+    func testingAcceptLiveObjectFrame(_ evidence: LatestFrameEvidenceStore.Snapshot) -> Bool {
+        guard latestFrameEvidenceStore.publish(
+            pixelBuffer: evidence.pixelBuffer, orientation: evidence.orientation,
+            sourceFrameId: evidence.sourceFrameId, capturedAt: evidence.capturedAt,
+            isStable: evidence.isStable, lensID: evidence.lensID,
+            previewGeometry: evidence.previewGeometry, adapterState: evidence.adapterState,
+            lensGeneration: evidence.lensGeneration,
+            samplePresentationTimestamp: evidence.samplePresentationTimestamp,
+            sessionGeneration: evidence.sessionGeneration
+        ) else { return false }
+        return acceptLiveObjectObservation(frameEvidence: evidence, generation: currentGeneration())
+    }
+
+    var testingPresentedObjectFrame: ObjectTrackFrame? {
+        sceneTapEvidenceLock.lock()
+        defer { sceneTapEvidenceLock.unlock() }
+        return presentedObjectFrame?.frame
+    }
+
+    @MainActor
+    func testingLiveEntityObservations(for evidence: LatestFrameEvidenceStore.Snapshot,
+                                       evaluatedAt: Date = Date()) -> [UserMovementEntityObservation] {
+        liveEntityObservations(frameEvidence: evidence, generation: currentGeneration(), evaluatedAt: evaluatedAt)
+    }
+
+    var testingSceneTapEvidence: SceneTapEvidence? {
+        sceneTapEvidenceLock.lock()
+        defer { sceneTapEvidenceLock.unlock() }
+        return latestSceneTapEvidence
+    }
+
     var testingSubjectIdentityRegistry: SubjectIdentityRegistry? {
-        subjectIdentityRegistry
+        sceneTapEvidenceLock.lock()
+        defer { sceneTapEvidenceLock.unlock() }
+        return subjectIdentityRegistry
     }
 
     /// O02/O05 groundwork consumer scaffolding: the derived multi-object facts
     /// for the current live frame. Diagnostic only — no advice path reads it.
     var testingSubjectMultiObjectSummary: MultiObjectSceneSummary? {
-        subjectIdentityRegistry?.multiObjectSummary()
+        sceneTapEvidenceLock.lock()
+        defer { sceneTapEvidenceLock.unlock() }
+        return subjectIdentityRegistry?.multiObjectSummary()
     }
 
 

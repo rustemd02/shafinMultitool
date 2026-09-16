@@ -29,6 +29,7 @@ final class SceneParserService {
     private lazy var markedObjectMatcher = MarkedObjectMatcher(lemmatizer: lemmatizer)
     private let diagnosticsCalculator = DiagnosticsCalculator()
     private let llmParser = LLMParserService.shared
+    private let generationLocalProvider: LocalScenePlanProvider
     private let anchorExtractor = SceneAnchorExtractor()
     private let metadataExtractor = SceneMetadataExtractor()
     private let planCompiler = ScenePlanCompiler()
@@ -38,7 +39,7 @@ final class SceneParserService {
     private lazy var bundlePipeline = SceneBundlePipeline(
         anchorExtractor: anchorExtractor,
         metadataExtractor: metadataExtractor,
-        localProvider: llmParser,
+        localProvider: generationLocalProvider,
         planCompiler: planCompiler
     )
     private var remotePlanProvider: RemoteScenePlanProvider?
@@ -55,7 +56,9 @@ final class SceneParserService {
     /// shared parse context over a newer request (or over a cleared context).
     private let parseRequestFence = ParseRequestFence()
 
-    private init() {}
+    init(localProvider: LocalScenePlanProvider = LLMParserService.shared) {
+        self.generationLocalProvider = localProvider
+    }
 
     // MARK: - Public API
 
@@ -71,7 +74,12 @@ final class SceneParserService {
     func parse(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState?) async -> ParsingResult {
         if state == nil {
             let bundleResult = await parseBundle(description, markedObjects: markedObjects)
-            return ParsingResult(script: bundleResult.activeSceneScript ?? SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description), diagnostics: bundleResult.diagnostics)
+            return ParsingResult(
+                script: bundleResult.activeSceneScript ?? SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description),
+                diagnostics: bundleResult.diagnostics,
+                generationProvenance: generationProvenance(for: bundleResult, sourceText: description),
+                remoteFailure: bundleResult.remoteFailure
+            )
         }
         let output = makeParseCoordinator().parse(description: description, markedObjects: markedObjects, state: state) { [weak self] in
             self?.ruleBasedParse(description, markedObjects: markedObjects)
@@ -150,7 +158,13 @@ final class SceneParserService {
             matchedMarkedObjects: matchedMarkedObjectIds
         )
 
-        return ParsingResult(script: script, diagnostics: diagnostics)
+        return ParsingResult(
+            script: script, diagnostics: diagnostics,
+            generationProvenance: .direct(
+                sourceText: description,
+                contributors: [.deterministicRules(componentVersion: "scene-rule-parser-v1")]
+            )
+        )
     }
 
     /// Асинхронный парсинг с поддержкой LLM fallback.
@@ -164,14 +178,21 @@ final class SceneParserService {
     /// after awaiting this operation: a later request may have replaced them.
     func parseAsyncForGeneration(
         _ description: String,
-        markedObjects: [MarkedObject] = []
+        markedObjects: [MarkedObject] = [],
+        clarificationHandler: SceneRemoteClarificationHandler? = nil,
+        transferConsentHandler: SceneRemoteTransferConsentHandler? = nil
     ) async -> (
         result: ParsingResult,
         runtimeTrace: SceneRuntimeTrace?,
         chunkState: SceneChunkState?,
         visualOverlays: [SceneVisualOverlay]
     ) {
-        let bundleResult = await parseBundleAsync(description, markedObjects: markedObjects)
+        let bundleResult = await parseBundleAsync(
+            description,
+            markedObjects: markedObjects,
+            clarificationHandler: clarificationHandler,
+            transferConsentHandler: transferConsentHandler
+        )
         let script = bundleResult.activeSceneScript
             ?? SceneScript(
                 actors: [],
@@ -193,7 +214,11 @@ final class SceneParserService {
             chunkState = nil
         }
         return (
-            result: ParsingResult(script: script, diagnostics: bundleResult.diagnostics),
+            result: ParsingResult(
+                script: script, diagnostics: bundleResult.diagnostics,
+                generationProvenance: generationProvenance(for: bundleResult, sourceText: description),
+                remoteFailure: bundleResult.remoteFailure
+            ),
             runtimeTrace: runtimeTrace,
             chunkState: chunkState,
             visualOverlays: bundleResult.visualOverlays
@@ -203,14 +228,19 @@ final class SceneParserService {
     func parseAsync(_ description: String, markedObjects: [MarkedObject] = [], state: SceneChunkState?) async -> ParsingResult {
         if state == nil {
             let bundleResult = await parseBundleAsync(description, markedObjects: markedObjects)
-            return ParsingResult(script: bundleResult.activeSceneScript ?? SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description), diagnostics: bundleResult.diagnostics)
+            return ParsingResult(
+                script: bundleResult.activeSceneScript ?? SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description),
+                diagnostics: bundleResult.diagnostics,
+                generationProvenance: generationProvenance(for: bundleResult, sourceText: description),
+                remoteFailure: bundleResult.remoteFailure
+            )
         }
         let parseToken = parseRequestFence.begin()
         let output = await makeParseCoordinator().parseAsync(description: description, markedObjects: markedObjects, state: state) { [weak self] in
             self?.ruleBasedParse(description, markedObjects: markedObjects)
                 ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: description), diagnostics: .empty)
         }
-        guard parseRequestFence.isCurrent(parseToken) else {
+        guard !Task.isCancelled, parseRequestFence.isCurrent(parseToken) else {
             // Debug-only trace: the shared diagnostics formatter is not thread-safe
             // and stale completions may resume off the main actor.
             print("[PARSER][M1-008] stale parse context write suppressed token=\(parseToken)")
@@ -274,7 +304,7 @@ final class SceneParserService {
             self?.ruleBasedParse(text, markedObjects: markers)
                 ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text), diagnostics: .empty)
         }
-        guard parseRequestFence.isCurrent(parseToken) else {
+        guard !Task.isCancelled, parseRequestFence.isCurrent(parseToken) else {
             print("[PARSER][M1-008] stale bundle context write suppressed token=\(parseToken)")
             return result
         }
@@ -289,7 +319,9 @@ final class SceneParserService {
         mode: SceneBundleParseMode = .full,
         previousState: ScriptDocumentState? = nil,
         executionPolicy: SceneGeneratorMobileExecutionPolicy? = nil,
-        executionSupport: SceneGeneratorExecutionSupport = .live
+        executionSupport: SceneGeneratorExecutionSupport = .live,
+        clarificationHandler: SceneRemoteClarificationHandler? = nil,
+        transferConsentHandler: SceneRemoteTransferConsentHandler? = nil
     ) async -> SceneBundleParsingResult {
         let effectiveExecutionPolicy = defaultExecutionPolicy(for: description, explicit: executionPolicy)
         let parseToken = parseRequestFence.begin()
@@ -299,12 +331,15 @@ final class SceneParserService {
             mode: mode,
             previousState: previousState,
             executionPolicy: effectiveExecutionPolicy,
-            executionSupport: executionSupport
+            executionSupport: executionSupport,
+            remoteProvider: remoteOffloadEnabled ? remotePlanProvider : nil,
+            clarificationHandler: clarificationHandler,
+            transferConsentHandler: transferConsentHandler
         ) { [weak self] text, markers, _ in
             self?.ruleBasedParse(text, markedObjects: markers)
                 ?? ParsingResult(script: SceneScript(actors: [], objects: [], beats: [], spatialRelations: [], originalDescription: text), diagnostics: .empty)
         }
-        guard parseRequestFence.isCurrent(parseToken) else {
+        guard !Task.isCancelled, parseRequestFence.isCurrent(parseToken) else {
             print("[PARSER][M1-008] stale bundle context write suppressed token=\(parseToken)")
             return result
         }
@@ -466,6 +501,9 @@ final class SceneParserService {
     }
 
     private func updateBundleContext(with result: SceneBundleParsingResult, fallbackLocationName: String?) {
+        // Both bundle entry points publish through this owner. A terminal
+        // remote failure is not a new document and cannot retire a good one.
+        guard result.remoteFailure == nil else { return }
         lastBundleResult = result
         lastExecutionTrace = result.executionTrace
         lastDocumentState = result.documentState
@@ -528,7 +566,7 @@ final class SceneParserService {
         SceneParseCoordinator(
             anchorExtractor: anchorExtractor,
             metadataExtractor: metadataExtractor,
-            localProvider: llmParser,
+            localProvider: generationLocalProvider,
             remoteProvider: remotePlanProvider,
             compiler: planCompiler,
             qualityGate: qualityGate,
@@ -611,6 +649,16 @@ final class SceneParserService {
         return .accept
     }
 
+    private func generationProvenance(
+        for bundleResult: SceneBundleParsingResult, sourceText: String
+    ) -> GenerationProvenance {
+        GenerationProvenance.activeScene(
+            sceneID: bundleResult.activeSceneId,
+            sourceText: sourceText,
+            chunks: bundleResult.sceneChunks
+        )
+    }
+
     private func mergeLLMResult(
         _ llmResult: ParsingResult,
         with ruleBasedResult: ParsingResult,
@@ -675,7 +723,19 @@ final class SceneParserService {
             matchedMarkedObjects: matchedMarkedObjectIds
         )
 
-        return ParsingResult(script: mergedScript, diagnostics: diagnostics)
+        let sources: [SceneGenerationContributor]
+        if mergedScript == ruleBasedResult.script {
+            sources = ruleBasedResult.generationProvenance?.acceptedContributors ?? [.unknown(stage: .unrecordedSource)]
+        } else if mergedScript == llmResult.script {
+            sources = llmResult.generationProvenance?.acceptedContributors ?? [.unknown(stage: .unrecordedSource)]
+        } else {
+            sources = (ruleBasedResult.generationProvenance?.acceptedContributors ?? [.unknown(stage: .unrecordedSource)])
+                + (llmResult.generationProvenance?.acceptedContributors ?? [.unknown(stage: .unrecordedSource)])
+        }
+        return ParsingResult(
+            script: mergedScript, diagnostics: diagnostics,
+            generationProvenance: .direct(sourceText: description, contributors: sources)
+        )
     }
 
     private func remapLLMBeats(

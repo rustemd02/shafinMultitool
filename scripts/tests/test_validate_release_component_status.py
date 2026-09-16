@@ -5,7 +5,10 @@ import copy
 import importlib.util
 import io
 import json
+import plistlib
+import shlex
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -34,7 +37,26 @@ class ReleaseComponentStatusTests(unittest.TestCase):
                 continue
             source_path = component["expected"]["source_path"]
             path = self.root / source_path
-            path.mkdir(parents=True)
+            if component["kind"] == "font":
+                path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(REPO_ROOT / source_path, path)
+            else:
+                path.mkdir(parents=True)
+        self.font_proof = json.loads((REPO_ROOT / MODULE.FONT_PROVENANCE_PATH).read_text())
+        font_proof_path = self.root / MODULE.FONT_PROVENANCE_PATH
+        font_proof_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO_ROOT / MODULE.FONT_PROVENANCE_PATH, font_proof_path)
+        for font in self.font_proof["fonts"]:
+            shutil.copy2(REPO_ROOT / font["notice_path"], self.root / font["notice_path"])
+        shutil.copy2(REPO_ROOT / "shafinMultitool/Info.plist", self.root / "shafinMultitool/Info.plist")
+        self.snapkit_proof = json.loads((REPO_ROOT / MODULE.SNAPKIT_PROVENANCE_PATH).read_text())
+        shutil.copytree(REPO_ROOT / "Pods/SnapKit", self.root / "Pods/SnapKit", dirs_exist_ok=True)
+        for source_path in (MODULE.SNAPKIT_PROVENANCE_PATH, "Podfile", "Podfile.lock", "Pods/Manifest.lock",
+                            self.snapkit_proof["notice_source_path"], MODULE.SNAPKIT_ACKNOWLEDGEMENTS + ".plist",
+                            MODULE.SNAPKIT_ACKNOWLEDGEMENTS + ".markdown"):
+            destination = self.root / source_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(REPO_ROOT / source_path, destination)
         for exclusion in self.record["explicit_exclusions"]:
             path = self.root / exclusion["path"]
             if path.suffix:
@@ -58,12 +80,13 @@ class ReleaseComponentStatusTests(unittest.TestCase):
         bundled_ids = {
             component["id"]
             for component in self.record["components"]
-            if component["release_config_membership"]["Release"] == "bundled"
+            if component["release_config_membership"]["Release"] == "bundled" and component["legal_state"] != "APPROVED"
         }
         self.assertEqual(len(blockers), len(bundled_ids))
         self.assertEqual(
             {blocker["id"] for blocker in blockers}, bundled_ids
         )
+        self.assertFalse(any(blocker["kind"] == "font" for blocker in blockers))
 
         stdout = io.StringIO()
         stderr = io.StringIO()
@@ -279,11 +302,13 @@ class ReleaseComponentStatusTests(unittest.TestCase):
                 parents=True, exist_ok=True
             )
             (app / bundle_path).write_bytes(b"bundle fixture")
+        self._copy_font_bundle(app)
+        shutil.copy2(self.root / self.snapkit_proof["notice_source_path"], app / self.snapkit_proof["notice_bundle_path"])
         blockers = MODULE.validate_record(self.root, self.record_path, app)
         self.assertEqual(
             len(blockers),
             sum(
-                component["release_config_membership"]["Release"] == "bundled"
+                component["release_config_membership"]["Release"] == "bundled" and component["legal_state"] != "APPROVED"
                 for component in self.record["components"]
             ),
         )
@@ -293,6 +318,174 @@ class ReleaseComponentStatusTests(unittest.TestCase):
 
         with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "bundle path is missing"):
             MODULE.validate_record(self.root, self.record_path, app)
+
+    def _copy_font_bundle(self, app: Path) -> None:
+        app.mkdir(parents=True, exist_ok=True)
+        for font in self.font_proof["fonts"]:
+            shutil.copy2(self.root / font["source_path"], app / font["bundle_path"])
+            shutil.copy2(self.root / font["notice_path"], app / font["notice_bundle_path"])
+        shutil.copy2(self.root / "shafinMultitool/Info.plist", app / "Info.plist")
+
+    def test_font_approval_requires_matching_notice_bytes(self) -> None:
+        notice = self.root / self.font_proof["fonts"][0]["notice_path"]
+        notice.write_bytes(b"a URL alone is not the admitted notice artifact")
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "notice source SHA mismatch"):
+            MODULE.validate_record(self.root, self.record_path)
+
+    def test_font_approval_cannot_hide_replaced_binary(self) -> None:
+        font = self.root / self.font_proof["fonts"][0]["source_path"]
+        font.write_bytes(b"a different font with the same filename")
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "font source SHA mismatch"):
+            MODULE.validate_record(self.root, self.record_path)
+
+    def test_font_proof_cannot_be_empty(self) -> None:
+        self.font_proof["fonts"] = []
+        (self.root / MODULE.FONT_PROVENANCE_PATH).write_text(json.dumps(self.font_proof))
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "font provenance is empty"):
+            MODULE.validate_record(self.root, self.record_path)
+
+    def test_font_proof_must_cover_every_declared_font(self) -> None:
+        self.font_proof["fonts"].pop()
+        (self.root / MODULE.FONT_PROVENANCE_PATH).write_text(json.dumps(self.font_proof))
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "cover exactly UIAppFonts"):
+            MODULE.validate_record(self.root, self.record_path)
+
+    def test_font_proof_requires_immutable_upstream(self) -> None:
+        self.font_proof["upstream_commit"] = "main"
+        (self.root / MODULE.FONT_PROVENANCE_PATH).write_text(json.dumps(self.font_proof))
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "immutable upstream"):
+            MODULE.validate_record(self.root, self.record_path)
+
+    def test_bundled_notice_must_exist_even_when_font_loads(self) -> None:
+        app = self.root / "FontFixture.app"
+        self._copy_font_bundle(app)
+        self.assertEqual(len(MODULE.validate_font_provenance(self.root, app)), 5)
+        (app / self.font_proof["fonts"][0]["notice_bundle_path"]).unlink()
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "bundled font notice is missing"):
+            MODULE.validate_font_provenance(self.root, app)
+
+    def test_bundled_notice_tampering_fails(self) -> None:
+        app = self.root / "FontFixture.app"
+        self._copy_font_bundle(app)
+        (app / self.font_proof["fonts"][0]["notice_bundle_path"]).write_bytes(b"changed license")
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "bundled font notice SHA mismatch"):
+            MODULE.validate_font_provenance(self.root, app)
+
+    def test_fonts_only_command_has_explicit_scope_and_fails_on_missing_evidence(self) -> None:
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            status = MODULE.main(["--repo-root", str(self.root), "--fonts-only"])
+        self.assertEqual(status, 0)
+        self.assertIn("scope=source fonts=5 notices=5", stdout.getvalue())
+        self.assertNotIn("KNOWN_BLOCKER_COUNT=0", stdout.getvalue())
+        (self.root / MODULE.FONT_PROVENANCE_PATH).unlink()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(MODULE.main(["--repo-root", str(self.root), "--fonts-only"]), 1)
+
+    def test_snapkit_exact_source_and_notice_proof(self) -> None:
+        proof = MODULE.validate_snapkit_provenance(self.root)
+        self.assertEqual((proof["version"], proof["source_file_count"], proof["license"]), ("5.7.1", 40, "MIT"))
+
+    def test_snapkit_approval_cannot_bypass_missing_proof(self) -> None:
+        next(row for row in self.record["components"] if row["id"] == "snapkit-dependency")["legal_state"] = "APPROVED"
+        self._write_record()
+        (self.root / MODULE.SNAPKIT_PROVENANCE_PATH).unlink()
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "SnapKit provenance file is missing"):
+            MODULE.validate_record(self.root, self.record_path)
+
+    def test_snapkit_same_version_does_not_hide_changed_source(self) -> None:
+        path = self.root / "Pods/SnapKit/Sources/Constraint.swift"
+        path.write_bytes(path.read_bytes() + b"\n// unverified modification\n")
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "source tree SHA mismatch"):
+            MODULE.validate_snapkit_provenance(self.root)
+
+    def test_snapkit_extra_source_and_symlink_are_rejected(self) -> None:
+        unexpected = self.root / "Pods/SnapKit/Sources/Unverified.swift"
+        unexpected.write_bytes(b"// extra source")
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "file coverage changed"):
+            MODULE.validate_snapkit_provenance(self.root)
+        unexpected.unlink()
+        unexpected.symlink_to(self.root / "Podfile")
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "symlink"):
+            MODULE.validate_snapkit_provenance(self.root)
+
+    def test_snapkit_lockfiles_must_match_installed_dependency(self) -> None:
+        path = self.root / "Pods/Manifest.lock"
+        path.write_bytes(path.read_bytes().replace(b"5.7.1", b"5.7.2"))
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "lockfiles differ"):
+            MODULE.validate_snapkit_provenance(self.root)
+
+    def test_snapkit_podfile_must_match_installed_lock(self) -> None:
+        path = self.root / "Podfile"
+        path.write_bytes(path.read_bytes() + b"\n# changed configuration\n")
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "Podfile changed"):
+            MODULE.validate_snapkit_provenance(self.root)
+
+    def test_snapkit_acknowledgement_name_does_not_replace_full_notice(self) -> None:
+        path = self.root / (MODULE.SNAPKIT_ACKNOWLEDGEMENTS + ".plist")
+        value = plistlib.loads(path.read_bytes())
+        next(row for row in value["PreferenceSpecifiers"] if row.get("Title") == "SnapKit")["FooterText"] = "SnapKit is MIT licensed"
+        path.write_bytes(plistlib.dumps(value))
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "complete exact MIT notice"):
+            MODULE.validate_snapkit_provenance(self.root)
+
+    def test_snapkit_duplicate_acknowledgement_is_rejected(self) -> None:
+        path = self.root / (MODULE.SNAPKIT_ACKNOWLEDGEMENTS + ".plist")
+        value = plistlib.loads(path.read_bytes())
+        value["PreferenceSpecifiers"].append(next(row for row in value["PreferenceSpecifiers"] if row.get("Title") == "SnapKit"))
+        path.write_bytes(plistlib.dumps(value))
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "exactly once"):
+            MODULE.validate_snapkit_provenance(self.root)
+
+    def test_snapkit_requires_nonempty_immutable_proof(self) -> None:
+        path = self.root / MODULE.SNAPKIT_PROVENANCE_PATH
+        original = self.snapkit_proof.copy()
+        for key, value in (("source_file_count", 0), ("upstream_commit", "master")):
+            with self.subTest(key=key):
+                proof = dict(original, **{key: value})
+                path.write_text(json.dumps(proof))
+                with self.assertRaises(MODULE.ComponentStatusValidationError):
+                    MODULE.validate_snapkit_provenance(self.root)
+
+    def test_snapkit_built_notice_missing_truncated_or_symlinked_fails(self) -> None:
+        app = self.root / "SnapKitFixture.app"
+        app.mkdir()
+        notice = app / self.snapkit_proof["notice_bundle_path"]
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "bundled SnapKit MIT notice is missing"):
+            MODULE.validate_snapkit_provenance(self.root, app)
+        notice.write_bytes(b"SnapKit MIT")
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "bundled SnapKit MIT notice SHA mismatch"):
+            MODULE.validate_snapkit_provenance(self.root, app)
+        notice.unlink()
+        notice.symlink_to(self.root / self.snapkit_proof["notice_source_path"])
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "symlink"):
+            MODULE.validate_snapkit_provenance(self.root, app)
+
+    def test_snapkit_scoped_cli_is_not_a_full_release_pass(self) -> None:
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            self.assertEqual(MODULE.main(["--repo-root", str(self.root), "--snapkit-only"]), 0)
+        self.assertIn("scope=source version=5.7.1 files=40 license=MIT", stdout.getvalue())
+        self.assertNotIn("KNOWN_BLOCKER_COUNT=0", stdout.getvalue())
+
+    @unittest.skipUnless(shutil.which("plutil"), "release acknowledgement shell integration requires plutil")
+    def test_release_acknowledgement_stage_fails_without_packaged_notice(self) -> None:
+        app = self.root / "SnapKitFixture.app"
+        app.mkdir()
+        shell_source = (REPO_ROOT / "scripts/validate_release_bundle.sh").read_text()
+        function = "validate_acknowledgements() {" + shell_source.split("validate_acknowledgements() {", 1)[1].split("\n}\n", 1)[0] + "\n}\n"
+        command = ("set -eu\n" + f"REPO_ROOT={shlex.quote(str(self.root))}\nAPP_ROOT={shlex.quote(str(app))}\n" +
+                   f"COMPONENT_STATUS_VALIDATOR={shlex.quote(str(MODULE_PATH))}\n" +
+                   'fail() { echo "FAIL $*" >&2; exit 1; }\nrequire_file() { test -f "$2" || fail "$1 missing"; }\n' +
+                   function + "\nvalidate_acknowledgements\n")
+        missing = subprocess.run(["bash", "-c", command], capture_output=True, text=True, check=False)
+        self.assertNotEqual(missing.returncode, 0, missing.stdout + missing.stderr)
+        self.assertNotIn("PASS CocoaPods acknowledgements", missing.stdout)
+        self.assertIn("bundled SnapKit MIT notice is missing", missing.stderr)
+        shutil.copy2(self.root / self.snapkit_proof["notice_source_path"], app / self.snapkit_proof["notice_bundle_path"])
+        present = subprocess.run(["bash", "-c", command], capture_output=True, text=True, check=False)
+        self.assertEqual(present.returncode, 0, present.stdout + present.stderr)
+        self.assertIn("exact SnapKit MIT notice bundled", present.stdout)
 
 
 if __name__ == "__main__":

@@ -491,6 +491,208 @@ final class AppleRecordingAdaptersTests: XCTestCase {
 
     // MARK: - M7-007 orientation metadata
 
+    func testCameraCoachControllerFinalizesPlayableNativeMovieWithoutCompressingTimestampGaps() async throws {
+        let store = try RecordingArtifactStore(
+            applicationSupportDirectoryURL: temporaryDirectoryURL.appendingPathComponent("saved", isDirectory: true)
+        )
+        let controller = SceneRecordingController(artifactStore: store, source: .cameraCoach) { _ in
+            SerializedMediaRecorder(writerFactory: AVAssetWriterRecordingWriterFactory())
+        }
+        let pixels = try makePixelBuffer(width: 640, height: 480,
+                                        pixelFormat: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
+        controller.enqueueVideo(pixels, at: 100)
+        try await controller.start(requestedFPS: 30, audioMode: .disabled,
+            trackTransform: .init(captureOrientation: .portrait, isMirrored: false,
+                strategy: .preferredTransformMetadata, pixelOrientationBaseline: .nativeLandscapeRight))
+        let token = try XCTUnwrap(controller.recordingSourceToken)
+        XCTAssertEqual(token.source, .cameraCoach)
+        _ = await controller.recorderStateSnapshot()
+        let foreign = RecordingOwnerToken(source: .arWorkspace, ownerID: token.ownerID,
+            recordingID: token.recordingID, generation: token.generation)
+        controller.enqueueVideo(pixels, at: 150, ownerID: token.ownerID, ownerToken: foreign)
+        controller.enqueueVideo(pixels, at: 100 + 1.0 / 30, ownerID: token.ownerID, ownerToken: token)
+        _ = await controller.recorderStateSnapshot()
+        controller.enqueueVideo(pixels, at: 111, ownerID: token.ownerID, ownerToken: token)
+        let beforeStop = await controller.recorderStateSnapshot()
+        XCTAssertEqual(beforeStop?.droppedVideoCount, 0)
+        let result = await controller.stop(reason: .background)
+        guard case .finalized(let artifact)? = result else {
+            _ = await controller.releaseAndWait()
+            return XCTFail("Actual shared recorder did not finalize: \(String(describing: result))")
+        }
+        _ = await controller.releaseAndWait()
+        XCTAssertEqual(artifact.id, token.recordingID)
+        XCTAssertEqual(artifact.localURL.deletingPathExtension().lastPathComponent,
+                       artifact.id.rawValue.uuidString)
+        let asset = AVURLAsset(url: artifact.localURL)
+        let duration = try await asset.load(.duration).seconds
+        XCTAssertGreaterThanOrEqual(duration, 11)
+        XCTAssertLessThan(duration, 11.1, "The rejected foreign sample at150 must not stretch the take")
+        XCTAssertEqual(duration, 11 + 1.0 / 30, accuracy: 1.0 / 600,
+                       "A sparse last frame must last one nominal frame, not the preceding gap")
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let track = try XCTUnwrap(tracks.first)
+        let transform = try await track.load(.preferredTransform)
+        let size = try await track.load(.naturalSize)
+        XCTAssertEqual(CGRect(origin: .zero, size: size).applying(transform),
+                       CGRect(x: 0, y: 0, width: 480, height: 640))
+        let playable = await AVURLAssetPlaybackProbe().isPlayableMovie(at: artifact.localURL)
+        XCTAssertTrue(playable)
+        let timestamps = try videoPresentationTimes(asset: asset, track: track)
+        XCTAssertEqual(timestamps.count, 3)
+        for (actual, expected) in zip(timestamps, [0, 1.0 / 30, 11]) {
+            XCTAssertEqual(actual, expected, accuracy: 1.0 / 600)
+        }
+    }
+
+    func testNativeWriterEndsSparseVideoAtOneFrameBoundaryAndClipsAudioTail() async throws {
+        let outputURL = temporaryDirectoryURL.appendingPathComponent("sparse-video-audio-tail.mov")
+        let configuration = RecordingConfiguration(
+            id: RecordingID(rawValue: UUID()), outputURL: outputURL,
+            width: 320, height: 240, fps: 30, audioMode: .required
+        )
+        let writer = try AVAssetWriterRecordingWriterFactory().makeWriter(for: configuration)
+        XCTAssertTrue(writer.start())
+        let pixels = try makePixelBuffer(width: 320, height: 240)
+        for timestamp in [100.0, 100 + 1.0 / 30, 111] {
+            let frame = RecordingVideoFrame(
+                recordingID: configuration.id, generation: 1, timestamp: timestamp,
+                payload: AppleRecordingVideoFramePayload(pixelBuffer: pixels)
+            )
+            try await waitForNativeAppend { writer.appendVideo(frame) }
+        }
+        for timestamp in [100.0, 112] {
+            let sample = try makeAudioSampleBuffer(timestamp: timestamp)
+            let frame = RecordingAudioFrame(
+                recordingID: configuration.id, generation: 1, timestamp: timestamp,
+                payload: AppleRecordingAudioFramePayload(sampleBuffer: sample)
+            )
+            try await waitForNativeAppend { writer.appendAudio(frame) }
+        }
+        // Match SerializedMediaRecorder's input-finished ordering.
+        writer.markVideoInputAsFinished()
+        writer.markAudioInputAsFinished()
+        let metadata = try await finishNativeWriter(writer)
+        let asset = AVURLAsset(url: outputURL)
+        let duration = try await asset.load(.duration).seconds
+        XCTAssertEqual(duration, 11 + 1.0 / 30, accuracy: 1.0 / 600)
+        XCTAssertEqual(try XCTUnwrap(metadata.duration), duration, accuracy: 1.0 / 600)
+        XCTAssertTrue(metadata.hasAudio)
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        let track = try XCTUnwrap(videoTracks.first)
+        let timestamps = try videoPresentationTimes(asset: asset, track: track)
+        XCTAssertEqual(timestamps.count, 3)
+        for (actual, expected) in zip(timestamps, [0, 1.0 / 30, 11]) {
+            XCTAssertEqual(actual, expected, accuracy: 1.0 / 600)
+        }
+        let playable = await AVURLAssetPlaybackProbe().isPlayableMovie(at: outputURL)
+        XCTAssertTrue(playable)
+    }
+
+    func testNativeWriterSingleVideoFrameHasOneNominalFrameOfDuration() async throws {
+        let outputURL = temporaryDirectoryURL.appendingPathComponent("single-frame-end.mov")
+        let configuration = RecordingConfiguration(
+            id: RecordingID(rawValue: UUID()), outputURL: outputURL,
+            width: 320, height: 240, fps: 24, audioMode: .disabled
+        )
+        let writer = try AVAssetWriterRecordingWriterFactory().makeWriter(for: configuration)
+        XCTAssertTrue(writer.start())
+        let pixels = try makePixelBuffer(width: 320, height: 240)
+        let frame = RecordingVideoFrame(
+            recordingID: configuration.id, generation: 1, timestamp: 47,
+            payload: AppleRecordingVideoFramePayload(pixelBuffer: pixels)
+        )
+        try await waitForNativeAppend { writer.appendVideo(frame) }
+        writer.markVideoInputAsFinished()
+        let metadata = try await finishNativeWriter(writer)
+        let asset = AVURLAsset(url: outputURL)
+        let duration = try await asset.load(.duration).seconds
+        XCTAssertEqual(duration, 1.0 / 24, accuracy: 1.0 / 600)
+        XCTAssertEqual(try XCTUnwrap(metadata.duration), duration, accuracy: 1.0 / 600)
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let track = try XCTUnwrap(tracks.first)
+        XCTAssertEqual(try videoPresentationTimes(asset: asset, track: track), [0])
+    }
+
+    /// A native readiness drop is not accepted media. These direct-adapter
+    /// fixtures retry the same sample without changing its timestamp.
+    private func waitForNativeAppend(_ append: () -> RecordingAppendDisposition) async throws {
+        for _ in 0..<200 {
+            let result = append()
+            if result == .appended { return }
+            guard result == .dropped else {
+                XCTFail("Native fixture append failed: \(result)")
+                throw NSError(domain: "AppleRecordingAdaptersTests", code: -20)
+            }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTFail("Native writer readiness did not recover")
+        throw NSError(domain: "AppleRecordingAdaptersTests", code: -21)
+    }
+
+    private func finishNativeWriter(_ writer: any RecordingWriter) async throws -> RecordingWriterFinish {
+        let finished = expectation(description: "duration fixture writer finished")
+        var result: Result<RecordingWriterFinish, RecordingWriterError>?
+        writer.finishWriting { value in result = value; finished.fulfill() }
+        await fulfillment(of: [finished], timeout: 10)
+        return try XCTUnwrap(result).get()
+    }
+
+    private func videoPresentationTimes(asset: AVAsset, track: AVAssetTrack) throws -> [TimeInterval] {
+        let compressed = try readVideoMediaTimes(asset: asset, track: track, decoded: false)
+        let decoded = try readVideoMediaTimes(asset: asset, track: track, decoded: true)
+        XCTAssertEqual(compressed.count, decoded.count,
+                       "Every compressed media sample must decode to one image frame")
+        for (encodedTime, decodedTime) in zip(compressed, decoded) {
+            XCTAssertEqual(encodedTime, decodedTime, accuracy: 1.0 / 600,
+                           "Decoding must preserve the actual media-frame presentation sequence")
+        }
+        return decoded
+    }
+
+    private func readVideoMediaTimes(
+        asset: AVAsset, track: AVAssetTrack, decoded: Bool
+    ) throws -> [TimeInterval] {
+        let reader = try AVAssetReader(asset: asset)
+        let settings: [String: Any]? = decoded
+            ? [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+            : nil
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: settings)
+        reader.add(output)
+        guard reader.startReading() else {
+            throw reader.error ?? NSError(domain: "AppleRecordingAdaptersTests", code: -22)
+        }
+        var timestamps: [TimeInterval] = []
+        while let sample = output.copyNextSampleBuffer() {
+            let count = CMSampleBufferGetNumSamples(sample)
+            // AVAssetReaderOutput documents zero-sample marker buffers for
+            // compressed output. Edit boundaries, drain notifications and the
+            // permanent-empty end marker are not media frames, even when their
+            // PTS is numeric. Classify by sample count, never by timestamp.
+            if count == 0 && !decoded {
+                XCTAssertEqual(CMSampleBufferGetTotalSampleSize(sample), 0)
+                XCTAssertNil(CMSampleBufferGetImageBuffer(sample))
+                continue
+            }
+            let presentationTime = CMSampleBufferGetPresentationTimeStamp(sample)
+            let hasMedia = decoded
+                ? CMSampleBufferGetImageBuffer(sample) != nil
+                : CMSampleBufferGetDataBuffer(sample) != nil
+                    && CMSampleBufferGetTotalSampleSize(sample) > 0
+            guard count == 1, CMSampleBufferIsValid(sample),
+                  CMSampleBufferDataIsReady(sample), hasMedia,
+                  presentationTime.isNumeric, presentationTime.seconds.isFinite else {
+                XCTFail("Invalid \(decoded ? "decoded" : "compressed") media frame: count=\(count), PTS=\(presentationTime)")
+                throw NSError(domain: "AppleRecordingAdaptersTests", code: -24)
+            }
+            timestamps.append(presentationTime.seconds)
+        }
+        guard reader.status == .completed else {
+            throw reader.error ?? NSError(domain: "AppleRecordingAdaptersTests", code: -23)
+        }
+        return timestamps
+    }
+
     func testTrackTransformMapperProducesDeterministicMetadataMatrices() {
         func matrix(_ orientation: RecordingCaptureOrientation, mirrored: Bool) -> CGAffineTransform {
             AppleRecordingTrackTransformMapper.transform(for: RecordingTrackTransformMetadata(
@@ -516,6 +718,79 @@ final class AppleRecordingAdaptersTests: XCTestCase {
         let mirroredPortrait = matrix(.portrait, mirrored: true)
         XCTAssertEqual(mirroredPortrait.a, -1, accuracy: 1e-9)
         XCTAssertEqual(mirroredPortrait.d, 1, accuracy: 1e-9)
+    }
+
+    func testNativeSensorOrientationMapsAllCornersInsideUprightTrackBounds() {
+        let width = 640
+        let height = 480
+        let cases: [(RecordingCaptureOrientation, CGPoint, CGPoint, CGSize)] = [
+            (.portrait, CGPoint(x: 480, y: 0), CGPoint(x: 0, y: 640), CGSize(width: 480, height: 640)),
+            (.portraitUpsideDown, CGPoint(x: 0, y: 640), CGPoint(x: 480, y: 0), CGSize(width: 480, height: 640)),
+            (.landscapeLeft, CGPoint(x: 640, y: 480), .zero, CGSize(width: 640, height: 480)),
+            (.landscapeRight, .zero, CGPoint(x: 640, y: 480), CGSize(width: 640, height: 480)),
+        ]
+        for (orientation, expectedOrigin, expectedFarCorner, expectedSize) in cases {
+            let metadata = RecordingTrackTransformMetadata(
+                captureOrientation: orientation, isMirrored: false,
+                strategy: .preferredTransformMetadata,
+                pixelOrientationBaseline: .nativeLandscapeRight
+            )
+            let transform = AppleRecordingTrackTransformMapper.transform(
+                for: metadata, width: width, height: height
+            )
+            XCTAssertEqual(CGPoint.zero.applying(transform), expectedOrigin, "\(orientation)")
+            XCTAssertEqual(CGPoint(x: width, y: height).applying(transform), expectedFarCorner, "\(orientation)")
+            XCTAssertEqual(CGRect(x: 0, y: 0, width: width, height: height).applying(transform),
+                           CGRect(origin: .zero, size: expectedSize), "\(orientation)")
+        }
+    }
+
+    func testExplicitIdentityMetadataPreservesAlreadyOrientedPixels() {
+        let metadata = RecordingTrackTransformMetadata(
+            captureOrientation: .portrait, isMirrored: false,
+            strategy: .identityMetadata, pixelOrientationBaseline: .nativeLandscapeRight
+        )
+        XCTAssertEqual(AppleRecordingTrackTransformMapper.transform(
+            for: metadata, width: 480, height: 640
+        ), .identity)
+    }
+
+    func testWrittenNativePortraitTrackRetainsLandscapePixelsAndUprightDisplayBounds() async throws {
+        let outputURL = temporaryDirectoryURL.appendingPathComponent("native-portrait-transform.mov")
+        let metadata = RecordingTrackTransformMetadata(
+            captureOrientation: .portrait, isMirrored: false,
+            strategy: .preferredTransformMetadata, pixelOrientationBaseline: .nativeLandscapeRight
+        )
+        let configuration = RecordingConfiguration(
+            id: RecordingID(rawValue: UUID()), outputURL: outputURL,
+            width: 640, height: 480, fps: 30, audioMode: .disabled,
+            trackTransform: metadata
+        )
+        let writer = try AVAssetWriterRecordingWriterFactory().makeWriter(for: configuration)
+        XCTAssertTrue(writer.start())
+        let pixels = try makePixelBuffer(width: 640, height: 480,
+                                        pixelFormat: RecordingPixelFormat.yPlanar420VideoRange)
+        XCTAssertEqual(writer.appendVideo(RecordingVideoFrame(
+            recordingID: configuration.id, generation: 1, timestamp: 10,
+            payload: AppleRecordingVideoFramePayload(pixelBuffer: pixels)
+        )), .appended)
+        let completion = expectation(description: "native portrait movie finalized")
+        writer.finishWriting { result in
+            if case .failure(let error) = result { XCTFail("Finalization failed: \(error)") }
+            completion.fulfill()
+        }
+        await fulfillment(of: [completion], timeout: 10)
+        let asset = AVURLAsset(url: outputURL)
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let track = try XCTUnwrap(tracks.first)
+        let size = try await track.load(.naturalSize)
+        let transform = try await track.load(.preferredTransform)
+        XCTAssertEqual(size, CGSize(width: 640, height: 480))
+        XCTAssertEqual(CGPoint.zero.applying(transform), CGPoint(x: 480, y: 0))
+        XCTAssertEqual(CGRect(origin: .zero, size: size).applying(transform),
+                       CGRect(x: 0, y: 0, width: 480, height: 640))
+        let playable = await AVURLAssetPlaybackProbe().isPlayableMovie(at: outputURL)
+        XCTAssertTrue(playable)
     }
 
     func testWrittenAssetTrackCarriesOrientationTransformWithoutRotatingDimensions() async throws {
@@ -564,6 +839,9 @@ final class AppleRecordingAdaptersTests: XCTestCase {
         XCTAssertEqual(trackTransform.b, expected.b, accuracy: 1e-6)
         XCTAssertEqual(trackTransform.c, expected.c, accuracy: 1e-6)
         XCTAssertEqual(trackTransform.d, expected.d, accuracy: 1e-6)
+        let expectedBounds = CGRect(x: 0, y: 0, width: 480, height: 640)
+        XCTAssertEqual(CGRect(x: 0, y: 0, width: configuration.width, height: configuration.height)
+            .applying(trackTransform), expectedBounds)
         // Metadata-only orientation: the encoded natural track size keeps the
         // source pixel dimensions; the transform conveys the rotation.
         let naturalSize = try await videoTrack?.load(.naturalSize) ?? .zero

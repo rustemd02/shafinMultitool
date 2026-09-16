@@ -26,9 +26,17 @@ rights decision is `owner_required` are listed with that status, not as approved
 
 ### SnapKit 5.7.1 — MIT
 
-- Upstream: https://github.com/SnapKit/SnapKit (pod 5.7.1, checksum
-  `d612e99e678a2d3b95bf60b0705ed0a35c03484a`).
+- Upstream: https://github.com/SnapKit/SnapKit at commit
+  `2842e6e84e82eb9a8dac0100ca90d9444b0307f4` (tag/pod 5.7.1, spec checksum
+  `d612e99e678a2d3b95bf60b0705ed0a35c03484a`). All 40 installed source files
+  match that official commit; both installed lock files match the verified spec.
 - Copyright (c) 2011-Present SnapKit Team - https://github.com/SnapKit.
+- Complete unmodified notice: `third-party-notices/SnapKit-LICENSE.txt`, SHA256
+  `7c0d21cf5314759fd35a22e42a52099d9cad2570db55a78e4eda26c82493b96b`.
+  MIT permits app distribution with the notice preserved. The exact built app
+  must contain these same bytes as `SnapKit-LICENSE.txt`; source-only notices
+  cannot pass the release acknowledgement gate. See
+  `docs/implementation/provenance/snapkit-admission.md` for proof and verification.
 - MIT text (verbatim from `Pods/SnapKit/LICENSE`):
 
 ```
@@ -65,10 +73,23 @@ copyright notice and the license text to ship with the font.
 | `Oswald-Variable.ttf` (v4.103, sha256 `5b38c246…817`) | Copyright 2016 The Oswald Project Authors (https://github.com/googlefonts/OswaldFont) | OFL-1.1 |
 | `PTM55FT.ttf` / PT Mono (v1.001W, sha256 `cbe732b3…804`) | Copyright © 2010 ParaType Inc., ParaType Ltd.; Reserved Font Names "PT Sans", "PT Serif", "PT Mono", "ParaType" | OFL-1.1 |
 
-License text URL: https://scripts.sil.org/OFL (and
-https://scripts.sil.org/OFL_web for PT Mono). The verbatim OFL 1.1 text is
-**not yet copied into the repository**; it must be added before submission so the
-notice bundle is self-contained.
+The complete applicable OFL texts are already preserved beside the fonts in
+`shafinMultitool/Resources/Fonts/`: `OFL-BebasNeue.txt`, `OFL-Caveat.txt`,
+`OFL-JetBrainsMono.txt`, `OFL-Oswald.txt`, and `OFL-PTMono.txt`.
+On 2026-09-16 every font and notice was downloaded from the immutable
+`google/fonts@e1118da94a8cb00cf6d06cdac9ef13eb1e5c6ab7` distribution and matched
+the existing repository bytes exactly. The unmodified fonts are admitted for
+app bundling under OFL-1.1 with these preserved notices; the release validator
+also checks the exact font and notice bytes in the supplied built app.
+
+The Bebas Neue notice retains the upstream 2010 Dharma Type statement alongside
+the font's 2019 project authorship. The PT Mono notice retains upstream 2011
+ParaType copyright alongside the font's 2010 metadata. Both pairs occur in the
+same pinned upstream distribution; neither was rewritten to make the years agree.
+See `docs/implementation/provenance/font-admission.md` and the hash-bound
+`font-provenance.json` in that folder. The [official OFL text](https://openfontlicense.org/open-font-license-official-text/)
+and [SIL's mobile-app guidance, FAQ 1.20](https://openfontlicense.org/ofl-faq/)
+describe the applicable conditions.
 
 ## Bundled components with an UNKNOWN or owner-required rights decision
 

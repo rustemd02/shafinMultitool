@@ -25,13 +25,15 @@ enum SceneGenerationFailureKind: String, CaseIterable, Codable, Equatable {
     case timeout = "timeout"
     case cancelled = "cancelled"
     case background = "background"
+    case remoteExpired = "remote_expired"
+    case remoteDisabled = "remote_disabled"
 
     var isRetryable: Bool {
         switch self {
         case .arNotReady, .cameraPosition, .network, .quota, .model,
              .persistence, .compilation, .timeout, .background:
             return true
-        case .emptyInput, .parse, .malformed, .cancelled:
+        case .emptyInput, .parse, .malformed, .cancelled, .remoteExpired, .remoteDisabled:
             return false
         }
     }

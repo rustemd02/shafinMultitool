@@ -38,45 +38,35 @@ struct ProCameraControlContract: Equatable, Sendable {
     let owner: String
 }
 
-/// The single source of truth for the 1.0 control surface. Owners were
-/// verified by grep against the locked commit; no owner is invented.
+/// Implementation ownership. Actual device support is resolved separately
+/// from the active device's capabilities, never from this inventory alone.
 enum ProCameraControlContracts {
-    static let production: [ProCameraControlContract] = [
-        .init(control: .formatResolutionFPS, availability: .available,
-              owner: "CameraManager+SettingsValues+ZoomControlView"),
-        // Exposure/ISO/WB/focus live in the legacy CameraService path
-        // (changeISO/changeWB/changeFPS/focusOnTap/changeResolution) and are
-        // NOT yet wired to the production Camera Coach owner. They ship only
-        // with that wiring; until then the contract records the gap honestly
-        // instead of claiming coverage.
-        .init(control: .exposureAuto, availability: .legacyOnly,
-              owner: "CameraService.changeISO (legacy; unwired to Coach path)"),
-        .init(control: .exposureEV, availability: .legacyOnly,
-              owner: "CameraService.changeISO (legacy; unwired to Coach path)"),
-        .init(control: .exposureManualShutterAngleISO, availability: .legacyOnly,
-              owner: "CameraService.changeISO (legacy; unwired to Coach path)"),
-        .init(control: .focusAuto, availability: .legacyOnly,
-              owner: "CameraService.focusOnTap (legacy one-shot autoFocus; unwired to Coach path)"),
-        // C06: `focusOnTap` sets `.autoFocus` + `.autoExpose`, never
-        // `.locked`. There is no focus-lock implementation, so this row must
-        // not name a lock owner that does not exist.
-        .init(control: .focusTapLock, availability: .legacyOnly,
-              owner: "NONE: no focus-lock owner; focusOnTap installs .autoFocus, not .locked (legacy; unwired)"),
-        .init(control: .focusManual, availability: .legacyOnly,
-              owner: "NONE: no manual-focus owner (legacy; unwired to Coach path)"),
-        .init(control: .whiteBalanceAuto, availability: .legacyOnly,
-              owner: "CameraService.changeWB (legacy; unwired to Coach path)"),
-        .init(control: .whiteBalancePreset, availability: .legacyOnly,
-              owner: "CameraService.changeWB (legacy; unwired to Coach path)"),
-        .init(control: .whiteBalanceLock, availability: .legacyOnly,
-              owner: "CameraService.changeWB (legacy; unwired to Coach path)"),
-        .init(control: .whiteBalanceTemperature, availability: .legacyOnly,
-              owner: "CameraService.changeWB (legacy; unwired to Coach path)"),
-        .init(control: .audioMeter, availability: .available,
-              owner: "CameraManager.audioLevel (RMS from audio buffers)"),
-        .init(control: .torch, availability: .available,
-              owner: "CameraManager.setTorchActive/isTorchActive"),
-    ]
+    static let production: [ProCameraControlContract] = ProCameraControl.allCases.map { control in
+        .init(control: control, availability: .available, owner: control == .audioMeter
+            ? "CameraCoachRecordingCoordinator.setMeterEnabled + CameraAudioMeterMeasurement"
+            : "CameraManager.applyProControl + AVCaptureProControlDevice")
+    }
+
+    static func isSupported(_ control: ProCameraControl, by state: CameraProControlsSnapshot?) -> Bool {
+        guard let state else { return false }
+        let capabilities = state.capabilities
+        switch control {
+        case .formatResolutionFPS: return !capabilities.formats.isEmpty
+        case .exposureAuto: return capabilities.autoExposure
+        case .exposureEV: return capabilities.exposureBiasRange != nil && state.readback.exposureIsAuto
+        case .exposureManualShutterAngleISO:
+            return capabilities.isoRange != nil && capabilities.exposureDurationRange != nil
+                && state.readback.fixedFPS != nil
+        case .focusAuto: return capabilities.autoFocus
+        case .focusTapLock: return capabilities.tapFocusLock
+        case .focusManual: return capabilities.manualFocus
+        case .whiteBalanceAuto: return capabilities.autoWhiteBalance
+        case .whiteBalanceLock: return capabilities.whiteBalanceLock
+        case .whiteBalancePreset, .whiteBalanceTemperature: return capabilities.customWhiteBalance
+        case .torch: return capabilities.torch
+        case .audioMeter: return true // Permission and an attached input are checked on explicit enable.
+        }
+    }
 
     /// Histogram/zebra/peaking have no control case at all — they cannot be
     /// referenced by production code. This list documents the exclusion.

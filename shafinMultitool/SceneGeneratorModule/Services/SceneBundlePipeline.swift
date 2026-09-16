@@ -1159,7 +1159,8 @@ final class ChunkCanonicalizer {
             deferredRefs: deferredRefs,
             reasonCodes: unique(reasonCodes),
             usedFallbackPlanner: draft.usedFallbackPlanner,
-            usedLegacyPlanBridge: draft.usedLegacyPlanBridge
+            usedLegacyPlanBridge: draft.usedLegacyPlanBridge,
+            generationProvenance: draft.generationProvenance
         )
     }
 
@@ -2701,6 +2702,9 @@ final class SceneBundlePipeline {
         previousState: ScriptDocumentState?,
         executionPolicy: SceneGeneratorMobileExecutionPolicy? = nil,
         executionSupport: SceneGeneratorExecutionSupport = .live,
+        remoteProvider: RemoteScenePlanProvider? = nil,
+        clarificationHandler: SceneRemoteClarificationHandler? = nil,
+        transferConsentHandler: SceneRemoteTransferConsentHandler? = nil,
         fallbackPlanner: @escaping (_ text: String, _ markedObjects: [MarkedObject], _ state: SceneChunkState?) -> ParsingResult
     ) async -> SceneBundleParsingResult {
         let workload = makeWorkload(description: description, mode: mode, previousState: previousState)
@@ -2713,7 +2717,10 @@ final class SceneBundlePipeline {
             fallbackPlanner: fallbackPlanner,
             asyncPlanner: { [localProvider] text, markers, anchors, state in
                 await localProvider.generatePlanAsync(description: text, markedObjects: markers, anchors: anchors, state: state)
-            }
+            },
+            remoteProvider: remoteProvider,
+            clarificationHandler: clarificationHandler,
+            transferConsentHandler: transferConsentHandler
         )
     }
 
@@ -2724,7 +2731,10 @@ final class SceneBundlePipeline {
         executionPolicy: SceneGeneratorMobileExecutionPolicy?,
         executionSupport: SceneGeneratorExecutionSupport,
         fallbackPlanner: (_ text: String, _ markedObjects: [MarkedObject], _ state: SceneChunkState?) -> ParsingResult,
-        asyncPlanner: ((_ text: String, _ markers: [MarkedObject], _ anchors: SourceAnchorBundle, _ state: SceneChunkState?) async -> ScenePlanProviderResult?)?
+        asyncPlanner: ((_ text: String, _ markers: [MarkedObject], _ anchors: SourceAnchorBundle, _ state: SceneChunkState?) async -> ScenePlanProviderResult?)?,
+        remoteProvider: RemoteScenePlanProvider? = nil,
+        clarificationHandler: SceneRemoteClarificationHandler? = nil,
+        transferConsentHandler: SceneRemoteTransferConsentHandler? = nil
     ) async -> SceneBundleParsingResult {
         var stitchedStates = workload.reusedStates
         var sceneEntries = workload.reusedSceneEntries
@@ -2733,6 +2743,7 @@ final class SceneBundlePipeline {
         var executionTrace = executionPolicy.map { SceneExecutionTrace(executionMode: $0.mode, policy: $0) }
 
         for scene in workload.pendingScenes {
+            guard !Task.isCancelled else { return emptyResult(description: workload.finalDescription) }
             if scene.isMontage {
                 continue
             }
@@ -2741,6 +2752,7 @@ final class SceneBundlePipeline {
             let rawSegments = segments(for: scene, units: workload.units, executionPolicy: executionPolicy)
 
             for rawSegment in rawSegments {
+                guard !Task.isCancelled else { return emptyResult(description: workload.finalDescription) }
                 let preChunkSnapshot = executionPolicy.map { _ in executionSupport.makeSnapshot() }
                 if let policy = executionPolicy, let snapshot = preChunkSnapshot {
                     switch snapshot.thermalState {
@@ -2825,7 +2837,7 @@ final class SceneBundlePipeline {
                     }
                 }
 
-                let draft = await makeDraft(
+                var draft = await makeDraft(
                     scene: scene,
                     rawSegment: rawSegment,
                     anchors: anchors,
@@ -2835,6 +2847,45 @@ final class SceneBundlePipeline {
                     chunkState: chunkState,
                     fallbackPlanner: fallbackPlanner
                 )
+                // The production generator uses this bundle path, including
+                // v9Full where the legacy plan provider is skipped. Offload
+                // only a local fallback, once per chunk, through the same
+                // canonicalization/stitch/compile owners below.
+                guard !Task.isCancelled else { return emptyResult(description: workload.finalDescription) }
+                if draft.usedFallbackPlanner,
+                   !anchors.sourceBundle.sameTypeMarkerConflict,
+                   let remoteProvider {
+                    let remoteOutcome = await remoteProvider.generateRemotePlanOutcome(
+                    description: rawSegment.sourceText,
+                    markedObjects: markedObjects,
+                    anchors: anchors.sourceBundle,
+                    state: chunkState,
+                    clarificationHandler: clarificationHandler,
+                    transferConsentHandler: transferConsentHandler
+                    )
+                    guard !Task.isCancelled else { return emptyResult(description: workload.finalDescription) }
+                    switch remoteOutcome {
+                    case .unavailable:
+                        break
+                    case .failed(let failure):
+                        var result = emptyResult(description: workload.finalDescription)
+                        result.remoteFailure = failure
+                        return result
+                    case .plan(let remoteResult):
+                    draft = await makeDraft(
+                        scene: scene,
+                        rawSegment: rawSegment,
+                        anchors: anchors,
+                        registrySnapshot: registrySnapshot,
+                        providerResult: remoteResult,
+                        providerRoute: .remoteService,
+                        markedObjects: markedObjects,
+                        chunkState: chunkState,
+                        fallbackPlanner: fallbackPlanner
+                    )
+                    }
+                }
+                guard !Task.isCancelled else { return emptyResult(description: workload.finalDescription) }
                 if draft.usedFallbackPlanner {
                     appendExecutionEvent(
                         trace: &executionTrace,
@@ -3046,6 +3097,7 @@ final class SceneBundlePipeline {
         anchors: SceneChunkAnchor,
         registrySnapshot: SceneEntityRegistrySnapshot,
         providerResult: ScenePlanProviderResult?,
+        providerRoute: ScenePlanProviderRoute = .localProvider,
         markedObjects: [MarkedObject],
         chunkState: SceneChunkState,
         fallbackPlanner: (_ text: String, _ markedObjects: [MarkedObject], _ state: SceneChunkState?) -> ParsingResult
@@ -3060,8 +3112,15 @@ final class SceneBundlePipeline {
 
             let v8BasePlan = providerResult.plan
             var sourcePlan = v8BasePlan
+            var acceptedContributors = providerResult.generationContributors ?? [.unknown(stage: .planIR)]
+            let isRemotePlan = providerRoute == .remoteService
 
-            if runtimeMode != .v8Hotfix {
+            if isRemotePlan {
+                // This result already passed server response validation.
+                // Running the local V9 model again could replace the user's
+                // explicit clarification with a different interpretation.
+                appendReasonWithProvenance("remote_plan_used", provenance: "provider", into: &reasonCodes)
+            } else if runtimeMode != .v8Hotfix {
                 let guardrailPlan = v9EventService.applyGuardrails(to: sourcePlan, limits: limits)
                 sourcePlan = guardrailPlan.plan
                 appendReasons(guardrailPlan.reasonCodes, provenance: "runtime_guardrail", into: &reasonCodes)
@@ -3085,7 +3144,8 @@ final class SceneBundlePipeline {
                         startTime: startTime,
                         reasonCodes: &reasonCodes
                     )
-                    sourcePlan = v9Plan
+                    sourcePlan = v9Plan.plan
+                    acceptedContributors += v9Plan.acceptedContributors
                 }
             } else {
                 appendReasonWithProvenance(
@@ -3096,7 +3156,7 @@ final class SceneBundlePipeline {
             }
 
             let beforeEnrich = Set(reasonCodes)
-            let enrichedPlan = enrichRuleFallbackPlan(
+            let enrichedPlan = isRemotePlan ? sourcePlan : enrichRuleFallbackPlan(
                 sourcePlan,
                 sourceText: rawSegment.sourceText,
                 anchors: anchors,
@@ -3120,11 +3180,20 @@ final class SceneBundlePipeline {
                 usedLegacyPlanBridge: providerResult.usedLegacySceneScriptBridge,
                 confidence: 0.9,
                 unresolvedMentions: anchors.pronounMentions,
-                reasonCodes: reasonCodes
+                reasonCodes: reasonCodes,
+                generationProvenance: SceneChunkGenerationProvenance(
+                    sceneID: scene.id, chunkID: rawSegment.chunkID, chunkIndex: rawSegment.chunkIndex,
+                    sourceRange: rawSegment.sourceRange, sourceText: rawSegment.sourceText,
+                    runtimeMode: isRemotePlan ? nil : runtimeMode.rawValue,
+                    providerRoute: providerRoute, contributors: acceptedContributors
+                )
             )
         }
 
         let fallback = fallbackPlanner(rawSegment.sourceText, markedObjects, chunkState)
+        var acceptedContributors = fallback.generationProvenance?.acceptedContributors
+            ?? [.unknown(stage: .unrecordedSource)]
+        var usedV9EventProvider = false
         var reasonCodes = ["v1.rule_chunk_plan"]
         var bridgedPlan = bridgePlan(
             from: fallback.script,
@@ -3154,7 +3223,7 @@ final class SceneBundlePipeline {
                     into: &reasonCodes
                 )
             } else {
-                bridgedPlan = await applyV9RuntimeMode(
+                let v9Result = await applyV9RuntimeMode(
                     runtimeMode,
                     sourcePlan: bridgedPlan,
                     v8FallbackPlan: bridgedPlan,
@@ -3166,6 +3235,9 @@ final class SceneBundlePipeline {
                     startTime: startTime,
                     reasonCodes: &reasonCodes
                 )
+                bridgedPlan = v9Result.plan
+                acceptedContributors += v9Result.acceptedContributors
+                usedV9EventProvider = v9Result.usedEventProvider
             }
         } else {
             appendReasonWithProvenance(
@@ -3182,8 +3254,6 @@ final class SceneBundlePipeline {
             markedObjects: markedObjects,
             reasonCodes: &reasonCodes
         )
-        let usedV9EventProvider = reasonCodes.contains("v9.event_provider_path_used")
-            || reasonCodes.contains("provider:v9.event_provider_path_used")
         return SceneChunkDraft(
             sceneID: scene.id,
             chunkID: rawSegment.chunkID,
@@ -3197,7 +3267,13 @@ final class SceneBundlePipeline {
             usedLegacyPlanBridge: true,
             confidence: usedV9EventProvider ? max(0.75, fallback.diagnostics.confidence) : max(0.3, fallback.diagnostics.confidence),
             unresolvedMentions: anchors.pronounMentions,
-            reasonCodes: reasonCodes
+            reasonCodes: reasonCodes,
+            generationProvenance: SceneChunkGenerationProvenance(
+                sceneID: scene.id, chunkID: rawSegment.chunkID, chunkIndex: rawSegment.chunkIndex,
+                sourceRange: rawSegment.sourceRange, sourceText: rawSegment.sourceText,
+                runtimeMode: runtimeMode.rawValue, providerRoute: .ruleFallback,
+                contributors: acceptedContributors
+            )
         )
     }
 
@@ -3243,6 +3319,12 @@ final class SceneBundlePipeline {
         UserDefaults.standard.bool(forKey: v9PatchRetryEnabledDefaultsKey)
     }
 
+    private struct V9RuntimeResult {
+        let plan: ScenePlanIR
+        var acceptedContributors: [SceneGenerationContributor] = []
+        var usedEventProvider: Bool = false
+    }
+
     private func applyV9RuntimeMode(
         _ mode: V9RuntimeMode,
         sourcePlan: ScenePlanIR,
@@ -3254,18 +3336,18 @@ final class SceneBundlePipeline {
         limits: SceneEventTableV9Service.RuntimeGuardrails,
         startTime: CFAbsoluteTime,
         reasonCodes: inout [String]
-    ) async -> ScenePlanIR {
+    ) async -> V9RuntimeResult {
         switch mode {
         case .v8Hotfix:
-            return v8FallbackPlan
+            return V9RuntimeResult(plan: v8FallbackPlan)
         case .v9Bridge:
-            return applyV9Bridge(
+            return V9RuntimeResult(plan: applyV9Bridge(
                 sourcePlan: sourcePlan,
                 v8FallbackPlan: v8FallbackPlan,
                 limits: limits,
                 startTime: startTime,
                 reasonCodes: &reasonCodes
-            )
+            ))
         case .v9Full:
             return await applyV9Full(
                 sourcePlan: sourcePlan,
@@ -3321,10 +3403,11 @@ final class SceneBundlePipeline {
         limits: SceneEventTableV9Service.RuntimeGuardrails,
         startTime: CFAbsoluteTime,
         reasonCodes: inout [String]
-    ) async -> ScenePlanIR {
+    ) async -> V9RuntimeResult {
         var slotCatalog = v9EventService.buildSlotCatalog(from: sourcePlan)
         var eventTable = v9EventService.buildEventTable(from: sourcePlan, slotCatalog: slotCatalog)
         var usedProvider = false
+        var acceptedContributors: [SceneGenerationContributor] = []
 
         if let providerResult = await localProvider.generateEventTableAsync(
             description: sourceText,
@@ -3334,6 +3417,7 @@ final class SceneBundlePipeline {
             slotCatalog: slotCatalog
         ) {
             usedProvider = true
+            acceptedContributors = providerResult.generationContributors ?? [.unknown(stage: .eventTable)]
             slotCatalog = providerResult.slotCatalog
             eventTable = providerResult.eventTable
             appendReasons(providerResult.reasonCodes, provenance: "provider", into: &reasonCodes)
@@ -3355,7 +3439,7 @@ final class SceneBundlePipeline {
         if didExceedChunkBudget(startTime: startTime, budgetMs: limits.wallClockBudgetMs) {
             appendReasonWithProvenance("v9.runtime_budget_exceeded_fallback_v8", provenance: "runtime_guardrail", into: &reasonCodes)
             if !usedProvider {
-                return v8FallbackPlan
+                return V9RuntimeResult(plan: v8FallbackPlan)
             }
         }
 
@@ -3383,7 +3467,7 @@ final class SceneBundlePipeline {
         }
         if canRetry {
             appendReasonWithProvenance("v9.patch_retry_attempted", provenance: "v9_verifier", into: &reasonCodes)
-            if let retryPatchOps = await localProvider.generateEventPatchOpsAsync(
+            if let retryPatchResult = await localProvider.generateEventPatchResultAsync(
                 description: sourceText,
                 markedObjects: markedObjects,
                 anchors: anchors,
@@ -3393,7 +3477,7 @@ final class SceneBundlePipeline {
                 verifierIssues: verifierIssuesForRetry
             ) {
                 let patched = v9EventService.applyPatchOps(
-                    retryPatchOps,
+                    retryPatchResult.patchOps,
                     to: verification.repairedEventTable,
                     slotCatalog: slotCatalog
                 )
@@ -3408,8 +3492,12 @@ final class SceneBundlePipeline {
                 )
                 let retryIssues = retryVerification.reasonCodes + retryCoverageIssues
                 if retryIssues.count <= verifierIssuesForRetry.count {
+                    let patchChangedOutput = retryVerification.repairedEventTable != verification.repairedEventTable
                     verification = retryVerification
                     verifierIssuesForRetry = retryIssues
+                    if patchChangedOutput {
+                        acceptedContributors += retryPatchResult.generationContributors ?? [.unknown(stage: .patchOps)]
+                    }
                     appendReasonWithProvenance("v9.patch_retry_applied", provenance: "v9_verifier", into: &reasonCodes)
                     appendReasons(retryVerification.reasonCodes, provenance: "v9_verifier", into: &reasonCodes)
                     appendReasons(retryCoverageIssues, provenance: "v9_verifier", into: &reasonCodes)
@@ -3424,15 +3512,18 @@ final class SceneBundlePipeline {
         if didExceedChunkBudget(startTime: startTime, budgetMs: limits.wallClockBudgetMs) {
             appendReasonWithProvenance("v9.runtime_budget_exceeded_fallback_v8", provenance: "runtime_guardrail", into: &reasonCodes)
             if !usedProvider {
-                return v8FallbackPlan
+                return V9RuntimeResult(plan: v8FallbackPlan)
             }
         }
 
         appendReasonWithProvenance("v9.local_event_table_pipeline", provenance: "v9_verifier", into: &reasonCodes)
-        return v9EventService.compileToPlan(
+        let plan = v9EventService.compileToPlan(
             eventTable: verification.repairedEventTable,
             slotCatalog: slotCatalog,
             originalPlan: sourcePlan
+        )
+        return V9RuntimeResult(
+            plan: plan, acceptedContributors: acceptedContributors, usedEventProvider: usedProvider
         )
     }
 

@@ -55,8 +55,14 @@ from .data.training_records import (
     stack_inputs,
     stack_masks,
     stack_targets,
+    validate_record_admission,
 )
 from .losses import DIRECT_LOSS_HEADS, LossConfig, compute_multitask_loss
+from .component_supervision import (
+    CHECKPOINT_VERSION, LEGACY_CHECKPOINT_VERSION, batch_supervision, canonical_hash,
+    checkpoint_supervision, new_supervision, record_successful_step, records_fingerprint,
+    trained_head_mask as observed_head_mask, validate_supervision,
+)
 from .models.set_composition_net_v2 import (
     SETCompositionNetV2CandidateA,
     SETCompositionNetV2CandidateB,
@@ -87,13 +93,12 @@ from .train import (
 
 
 CONFIG_VERSION = "camera_training.v2"
-RECEIPT_VERSION = "camera_training_receipt.v2"
+RECEIPT_VERSION = "camera_training_receipt.v3"
 MODEL_MANIFEST_RELATIVE = "ml/camera_coach/contracts/set_composition_net_v2.json"
 LOSS_CONFIG_RELATIVE = "ml/camera_coach/configs/loss_weights.json"
 RUNTIME_LOCK_RELATIVE = "ml/camera_coach/requirements.lock"
 SELECTION_RULE = "minimum_validation_total_loss_then_earliest_epoch"
 MODE = "production_records"
-CHECKPOINT_VERSION = "camera_training_checkpoint.v1"
 ADMISSION_STATES = ("non_admitted_research", "declared_admitted")
 
 # An explicit runtime profile is part of the M02 package.  ``pinned_local`` is
@@ -549,10 +554,14 @@ def _make_model(
     return SETCompositionNetV2CandidateB(contract).to(device)
 
 
-def _available_heads(records: Sequence[TrainingRecord], config: RecordsTrainingConfig) -> tuple[dict[str, bool], dict[str, Tensor]]:
+def _available_heads(records: Sequence[TrainingRecord], config: RecordsTrainingConfig,
+                     loss_config: LossConfig | None = None) -> tuple[dict[str, bool], dict[str, Tensor]]:
     mask_sums = {name: float(stack_masks(records)[name].sum()) for name in DIRECT_LOSS_HEADS}
     trained = {
-        name: (name in config.training.trained_heads) and mask_sums[name] > 0.0
+        name: (name in config.training.trained_heads) and (
+            (mask_sums[name] > 0.0 and (loss_config is None or getattr(loss_config.weights, name) > 0)) or
+            (name == "good_frame_probability" and loss_config is not None and
+             loss_config.weights.ranking > 0 and bool(eligible_ranking_pairs(records))))
         for name in DIRECT_LOSS_HEADS
     }
     return trained, stack_masks(records)
@@ -560,6 +569,16 @@ def _available_heads(records: Sequence[TrainingRecord], config: RecordsTrainingC
 
 def _masked_for_training(masks: Mapping[str, Tensor], trained: Mapping[str, bool]) -> dict[str, Tensor]:
     return {name: (mask if trained.get(name, False) else torch.zeros_like(mask)) for name, mask in masks.items()}
+
+
+def _supervised_records(records: Sequence[TrainingRecord], trained: Mapping[str, bool], *,
+                        ranking_enabled: bool = False) -> list[TrainingRecord]:
+    """Fully masked rows cannot create optimizer steps or zero-loss validation."""
+    ranked = {index for left, right, _ in eligible_ranking_pairs(records) for index in (left, right)} if (
+        ranking_enabled and trained.get("good_frame_probability", False)) else set()
+    return [record for index, record in enumerate(records) if index in ranked or any(
+        trained.get(head, False) and bool(torch.any(mask != 0.0)) for head, mask in record.masks.items()
+    )]
 
 
 def _batch_loss(
@@ -574,7 +593,7 @@ def _batch_loss(
     seed: int,
     epoch: int,
     device: torch.device,
-) -> tuple[Tensor, dict[str, float]]:
+) -> tuple[Tensor, dict[str, float], dict]:
     prepared = []
     for record in records:
         if augment and _stable_flip(record.record_id, seed, epoch):
@@ -589,7 +608,7 @@ def _batch_loss(
     # dropped instead of being reinterpreted as a preference.
     pair_spec = eligible_ranking_pairs(prepared)
     pair_labels = None
-    if pair_spec:
+    if pair_spec and trained.get("good_frame_probability", False) and loss_config.weights.ranking > 0:
         pair_labels = {
             "good_vs_harmful": {
                 "indices": torch.tensor(
@@ -613,7 +632,9 @@ def _batch_loss(
         config=loss_config,
     )
     scalar_terms = {name: float(result.per_head[name].detach()) for name in result.per_head}
-    return result.total, scalar_terms
+    observation = batch_supervision(outputs, targets, masks, intent_mask, loss_config,
+        [record.record_id for record in prepared], ranking_pairs=len(pair_spec) if pair_labels else 0)
+    return result.total, scalar_terms, observation
 
 
 def _validate(
@@ -639,13 +660,17 @@ def _validate(
             outputs = model(inputs)
             _assert_actually_on_device(model, device, [outputs["embedding"]], "validation forward")
             result = compute_multitask_loss(outputs, targets, masks=masks, intent_mask=intent_mask, config=loss_config)
+            observation = batch_supervision(outputs, targets, masks, intent_mask, loss_config,
+                [record.record_id for record in chunk])
+            if not observation["has_supervision"]:
+                continue
             total_weighted += float(result.total) * len(chunk)
             for name in DIRECT_LOSS_HEADS:
                 per_head_totals[name] += float(result.per_head[name]) * len(chunk)
             count += len(chunk)
     model.train()
     if count == 0:
-        raise TrainingError("validation split is empty")
+        raise TrainingError("validation split has no effective direct supervision")
     return total_weighted / count, {name: value / count for name, value in per_head_totals.items()}
 
 
@@ -667,9 +692,11 @@ def _restore_checkpoint(
     config: RecordsTrainingConfig,
     seed: int,
     device: torch.device,
+    contract: SETCompositionNetV2Manifest,
+    supervision_source: Mapping[str, str],
 ) -> dict[str, Any]:
     checkpoint = torch.load(path, map_location="cpu", weights_only=False)
-    if not isinstance(checkpoint, dict) or checkpoint.get("checkpoint_version") != CHECKPOINT_VERSION:
+    if not isinstance(checkpoint, dict) or checkpoint.get("checkpoint_version") not in (CHECKPOINT_VERSION, LEGACY_CHECKPOINT_VERSION):
         raise TrainingError(f"checkpoint at {path} is not a {CHECKPOINT_VERSION} file")
     recorded = checkpoint.get("resume_semantic_sha256", checkpoint.get("config_sha256"))
     if recorded != resume_semantic_sha256(config) or checkpoint.get("seed") != seed:
@@ -677,6 +704,8 @@ def _restore_checkpoint(
             "checkpoint semantics (code/config/data/device) do not match the requested resume run; "
             "start a new run with an explicit warm-start instead"
         )
+    checkpoint_supervision(checkpoint, contract, source=supervision_source)
+    checkpoint_supervision(checkpoint, contract, source=supervision_source, selected_best=True)
     model.load_state_dict(checkpoint["model_state"])
     optimizer.load_state_dict(checkpoint["optimizer_state"])
     scheduler.load_state_dict(checkpoint["scheduler_state"])
@@ -702,19 +731,26 @@ def train_one_seed(
 ) -> dict[str, Any]:
     """Train one seed with validation, early stop, atomic checkpoint/resume."""
 
+    validate_record_admission(records, config.dataset.admission)
     train_records = [record for record in records if record.split == "train"]
     validation_records = [record for record in records if record.split == "validation"]
     if not train_records:
         raise TrainingError("records bundle has no train split")
     if not validation_records:
         raise TrainingError("records bundle has no validation split")
+    trained, train_masks = _available_heads(train_records, config, loss_config)
+    train_records = _supervised_records(train_records, trained, ranking_enabled=loss_config.weights.ranking > 0)
+    validation_records = _supervised_records(validation_records, trained, ranking_enabled=loss_config.weights.ranking > 0)
+    if not train_records:
+        raise TrainingError("train split has no supervised targets for the requested heads")
+    if not validation_records:
+        raise TrainingError("validation split has no supervised targets for the trained heads")
 
     device = _torch_device(config)
     _seed_records(records, seed, device)
     model = _make_model(config, contract, device)
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
-    trained, train_masks = _available_heads(train_records, config)
     for name, parameter in model.named_parameters():
         head = name.split(".")[1] if name.startswith("heads.") else None
         if head is not None and not trained.get(head, False):
@@ -743,6 +779,10 @@ def train_one_seed(
     resume_lineage: str | None = None
     checkpoint_path = run_dir / "checkpoint.pt"
     best_path = run_dir / "best.pt"
+    supervision_source = dict(declared_dataset_sha256=config.dataset.sha256,
+        observed_records_sha256=records_fingerprint(records), model_contract_sha256=config.model.manifest_sha256,
+        effective_loss_sha256=canonical_hash(loss_config.as_mapping()), resume_semantic_sha256=resume_semantic_sha256(config))
+    supervision = new_supervision(contract, supervision_source)
     if resume_from is not None:
         state = _restore_checkpoint(
             resume_from,
@@ -753,9 +793,14 @@ def train_one_seed(
             config=config,
             seed=seed,
             device=device,
+            contract=contract,
+            supervision_source=supervision_source,
         )
         start_epoch = int(state["epoch"]) + 1
-        best = state["best"]
+        best = dict(state["best"])
+        supervision = checkpoint_supervision(state, contract, source=supervision_source)
+        best["component_supervision"] = checkpoint_supervision(state, contract,
+            source=supervision_source, selected_best=True)
         history = list(state["history"])
         resume_lineage = str(resume_from)
 
@@ -772,7 +817,7 @@ def train_one_seed(
             batch_indices = indices[start : start + config.training.batch_size]
             batch = [train_records[index] for index in batch_indices]
             optimizer.zero_grad(set_to_none=True)
-            total, _terms = _batch_loss(
+            total, _terms, observation = _batch_loss(
                 model,
                 batch,
                 contract,
@@ -786,6 +831,8 @@ def train_one_seed(
             )
             if not torch.isfinite(total):
                 raise TrainingError(f"non-finite training loss at seed {seed} epoch {epoch}")
+            if not observation["has_supervision"]:
+                continue
             total.backward()
             _assert_actually_on_device(model, device, [total], "backward")
             for _name, parameter in model.named_parameters():
@@ -794,9 +841,12 @@ def train_one_seed(
             if config.training.gradient_clip > 0.0:
                 torch.nn.utils.clip_grad_norm_(trainable, config.training.gradient_clip)
             optimizer.step()
+            record_successful_step(supervision, observation)
             train_total += float(total.detach()) * len(batch)
             train_count += len(batch)
             optimizer_steps += 1
+        if optimizer_steps == 0:
+            raise TrainingError("epoch has no effective supervised optimizer steps")
         scheduler.step()
         validation_loss, per_head = _validate(
             model, validation_records, contract, loss_config, trained, config.training.batch_size, device
@@ -809,6 +859,7 @@ def train_one_seed(
             "validation_per_head": per_head,
             "learning_rate": optimizer.param_groups[0]["lr"],
             "optimizer_steps": optimizer_steps,
+            "successful_optimizer_steps_cumulative": supervision["successful_optimizer_steps"],
             "epoch_seconds": epoch_seconds,
             "seconds_per_optimizer_step": epoch_seconds / max(1, optimizer_steps),
             "device": device.type,
@@ -821,6 +872,7 @@ def train_one_seed(
                 "score": validation_loss,
                 "epoch": epoch,
                 "state": {name: value.detach().clone() for name, value in model.state_dict().items()},
+                "component_supervision": validate_supervision(supervision, contract),
             }
             _atomic_save_checkpoint(
                 best_path,
@@ -834,12 +886,13 @@ def train_one_seed(
                     "epoch": epoch,
                     "score": validation_loss,
                     "model_state": model.state_dict(),
-                    "trained_head_mask": trained,
+                    "enabled_head_mask": trained,
+                    "trained_head_mask": observed_head_mask(supervision),
+                    "component_supervision": validate_supervision(supervision, contract),
                 },
             )
         elif epoch - best["epoch"] >= config.training.early_stop_patience:
             stopped_early = True
-            break
         _atomic_save_checkpoint(
             checkpoint_path,
             {
@@ -859,10 +912,12 @@ def train_one_seed(
                 "cuda_rng_state_all": torch.cuda.get_rng_state_all() if device.type == "cuda" else None,
                 "best": best,
                 "history": history,
-                "trained_head_mask": trained,
+                "enabled_head_mask": trained,
+                "trained_head_mask": observed_head_mask(supervision),
+                "component_supervision": validate_supervision(supervision, contract),
             },
         )
-        if interrupt_after_epoch is not None and epoch >= interrupt_after_epoch:
+        if stopped_early or (interrupt_after_epoch is not None and epoch >= interrupt_after_epoch):
             break
 
     if best["state"] is None:
@@ -879,7 +934,10 @@ def train_one_seed(
         "selection_rule": SELECTION_RULE,
         "selected_epoch": best["epoch"],
         "selected_validation_loss": best["score"],
-        "trained_head_mask": trained,
+        "enabled_head_mask": trained,
+        "trained_head_mask": observed_head_mask(best["component_supervision"]),
+        "component_supervision": validate_supervision(best["component_supervision"], contract),
+        "final_component_supervision": validate_supervision(supervision, contract),
         "class_pos_weight_heads": sorted(pos_weights),
         "eligible_ranking_pairs": len(ranking_pairs),
         "history": history,
@@ -1004,7 +1062,7 @@ def run_records_training(
             f"records hash mismatch: expected {config.dataset.sha256}, got {records_hash}"
         )
     try:
-        records = load_records(records_path, config.dataset.sha256)
+        records = load_records(records_path, config.dataset.sha256, admission=config.dataset.admission)
     except TrainingRecordError as exc:
         raise TrainingError(f"typed training records rejected: {exc}") from exc
     sealed = sorted(record.record_id for record in records if record.split == "locked_test")

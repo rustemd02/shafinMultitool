@@ -71,10 +71,13 @@ production-контракт сети. Неназванные в ручной п�
 не доказывает контровой свет. Отрицания переводятся в явные запреты.
 Замечания вне словаря сохраняются дословно, не теряются.
 
-`contract_projection` пока имеет `training_ready=false`: действующий v2
-JSON intake поддерживает только all-or-none review проблем, поэтому перед
-fit нужен адаптер частичных масок и допуск по intent/grounding. Нельзя
-отправлять эти строки напрямую в `parse_record` или заполнять пропуски нулями.
+`contract_projection` сохраняет `training_ready=false`. Отдельный явный
+`export-language` теперь создаёт typed intake **v2.1.0** с частичными масками
+проблем: `1` — названа проблема, `0` — явно отмечено её отсутствие, `null` —
+неизвестно и не участвует в loss. Старый формат v2.0.0 остаётся прежним.
+Нельзя отправлять саму projection напрямую в `parse_record` или подменять
+неизвестные значения отрицательными. Для остальных heads нужны новые
+grounding/intent/action данные и отдельный допуск.
 Запросы вроде «стол ближе к центру» сохраняются как `spatial_requests`, но не
 превращаются в обучаемые v2-deltas до отдельного допуска пространственного
 контракта. ROI, точные сдвиги/зум, risk и abstention не выдумываются.
@@ -85,6 +88,31 @@ fit нужен адаптер частичных масок и допуск по
 `research_only=true`, `human_gold=false`,
 `release_admissible=false`. Языковая помощь явно обозначена; эти записи
 нельзя незаметно смешивать с прежними blind gold-контролями.
+
+Экспорт создаёт новую папку с `records.jsonl`, полным происхождением в
+`lineage.jsonl`, проверкой существующих source-group splits и receipt с SHA.
+Исходные очередь, журналы и медиа не изменяются. Более новая ручная правка
+снимает прежнее подтверждение с обучения; неподтверждённые предложения и
+locked test в intake не попадают. Поисковая категория используется только
+для sampling; она не становится scene-class target. Accepted visual proposals
+и переведённые человеческие мнения имеют разные `label_origin`.
+
+Из корня репозитория, указав новое имя выходной папки:
+
+```bash
+python3 -B tools/camera_annotation/review_pipeline.py export-language \
+  --folder ../setos-backend/local-data/SETOS/annotation/language-review-20260915 \
+  --out ../setos-backend/local-data/SETOS/annotation/partial-intake-new
+python3 -B -m ml.camera_coach.data.check_partial_labels \
+  --intake ../setos-backend/local-data/SETOS/annotation/partial-intake-new \
+  --out ../setos-backend/local-data/SETOS/annotation/partial-intake-new/gradient-check
+```
+
+Вторая команда проверяет реальные train-пиксели, preprocessing, loss и
+градиенты; optimizer не запускается, validation не используется для настройки.
+Пустые supervision и конфликты сплитов не дают PASS. Assisted validation
+остаётся исследовательской; авторская группа и dHash не доказывают независимость
+сцен или качество советов. Контракт: `ml/camera_coach/contracts/camera_training_record_v2_1.md`.
 
 Разработчику: `python3 -B tools/camera_annotation/language_labels.py` и
 `python3 -B tools/camera_annotation/language_review.py --self-check` проверяют

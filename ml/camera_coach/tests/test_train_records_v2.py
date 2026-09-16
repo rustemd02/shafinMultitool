@@ -270,6 +270,22 @@ def test_eligible_ranking_pairs_skip_inadmissible() -> None:
     assert by_index["cam-smoke-t08"] not in {pair[0] for pair in pairs}
 
 
+def test_effective_supervision_retains_admissible_ranking_only_rows() -> None:
+    from ml.camera_coach.trainer_records import _supervised_records
+
+    targets = {"scene_class": None, "subjectness": {"subjectness": None, "roi_agreement": None, "ambiguity": None},
+        "issues": {"reviewed": False, "present": []}, "utility": {"reviewed": False, "acceptable": [], "forbidden": []},
+        "good_frame": None, "abstention": None, "risk": None,
+        "target_deltas": {name: None for name in ("delta_x", "delta_y", "scale_delta", "light_delta", "horizon_delta")}}
+    left = _valid_record(record_id="ranking-left", targets=targets,
+                         ranking=[{"other_record_id": "ranking-right", "preference": 1}])
+    right = _valid_record(record_id="ranking-right", targets=targets)
+    trained = {"good_frame_probability": True}
+    assert _supervised_records([left, right], trained) == []
+    assert [record.record_id for record in _supervised_records([left, right], trained, ranking_enabled=True)] == [
+        "ranking-left", "ranking-right"]
+
+
 def _tiny_config() -> RecordsTrainingConfig:
     config = RecordsTrainingConfig.from_file(CONFIG_PATH)
     training = replace(config.training, epochs=2, batch_size=4, early_stop_patience=2, class_weight_max=5.0)
@@ -305,6 +321,10 @@ def test_checkpoint_resume_matches_continuous_run() -> None:
         resumed = _train(config, resumed_dir, resume_from=interrupted_dir / "checkpoint.pt")
 
         assert len(continuous["history"]) == 2 and len(resumed["history"]) == 2
+        assert continuous["component_supervision"] == resumed["component_supervision"]
+        assert continuous["final_component_supervision"] == resumed["final_component_supervision"]
+        assert resumed["final_component_supervision"]["successful_optimizer_steps"] == sum(
+            row["optimizer_steps"] for row in resumed["history"])
         for epoch in (1, 2):
             assert resumed["history"][epoch - 1]["train_loss"] == pytest.approx(
                 continuous["history"][epoch - 1]["train_loss"], rel=0, abs=1e-9

@@ -137,13 +137,18 @@ private struct SETCameraCoachRuntimeSurface: View {
     let cameraManager: CameraManager
     let onDismiss: (() -> Void)?
 
+#if DEBUG
     @Environment(\.scenePhase) private var scenePhase
+#endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.locale) private var locale
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @StateObject private var previewTransformStore = CameraPreviewTransformStore()
     @State private var isProControlsPresented = false
 
     var body: some View {
+        GeometryReader { available in
+            VStack(spacing: 0) {
         GeometryReader { proxy in
             let canvasSize = proxy.size
             ZStack {
@@ -181,7 +186,9 @@ private struct SETCameraCoachRuntimeSurface: View {
                         subjectRegions: previewSubjectRegions,
                         correctiveTargetRegion: previewCorrectiveTargetRegion,
                         transformStore: previewTransformStore,
-                        onSceneTap: { viewModel.handleSceneTap(sceneX: $0, sceneY: $1) }
+                        onSceneTap: { viewModel.handleSceneTap(sceneX: $0, sceneY: $1) },
+                        onFocusPoint: viewModel.isFocusPointSelectionActive
+                            ? { viewModel.handleProFocusPoint($0) } : nil
                     )
                     .ignoresSafeArea()
                     .accessibilityHidden(true)
@@ -249,7 +256,8 @@ private struct SETCameraCoachRuntimeSurface: View {
                 SETCameraTopChrome(
                     isPaused: viewModel.isPaused,
                     onDismiss: onDismiss,
-                    onTogglePause: { viewModel.togglePause() }
+                    onTogglePause: { viewModel.togglePause() },
+                    isPauseEnabled: !viewModel.hasActiveRecording
                 )
 
                 // M9-016: discoverable Pro Controls toggle (44pt target,
@@ -260,10 +268,18 @@ private struct SETCameraCoachRuntimeSurface: View {
                     HStack {
                         Spacer()
                         Button {
+                            viewModel.cancelProFocusPointSelection()
                             isProControlsPresented.toggle()
                         } label: {
-                            Text(SETCopyKey.proControlsToggle.localizedString(locale: locale))
-                                .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.micro, relativeTo: .caption2))
+                            Group {
+                                if dynamicTypeSize.isAccessibilitySize {
+                                    Image(systemName: "slider.horizontal.3")
+                                        .font(.system(size: 22, weight: .semibold))
+                                } else {
+                                    Text(SETCopyKey.proControlsToggle.localizedString(locale: locale))
+                                        .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.micro, relativeTo: .caption2))
+                                }
+                            }
                                 .foregroundStyle(.setTextPrimary)
                                 .padding(.horizontal, 12)
                                 .frame(minWidth: SETComponentMetric.minimumHitTarget,
@@ -280,6 +296,8 @@ private struct SETCameraCoachRuntimeSurface: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("pro_controls_toggle")
+                        .accessibilityLabel(Text(SETCopyKey.proControlsToggle.localizedString(locale: locale)))
+                        .disabled(viewModel.hasActiveRecording)
                     }
                     Spacer()
                 }
@@ -287,42 +305,92 @@ private struct SETCameraCoachRuntimeSurface: View {
 
                 SETAccessibilityIdentifierProbe(identifier: CameraOverlayAccessibilityID.surface)
 
-                // M9-016: the single Pro Controls layer inside the Coach
-                // screen — same session, same owners, no second screen.
-                if isProControlsPresented {
-                    // The 13-row contract is taller than a compact-height
-                    // canvas (and grows further at accessibility text sizes).
-                    // Scrolling keeps every row reachable; the minimum-height
-                    // frame keeps the existing centered composition whenever
-                    // the panel already fits.
-                    ScrollView(.vertical) {
-                        ProControlsPanelView(
-                            rows: ProControlsPresentation.rows(
-                                torchActive: cameraManager.isTorchActive,
-                                meterLevel: cameraManager.audioLevel,
-                                formatText: nil,
-                                locale: locale
-                            ),
-                            locale: locale
-                        )
-                        .padding(SETSpacing.x4)
-                        .frame(maxWidth: .infinity,
-                               minHeight: canvasSize.height,
-                               alignment: .center)
+                if !isProControlsPresented && (viewModel.isFocusPointSelectionActive
+                    || viewModel.isApplyingProControl || viewModel.proControlError != nil) {
+                    VStack {
+                        Spacer()
+                        VStack(spacing: SETSpacing.x2) {
+                            Text(proControlOverlayCopy.localizedString(locale: locale))
+                                .fixedSize(horizontal: false, vertical: true)
+                            if viewModel.isFocusPointSelectionActive {
+                                Button(SETCopyKey.proControlFocusCancel.localizedString(locale: locale)) {
+                                    viewModel.cancelProFocusPointSelection()
+                                }
+                                .frame(minHeight: SETComponentMetric.minimumHitTarget)
+                            } else {
+                                Button(SETCopyKey.proControlsTitle.localizedString(locale: locale)) {
+                                    isProControlsPresented = true
+                                }
+                                .frame(minHeight: SETComponentMetric.minimumHitTarget)
+                            }
+                        }
+                        .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .callout))
+                        .foregroundStyle(.setTextPrimary)
+                        .padding(SETSpacing.x3)
+                        .background(.setHUDScrim)
+                        .accessibilityIdentifier("pro_focus_point_selection")
                     }
-                    .scrollIndicators(.hidden)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onTapGesture { isProControlsPresented = false }
+                    .padding(SETSpacing.x3)
                 }
+
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+                // Allocate real layout space for recording. The live overlay
+                // and preview projection observe the remaining camera canvas.
+                if let coordinator = viewModel.recordingCoordinator {
+                    CameraRecordingControlsView(
+                        coordinator: coordinator,
+                        canStart: viewModel.canStartRecording,
+                        maxAuxiliaryHeight: available.size.height < 480 ? 44 : 128
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                } else if viewModel.recordingInitializationFailed {
+                    CameraRecordingUnavailableControls(onRetry: viewModel.retryRecordingPreparation)
+                }
+            }
+        }
         .background(.setInk)
         .accessibilityElement(children: .contain)
-        .onChange(of: scenePhase) { _, phase in
-            guard phase != .active else { return }
-            viewModel.reportSceneInactive()
+        .sheet(isPresented: $isProControlsPresented) {
+            // Present above the UIKit shell so its mode control cannot cover
+            // or intercept this surface. The existing capture owner continues.
+            ProControlsPanelView(
+                viewModel: viewModel,
+                locale: locale,
+                onClose: { isProControlsPresented = false },
+                onSelectFocusPoint: {
+                    viewModel.beginProFocusPointSelection()
+                    if viewModel.isFocusPointSelectionActive { isProControlsPresented = false }
+                }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(.setInk)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.setInk)
+            .preferredColorScheme(.dark)
         }
+#if DEBUG
+        .background(alignment: .topLeading) {
+            if ProcessInfo.processInfo.environment["SHAFIN_UI_TESTING"] == "1" {
+                CameraLifecycleDiagnosticProbe(
+                    viewModel: viewModel,
+                    cameraManager: cameraManager,
+                    swiftUIScenePhase: String(describing: scenePhase)
+                )
+                .frame(width: 1, height: 1)
+                .allowsHitTesting(false)
+            }
+        }
+#endif
+    }
+
+    private var proControlOverlayCopy: SETCopyKey {
+        if let error = viewModel.proControlError { return ProControlsPresentation.errorKey(error) }
+        if viewModel.isFocusingProControl { return .proControlFocusConverging }
+        if viewModel.isApplyingProControl { return .proControlApplying }
+        return .proControlFocusSelectionHint
     }
 
     private var pausePresentation: CameraPausePresentationState {
@@ -394,7 +462,10 @@ private struct SETCameraCoachRuntimeSurface: View {
         CameraOverlayUXPresentation.make(
             liveHint: viewModel.liveHint,
             context: CameraOverlayUXContext(
-                lifecycleState: projectedLifecycleState,
+                // This surface is hosted by UIKit. The shell forwards actual
+                // background events to this owner; a SwiftUI environment value
+                // must not invent an interruption while that owner is running.
+                lifecycleState: viewModel.lifecycleState,
                 decision: viewModel.plannerDecision,
                 episodeState: viewModel.coachingEpisodeState,
                 verificationResult: viewModel.verificationResult,
@@ -408,12 +479,6 @@ private struct SETCameraCoachRuntimeSurface: View {
         )
     }
 
-    private var projectedLifecycleState: CameraLifecycleState {
-        if scenePhase != .active, viewModel.lifecycleState == .running {
-            return .failed(.sessionInterrupted)
-        }
-        return viewModel.lifecycleState
-    }
 }
 
 private struct SETCameraCoachFixtureSurface: View {
@@ -522,6 +587,7 @@ private struct SETCameraTopChrome: View {
     let isPaused: Bool
     let onDismiss: (() -> Void)?
     let onTogglePause: () -> Void
+    var isPauseEnabled = true
 
     var body: some View {
         HStack(alignment: .top, spacing: SETSpacing.x3) {
@@ -551,6 +617,7 @@ private struct SETCameraTopChrome: View {
                     .overlay { Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline) }
             }
             .accessibilityIdentifier("camera_coach_pause")
+            .disabled(!isPauseEnabled)
             .accessibilityLabel(Text(
                 (isPaused ? SETCopyKey.cameraResume : SETCopyKey.cameraPause).localizedTextKey
             ))
@@ -604,7 +671,7 @@ private struct SETCameraLiveOverlay: View {
                     subjectRegions: subjectRegions,
                     commandRailFrame: railFrame,
                     reservedFrames: lensStatus == nil ? [] : lensStatusReservedFrames,
-                    isInteractionLocked: viewModel.lensSwitchPresentationState.isSwitching,
+                    isInteractionLocked: viewModel.lensSwitchPresentationState.isSwitching || viewModel.hasActiveRecording,
                     onLensChange: { viewModel.switchLens(to: $0) }
                 )
             }
@@ -1762,9 +1829,9 @@ private struct SETCameraFixtureCommandBand: View {
                         size: isCompactStatus ? SETTypographySize.label : SETTypographySize.body
                     ))
                     .foregroundStyle(semanticState?.isCorrective == true && analysisStatus == .healthy && !showsECO ? .setOrange : .setTextPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .fixedSize(horizontal: !isCompactStatus, vertical: true)
+                    .lineLimit(isCompactStatus ? 1 : nil)
+                    .minimumScaleFactor(isCompactStatus ? 0.72 : 1)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier(CameraOverlayAccessibilityID.observation)
 
                 if isCompactStatus {

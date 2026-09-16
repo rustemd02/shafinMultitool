@@ -47,17 +47,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                         thermal.nextBudget().heavyModelsEnabled
                     }
                 )
+                let permissions = CameraCoachUITestingPermissionClient(
+                    snapshot: uiTestingConfiguration.cameraSnapshot,
+                    recheckSnapshot: uiTestingConfiguration.cameraRecheckSnapshot,
+                    requestResult: uiTestingConfiguration.cameraRequestResult
+                )
                 let dependencies = ContentView.CameraCoachDependencies(
                     cameraManager: cameraManager,
                     viewModel: CameraViewModel(
                         cameraManager: cameraManager,
-                        analysisPipeline: analysisPipeline
+                        analysisPipeline: analysisPipeline,
+                        recordingCoordinatorFactory: ContentView.makeRecordingCoordinatorFactory(
+                            cameraManager: cameraManager, permissions: permissions
+                        )
                     ),
-                    permissionClient: CameraCoachUITestingPermissionClient(
-                        snapshot: uiTestingConfiguration.cameraSnapshot,
-                        recheckSnapshot: uiTestingConfiguration.cameraRecheckSnapshot,
-                        requestResult: uiTestingConfiguration.cameraRequestResult
-                    ),
+                    permissionClient: permissions,
                     introStore: CameraCoachUITestingIntroStore(
                         initiallySeen: uiTestingConfiguration.introSeen
                     )

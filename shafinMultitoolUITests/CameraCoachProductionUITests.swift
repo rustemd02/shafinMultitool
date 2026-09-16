@@ -219,6 +219,7 @@ final class CameraCoachProductionUITests: XCTestCase {
             reduceMotion: true
         )
         assertRoot("camera.corrective", in: reduceMotionApp)
+        assertVisibleTextFitsViewport("Сделай предложенное изменение кадра", in: reduceMotionApp)
         attachScreenshot(reduceMotionApp, named: "camera-corrective-ru-portrait-reduce-motion")
         reduceMotionApp.terminate()
 
@@ -230,10 +231,27 @@ final class CameraCoachProductionUITests: XCTestCase {
         )
         assertRoot("camera.corrective", in: dynamicTypeApp)
         XCTAssertTrue(dynamicTypeApp.buttons["camera_coach_pause"].exists)
+        assertVisibleTextFitsViewport("Make the suggested frame adjustment", in: dynamicTypeApp)
         attachScreenshot(dynamicTypeApp, named: "camera-corrective-en-landscape-dynamic-type")
         dynamicTypeApp.terminate()
 
         XCUIDevice.shared.orientation = .portrait
+    }
+
+    private func assertVisibleTextFitsViewport(
+        _ label: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let text = app.staticTexts[label].firstMatch
+        XCTAssertTrue(text.waitForExistence(timeout: 4), file: file, line: line)
+        let viewport = app.frame
+        XCTAssertGreaterThan(text.frame.width, 0, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(text.frame.minX, viewport.minX, file: file, line: line)
+        XCTAssertLessThanOrEqual(text.frame.maxX, viewport.maxX, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(text.frame.minY, viewport.minY, file: file, line: line)
+        XCTAssertLessThanOrEqual(text.frame.maxY, viewport.maxY, file: file, line: line)
     }
 
     private func launch(

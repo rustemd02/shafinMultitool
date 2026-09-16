@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import shafinMultitool
 
@@ -165,12 +166,23 @@ final class RecordingPreflightTests: XCTestCase {
         XCTAssertNil(verdict)
     }
 
-    /// The production session checker answers available for the shared
-    /// coordinator's non-interrupted state.
-    func testCoordinatorAudioSessionCheckerAnswersAvailableWhenInactive() async {
-        let checker = CoordinatorAudioSessionChecker()
-        let available = await checker.audioSessionAvailable()
-        XCTAssertTrue(available)
+    func testCoordinatorAudioSessionCheckerRequiresAnActiveRecordingLease() async throws {
+        let coordinator = AudioSessionCoordinator(platform: PreflightAudioPlatform())
+        let checker = CoordinatorAudioSessionChecker(coordinator: coordinator)
+        let absent = await checker.audioSessionAvailable()
+        XCTAssertFalse(absent)
+        let recording = try await coordinator.acquire(ownerID: UUID(), purpose: .recording)
+        let inactive = await checker.audioSessionAvailable()
+        XCTAssertFalse(inactive)
+        try await coordinator.activate(recording)
+        let active = await checker.audioSessionAvailable()
+        XCTAssertTrue(active)
+        try await coordinator.deactivate(recording)
+        let playback = try await coordinator.acquire(ownerID: UUID(), purpose: .playback)
+        try await coordinator.activate(playback)
+        let wrongPurpose = await checker.audioSessionAvailable()
+        XCTAssertFalse(wrongPurpose)
+        try await coordinator.deactivate(playback)
     }
 
     /// M7-007: the production orientation derivation always produces valid
@@ -221,4 +233,10 @@ final class RecordingPreflightTests: XCTestCase {
         XCTAssertGreaterThan(estimate.availableBytes, 0)
         XCTAssertTrue(estimate.isSatisfied)
     }
+}
+
+private struct PreflightAudioPlatform: AudioSessionPlatform {
+    func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode,
+                     options: AVAudioSession.CategoryOptions) throws {}
+    func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws {}
 }

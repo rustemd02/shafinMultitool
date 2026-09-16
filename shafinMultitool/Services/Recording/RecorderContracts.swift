@@ -237,15 +237,21 @@ struct RecorderStateSnapshot: Sendable, Equatable {
     let recordingID: RecordingID?
     let generation: UInt64
     let ownerToken: RecordingOwnerToken?
+    let droppedVideoCount: Int
+    let droppedAudioCount: Int
 
     init(state: RecorderState,
          recordingID: RecordingID?,
          generation: UInt64,
-         ownerToken: RecordingOwnerToken? = nil) {
+         ownerToken: RecordingOwnerToken? = nil,
+         droppedVideoCount: Int = 0,
+         droppedAudioCount: Int = 0) {
         self.state = state
         self.recordingID = recordingID
         self.generation = generation
         self.ownerToken = ownerToken
+        self.droppedVideoCount = droppedVideoCount
+        self.droppedAudioCount = droppedAudioCount
     }
 
     var frameFence: RecordingFrameFence? {
@@ -611,17 +617,28 @@ enum RecordingTrackTransformMetadataStrategy: String, CaseIterable, Sendable, Eq
     case identityMetadata
 }
 
+/// Describes the pixel buffer before track metadata is applied. The Camera
+/// Coach output keeps the rear sensor's native landscape-right pixels; its
+/// portrait preview rotation must not be mistaken for rotated source pixels.
+enum RecordingPixelOrientationBaseline: String, Sendable, Equatable {
+    case portraitOriented
+    case nativeLandscapeRight
+}
+
 struct RecordingTrackTransformMetadata: Sendable, Equatable {
     let captureOrientation: RecordingCaptureOrientation
     let isMirrored: Bool
     let strategy: RecordingTrackTransformMetadataStrategy
+    let pixelOrientationBaseline: RecordingPixelOrientationBaseline
 
     init(captureOrientation: RecordingCaptureOrientation,
          isMirrored: Bool,
-         strategy: RecordingTrackTransformMetadataStrategy) {
+         strategy: RecordingTrackTransformMetadataStrategy,
+         pixelOrientationBaseline: RecordingPixelOrientationBaseline = .portraitOriented) {
         self.captureOrientation = captureOrientation
         self.isMirrored = isMirrored
         self.strategy = strategy
+        self.pixelOrientationBaseline = pixelOrientationBaseline
     }
 }
 

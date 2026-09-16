@@ -29,6 +29,16 @@ from typing import Any, Iterable
 SCHEMA_ID = "camera-human-gold-label-v1"
 SCHEMA_VERSION = 1
 
+DATA = Path(__file__).resolve().parents[3] / "setos-backend/local-data/SETOS"
+LEGACY_DATA = Path("/Users/unterlantas/Library/Application Support/SETOS")
+
+
+def local_media_path(value):
+    """Resolve pre-move evidence paths without modifying hash-bound source files."""
+    path = Path(value)
+    return DATA / path.relative_to(LEGACY_DATA) if path.is_relative_to(LEGACY_DATA) else path
+
+
 # Frozen from ml/camera_coach/contracts/set_composition_net_v1.json
 ISSUES: tuple[str, ...] = (
     "subject_too_close_to_edge",

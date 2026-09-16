@@ -22,25 +22,43 @@ struct AppleRecordingCodecSupportChecker: RecordingCodecSupportChecking {
 /// CGAffineTransform written into the QuickTime track. Pixels are never
 /// rotated; the player applies this transform at display time.
 ///
-/// Convention (v1): portrait capture is the identity baseline;
-/// `landscapeLeft` rotates the track -90° (counter-clockwise), `landscapeRight`
-/// +90° (clockwise), and `portraitUpsideDown` 180°. A mirrored capture composes
-/// a horizontal flip before the orientation rotation.
+/// The producer declares the source pixel baseline. Existing portrait-oriented
+/// producers retain their convention; unrotated Camera Coach sensor buffers
+/// use landscape-right as identity. The dimension-aware overload translates
+/// the transformed rectangle into positive display coordinates.
 enum AppleRecordingTrackTransformMapper {
     static func transform(for metadata: RecordingTrackTransformMetadata) -> CGAffineTransform {
+        guard metadata.strategy != .identityMetadata else { return .identity }
         let rotation: CGAffineTransform
-        switch metadata.captureOrientation {
-        case .portrait:
-            rotation = .identity
-        case .portraitUpsideDown:
-            rotation = CGAffineTransform(rotationAngle: .pi)
-        case .landscapeLeft:
-            rotation = CGAffineTransform(rotationAngle: -.pi / 2)
-        case .landscapeRight:
-            rotation = CGAffineTransform(rotationAngle: .pi / 2)
+        switch metadata.pixelOrientationBaseline {
+        case .portraitOriented:
+            switch metadata.captureOrientation {
+            case .portrait: rotation = .identity
+            case .portraitUpsideDown: rotation = CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: 0, ty: 0)
+            case .landscapeLeft: rotation = CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 0)
+            case .landscapeRight: rotation = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 0, ty: 0)
+            }
+        case .nativeLandscapeRight:
+            switch metadata.captureOrientation {
+            case .portrait: rotation = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 0, ty: 0)
+            case .portraitUpsideDown: rotation = CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 0)
+            case .landscapeLeft: rotation = CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: 0, ty: 0)
+            case .landscapeRight: rotation = .identity
+            }
         }
         guard metadata.isMirrored else { return rotation }
         return rotation.scaledBy(x: -1, y: 1)
+    }
+
+    static func transform(for metadata: RecordingTrackTransformMetadata,
+                          width: Int,
+                          height: Int) -> CGAffineTransform {
+        let rotation = transform(for: metadata)
+        let source = CGRect(x: 0, y: 0, width: width, height: height)
+        let bounds = source.applying(rotation)
+        return CGAffineTransform(a: rotation.a, b: rotation.b,
+                                 c: rotation.c, d: rotation.d,
+                                 tx: -bounds.minX, ty: -bounds.minY)
     }
 }
 
@@ -256,6 +274,7 @@ final class AVAssetWriterRecordingWriter: RecordingWriter {
     private var started = false
     private var sessionStarted = false
     private var sourceTimeOrigin: CMTime?
+    private var lastAppendedVideoPresentationTime: CMTime?
     private var finishRequested = false
     private var completionDelivered = false
     private var discarded = false
@@ -265,7 +284,8 @@ final class AVAssetWriterRecordingWriter: RecordingWriter {
     init(writer: AVAssetWriter, configuration: RecordingConfiguration) throws {
         guard configuration.width > 0,
               configuration.height > 0,
-              configuration.fps > 0 else {
+              configuration.fps > 0,
+              configuration.fps <= Int(CMTimeScale.max) else {
             throw RecordingWriterError.inputRejected
         }
 
@@ -293,7 +313,9 @@ final class AVAssetWriterRecordingWriter: RecordingWriter {
         // M7-007: orientation/mirroring travels as track metadata so frames
         // keep their native dimensions and are never rotated per sample.
         if let trackTransform = configuration.trackTransform {
-            videoInput.transform = AppleRecordingTrackTransformMapper.transform(for: trackTransform)
+            videoInput.transform = AppleRecordingTrackTransformMapper.transform(
+                for: trackTransform, width: configuration.width, height: configuration.height
+            )
         }
 
         var pixelBufferAttributes: [String: Any] = [
@@ -411,6 +433,7 @@ final class AVAssetWriterRecordingWriter: RecordingWriter {
             return .failed
         }
         if pixelBufferAdaptor.append(payload.pixelBuffer, withPresentationTime: presentationTime) {
+            lastAppendedVideoPresentationTime = presentationTime
             return .appended
         }
         return dispositionForWriterFailure()
@@ -494,6 +517,17 @@ final class AVAssetWriterRecordingWriter: RecordingWriter {
         }
         finishRequested = true
         let canFinish = started && !discarded
+        if canFinish, sessionStarted, writer.status == .writing,
+           let lastAppendedVideoPresentationTime {
+            // The adaptor supplies PTS without a per-sample duration. Without
+            // an explicit session end, a sparse final sample can inherit the
+            // preceding timestamp gap as its duration. Keep every accepted
+            // PTS and end only one nominal frame after the last written frame.
+            // Dropped frames never advance this boundary. Audio beyond the
+            // video end is edited out of playback by the same session end.
+            let frameDuration = CMTime(value: 1, timescale: CMTimeScale(configuration.fps))
+            writer.endSession(atSourceTime: CMTimeAdd(lastAppendedVideoPresentationTime, frameDuration))
+        }
         lock.unlock()
 
         guard canFinish else {

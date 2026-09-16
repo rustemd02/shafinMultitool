@@ -697,4 +697,45 @@ final class SubjectTrackerTests: XCTestCase {
             .unresolved(reason: .generationChanged)
         )
     }
+    func testAcceptedObjectFrameIsImmutableAcrossEmptyAndDuplicateUpdates() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let first = try XCTUnwrap(tracker.acceptObjectFrame(
+            candidates: [objectCandidate(x: 0.1)], frameID: "f1", generation: 7,
+            sampleSequence: 1, capturedAt: now
+        ))
+        let target = try XCTUnwrap(first.binding(atSceneX: 0.15, y: 0.4, now: now,
+                                                freshnessMilliseconds: 250))
+        let empty = try XCTUnwrap(tracker.acceptObjectFrame(
+            candidates: [], frameID: "f2", generation: 7, sampleSequence: 2, capturedAt: now
+        ))
+        XCTAssertTrue(empty.currentObjects.isEmpty)
+        XCTAssertNil(tracker.acceptObjectFrame(
+            candidates: [objectCandidate(x: 0.1)], frameID: "f1", generation: 7,
+            sampleSequence: 1, capturedAt: now
+        ))
+        XCTAssertNil(tracker.acceptObjectFrame(
+            candidates: [objectCandidate(x: 0.1)], frameID: "f2", generation: 7,
+            sampleSequence: 2, capturedAt: now
+        ))
+        XCTAssertEqual(first.currentObjects.first?.identity.trackID, target.trackID)
+        XCTAssertNil(empty.binding(atSceneX: 0.15, y: 0.4, now: now, freshnessMilliseconds: 250))
+        if case .bound = target.resolve(in: tracker.currentObjects, generation: 7) {
+            XCTFail("duplicate/older detections must not revive the lost target")
+        }
+    }
+
+    func testPrimaryResetPreservesIndependentObjectOwnerAndFullResetClearsIt() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        beginResolution()
+        let first = try XCTUnwrap(tracker.acceptObjectFrame(
+            candidates: [objectCandidate(x: 0.1)], frameID: "f1", generation: 7,
+            sampleSequence: 1, capturedAt: now
+        ))
+        tracker.resetSubject()
+        XCTAssertNil(tracker.current)
+        XCTAssertEqual(tracker.currentObjects, first.objects)
+        tracker.reset()
+        XCTAssertTrue(tracker.currentObjects.isEmpty)
+    }
+
 }

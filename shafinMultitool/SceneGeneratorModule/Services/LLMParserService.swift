@@ -280,6 +280,9 @@ final class LLMParserService: LocalScenePlanProvider {
 
             // Генерируем ответ через llama.cpp
             let generationOutput = await context.generateWithMetadata(prompt: prompt, maxTokens: maxTokens)
+            let generationContributor = await context.generationReceipt(
+                stage: .planIR, prompt: prompt, maximumTokens: maxTokens
+            )
             let generatedText = generationOutput.text
             let hitTokenLimit = generationOutput.stopReason == .maxTokensReached
 
@@ -320,7 +323,8 @@ final class LLMParserService: LocalScenePlanProvider {
                         return ScenePlanProviderResult(
                             plan: repairedResult.plan,
                             usedLegacySceneScriptBridge: repairedResult.usedLegacySceneScriptBridge,
-                            reasonCodes: reasonCodes
+                            reasonCodes: reasonCodes,
+                            generationContributors: [generationContributor] + (repairedResult.generationContributors ?? [.unknown(stage: .semanticRepair)])
                         )
                     }
                     print("⚠️ [LLM] Semantic repair pass не помог, продолжаем обычный retry path")
@@ -351,7 +355,8 @@ final class LLMParserService: LocalScenePlanProvider {
                             return ScenePlanProviderResult(
                                 plan: planResult.plan,
                                 usedLegacySceneScriptBridge: planResult.usedLegacySceneScriptBridge,
-                                reasonCodes: reasonCodes
+                                reasonCodes: reasonCodes,
+                                generationContributors: [generationContributor]
                             )
                         }
                     }
@@ -378,7 +383,8 @@ final class LLMParserService: LocalScenePlanProvider {
                 return ScenePlanProviderResult(
                     plan: planResult.plan,
                     usedLegacySceneScriptBridge: planResult.usedLegacySceneScriptBridge,
-                    reasonCodes: reasonCodes
+                    reasonCodes: reasonCodes,
+                    generationContributors: [generationContributor]
                 )
             }
 
@@ -625,6 +631,9 @@ final class LLMParserService: LocalScenePlanProvider {
             }
 
             var currentEventTable = parsed
+            var generationContributors = [await context.generationReceipt(
+                stage: .eventTable, prompt: prompt, maximumTokens: maxTokens
+            )]
             var patchOps: SceneV9PatchOps?
             var verifierIssues = v9VerifierIssues(
                 for: currentEventTable,
@@ -642,7 +651,7 @@ final class LLMParserService: LocalScenePlanProvider {
                 while retriesLeft > 0, CFAbsoluteTimeGetCurrent() < patchDeadline, !verifierIssues.isEmpty {
                     retriesLeft -= 1
                     reasonCodes.append("v9.patch_retry_attempted")
-                    guard let candidatePatch = await generateEventPatchOpsAsync(
+                    guard let candidatePatch = await generateEventPatchResultAsync(
                         description: description,
                         markedObjects: markedObjects,
                         anchors: anchors,
@@ -654,8 +663,12 @@ final class LLMParserService: LocalScenePlanProvider {
                         reasonCodes.append("v9.patch_retry_unavailable")
                         break
                     }
-                    patchOps = candidatePatch
-                    currentEventTable = applying(candidatePatch, to: currentEventTable)
+                    patchOps = candidatePatch.patchOps
+                    let patchedEventTable = applying(candidatePatch.patchOps, to: currentEventTable)
+                    if patchedEventTable != currentEventTable {
+                        generationContributors += candidatePatch.generationContributors ?? [.unknown(stage: .patchOps)]
+                    }
+                    currentEventTable = patchedEventTable
                     verifierIssues = v9VerifierIssues(
                         for: currentEventTable,
                         slotCatalog: slotCatalog,
@@ -686,7 +699,8 @@ final class LLMParserService: LocalScenePlanProvider {
                 slotCatalog: slotCatalog,
                 eventTable: currentEventTable,
                 patchOps: patchOps,
-                reasonCodes: dedupeReasons(reasonCodes)
+                reasonCodes: dedupeReasons(reasonCodes),
+                generationContributors: generationContributors
             )
         }
 
@@ -735,8 +749,24 @@ final class LLMParserService: LocalScenePlanProvider {
         eventTable: SceneV9EventTable,
         verifierIssues: [String]
     ) async -> SceneV9PatchOps? {
+        await generateEventPatchResultAsync(
+            description: description, markedObjects: markedObjects, anchors: anchors,
+            state: state, slotCatalog: slotCatalog, eventTable: eventTable,
+            verifierIssues: verifierIssues
+        )?.patchOps
+    }
+
+    func generateEventPatchResultAsync(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        slotCatalog: SceneV9SlotCatalog,
+        eventTable: SceneV9EventTable,
+        verifierIssues: [String]
+    ) async -> SceneV9PatchProviderResult? {
         guard !verifierIssues.isEmpty else {
-            return SceneV9PatchOps.empty
+            return SceneV9PatchProviderResult(patchOps: .empty, generationContributors: [])
         }
         guard let context = await loadV9ContextIfNeeded(.patchOps) else {
             return nil
@@ -762,7 +792,12 @@ final class LLMParserService: LocalScenePlanProvider {
         guard let patchOps = parsePatchOpsFromResponse(output.text) else {
             return nil
         }
-        return patchOps
+        return SceneV9PatchProviderResult(
+            patchOps: patchOps,
+            generationContributors: [await context.generationReceipt(
+                stage: .patchOps, prompt: prompt, maximumTokens: Self.v9PatchMaxTokens
+            )]
+        )
     }
 
     // MARK: - Prompt Building
@@ -1584,7 +1619,14 @@ final class LLMParserService: LocalScenePlanProvider {
             return nil
         }
 
-        return repairedResult
+        return ScenePlanProviderResult(
+            plan: repairedResult.plan,
+            usedLegacySceneScriptBridge: repairedResult.usedLegacySceneScriptBridge,
+            reasonCodes: repairedResult.reasonCodes,
+            generationContributors: [await context.generationReceipt(
+                stage: .semanticRepair, prompt: prompt, maximumTokens: Self.semanticRepairMaxTokens
+            )]
+        )
     }
 
     private func semanticCompletenessScore(_ plan: ScenePlanIR) -> Int {

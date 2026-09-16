@@ -28,12 +28,10 @@ import tempfile
 
 from PIL import Image, ImageOps
 
-from annotation_labels import sha256_file
+from annotation_labels import DATA, LEGACY_DATA, local_media_path, sha256_file
 from language_labels import (FLAGS, MODEL, output_schema, prompt, projection, summary,
     validate, validate_visual, visual_prompt)
 
-DATA = Path(__file__).resolve().parents[3] / "setos-backend/local-data/SETOS"
-LEGACY_DATA = Path("/Users/unterlantas/Library/Application Support/SETOS")
 COMMAND_ENDPOINT = "https://api.commandcode.ai/provider/v1/"
 DERIVATIVE_RECIPE = "exif-transpose-rgb-jpeg-long-side-1024-quality-85-v1"
 LOOKAHEAD = 6
@@ -85,12 +83,6 @@ def append(path, value):
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(value, ensure_ascii=False, allow_nan=False) + "\n")
         f.flush(); os.fsync(f.fileno())
-
-
-def local_media_path(value):
-    """Resolve pre-move evidence paths without modifying hash-bound source files."""
-    path = Path(value)
-    return DATA / path.relative_to(LEGACY_DATA) if path.is_relative_to(LEGACY_DATA) else path
 
 
 def prepare_queue(path, pilot, temporal_root):
@@ -189,9 +181,32 @@ class Review:
                 return event
         return None
 
+    def visual_superseded(self, event):
+        # Journal order, not response time, owns revisions across tabs. A slow
+        # proposal may finish after the human has already started a correction.
+        baseline = event
+        for candidate in reversed(self.events):
+            if (candidate.get("state") == "visual_dispatch" and
+                    candidate.get("annotator_id") == self.annotator and
+                    candidate.get("record_id") == event.get("record_id") and
+                    candidate.get("job_id") == event.get("job_id") and
+                    candidate.get("cache_key") == event.get("cache_key")):
+                baseline = candidate
+                break
+        for newer in reversed(self.events):
+            if newer is baseline: break
+            if (newer.get("record_id") == event.get("record_id") and
+                    newer.get("annotator_id") == self.annotator and
+                    newer.get("state") in ("draft", "raw", "proposal", "confirmed")):
+                return True
+        return False
+
     def visual_status(self, rid):
         event = self.visual_event(rid)
         if event:
+            if self.visual_superseded(event):
+                return dict(status="error", job_id=event.get("job_id"), human_confirmed=False,
+                    error="Для этого кадра уже есть более новое мнение. Проверьте перевод вашей правки.")
             status = "ready" if event["state"] in ("visual_proposal", "visual_confirmed") else "error"
             interpretation = dict(event["interpretation"]) if event.get("interpretation") else None
             if interpretation: interpretation["summary"] = summary(interpretation, visual=True)
@@ -261,8 +276,18 @@ class Review:
         cache_key = self.cache_key(rid)
         with self.lock:
             if self.visual_event(rid) or not self.key or self.billing_unknown or self.request_count >= self.max_requests: return
-        content, derivatives = self.media_parts(rid)
         job_id = "visual-" + cache_key[:32]
+        try:
+            content, derivatives = self.media_parts(rid)
+        except Exception as exc:
+            # No dispatch has happened: report a local item failure without
+            # consuming the request budget or terminating the sole worker.
+            self.event("visual_error", record_id=rid, job_id=job_id, cache_key=cache_key,
+                media_sha256=self.items[rid]["media_sha256"], media_kind=self.items[rid]["kind"],
+                billing_unknown=False, paid=False, pixels_sent=False, error=type(exc).__name__,
+                public_error="Медиа недоступно, повреждено или изменилось. Проверьте исходный файл; платный запрос не отправлен.",
+                provider="command-code")
+            return
         with self.paid_lock:
             with self.lock:
                 if self.visual_event(rid) or self.billing_unknown or self.request_count >= self.max_requests: return
@@ -308,14 +333,14 @@ class Review:
                         latest[e["record_id"]] = dict(previous, interpretation=e["interpretation"]); latest_at[e["record_id"]] = position
                 elif e.get("annotator_id") == self.annotator and e["state"] == "visual_confirmed":
                     visual_confirmed_at[e["record_id"]] = position
-            visually_confirmed = set(visual_confirmed_at)
             items = []
             for rid, item in self.items.items():
                 e = latest.get(rid, {})
-                if visual_confirmed_at.get(rid, -1) > latest_at.get(rid, -1): e = {}
+                latest_is_visual_confirmation = visual_confirmed_at.get(rid, -1) > latest_at.get(rid, -1)
+                if latest_is_visual_confirmation: e = {}
                 items.append(dict(record_id=rid, kind=item["kind"], title=item["title"],
                     media_url="/media/" + quote(rid, safe=""),
-                    reviewed=e.get("state") in ("raw", "confirmed") or rid in visually_confirmed,
+                    reviewed=e.get("state") in ("raw", "confirmed") or latest_is_visual_confirmation,
                     raw_text=e.get("raw_text", ""), interpretation=e.get("interpretation"),
                     review_id=e.get("review_id"), manual_updated_at=e.get("created_at"), visual=self.visual_status(rid)))
             return dict(items=items, total=len(items), remaining=sum(not i["reviewed"] for i in items),
@@ -417,6 +442,8 @@ class Review:
             event = self.visual_event(rid)
             if not event or event.get("job_id") != job_id or event["state"] not in ("visual_proposal", "visual_confirmed"):
                 raise ValueError("Визуальный разбор устарел или ещё не готов")
+            if self.visual_superseded(event):
+                raise ValueError("Для этого кадра уже есть более новое мнение. Проверьте перевод вашей правки.")
             if event["state"] == "visual_confirmed": return dict(saved=True)
             self.media(rid)
             value = event["interpretation"]

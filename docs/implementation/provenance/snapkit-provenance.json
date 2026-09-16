@@ -1,0 +1,31 @@
+{
+  "schema": "set-os-snapkit-provenance",
+  "schema_version": 1,
+  "verified_at": "2026-09-16",
+  "id": "snapkit-dependency",
+  "version": "5.7.1",
+  "upstream_repository": "https://github.com/SnapKit/SnapKit",
+  "upstream_commit": "2842e6e84e82eb9a8dac0100ca90d9444b0307f4",
+  "upstream_tag": "5.7.1",
+  "podspec_checksum_sha1": "d612e99e678a2d3b95bf60b0705ed0a35c03484a",
+  "lock_sha256": "6f57b660a78eecb4eeada8b5a259322ed3f1cc95812ecbdb7c8ea6c9851104f1",
+  "source_path": "Pods/SnapKit",
+  "source_tree_sha256": "c2a33a0c5b5c9de280f15ff41ef4b7516afa8bf1cafe0536c3de1fdf5354a294",
+  "source_tree_hash_method": "SHA256 of concatenated UTF-8 lines <file SHA256><two spaces><POSIX relative path><LF>, sorted by relative path, covering all installed files.",
+  "source_file_count": 40,
+  "source_swift_count": 37,
+  "license": "MIT",
+  "license_path": "Pods/SnapKit/LICENSE",
+  "license_sha256": "7c0d21cf5314759fd35a22e42a52099d9cad2570db55a78e4eda26c82493b96b",
+  "notice_source_path": "third-party-notices/SnapKit-LICENSE.txt",
+  "notice_bundle_path": "SnapKit-LICENSE.txt",
+  "evidence_receipt_path": "local-data/SETOS/verification/snapkit-upstream-20260916T132021Z-2vk5jxu6/snapkit-upstream-inventory.json",
+  "evidence_receipt_sha256": "d555b450e86340f30cc7fbfe19e2af23b8594846c62c324149b18835b99e7e50",
+  "licensing_basis": "The complete MIT copyright and permission notice is byte-identical to the pinned official upstream. It permits commercial use, modification and distribution with the copyright and permission notice included in copies or substantial portions. All 40 installed files match that commit; the CocoaPods spec checksum matches the installed lock.",
+  "limitations": [
+    "Admission covers this exact SnapKit source tree under MIT. It does not approve unrelated dependencies, app assets, model weights or datasets.",
+    "Source provenance is not proof of a built binary. The exact Release artifact, source snapshot and CocoaPods build must still be recorded.",
+    "A source acknowledgement alone does not meet the app distribution check. The exact SnapKit-LICENSE.txt must be present in the supplied built app; absence or mutation fails the bundle gate.",
+    "Podfile.lock pins tag/version and spec checksum, not the Git commit directly. Source tree hashing detects a changed upstream tag or replaced installed files; any intentional dependency update needs fresh provenance."
+  ]
+}

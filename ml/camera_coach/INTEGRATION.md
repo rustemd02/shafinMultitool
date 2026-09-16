@@ -1,74 +1,109 @@
 # SETCompositionNet — Core ML integration
 
-Status: **integrated and verified (research artifact, not release-wired).**
-`SETCompositionNet-Stage2-Local.mlpackage` now ships in
-`shafinMultitool/Multitool2Module/Models/CoreML/`, and
-`Multitool2Module/Models/CoreMLWrappers/SETCompositionNetScorer.swift` loads it fail-closed.
-`SETCompositionNetScorerTests` proves the artifact loads from the bundle, that its declared IO is
-exactly the frozen 6-input / 9-output contract, and that an incomplete feature set returns nil
-instead of fabricated scores (both tests pass on the iPhone 17e simulator).
+Current status (2026-09-16): **research export and host parity verified; no
+SETCompositionNet candidate is admitted to the production coaching path.**
+`SETCompositionNet-Stage2-Local.mlpackage` exists in the source tree, but the
+app target explicitly excludes it in `shafinMultitool.xcodeproj/project.pbxproj`.
+`SETCompositionNetScorer` can load that named bundle resource when available;
+its missing-resource/invalid-input checks are not a model-quality admission gate.
+A current search finds no production caller constructing the scorer. Historical
+simulator bundle-load tests do not establish current Release inclusion.
 
-No coaching path consumes the heads yet, by design: the artifact carries `research_only: true`,
-`human_gold: false`, `release_admissible: false`. See "Gates" below.
+## Contracts and ownership
 
-Prepared 2026-09-13 alongside the local Stage-1 + Stage-2 training run
-(`~/Documents/XCode/setos-backend/local-data/SETOS/Datasets/camera-coach/research/runs/`).
-
-## What already exists in the app (do not duplicate)
-
-| Piece | Path | Role |
+| Boundary | Source | Meaning |
 |---|---|---|
-| Typed runtime boundary | `Multitool2Module/Models/CameraAnalysis/SETCompositionNetRuntimeSchema.swift` | Validates input provenance and the output heads; fails closed on NaN, missing heads, wrong frame/generation, mismatched ROI |
-| Frozen catalog mirror | `Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift` (`SETCompositionNetContract`) | Must stay in the same order as `ml/camera_coach/contracts/set_composition_net_v1.json` |
-| Preprocessing helpers | `Multitool2Module/Utilities/Metal/MetalPreprocessor.swift` | Tensor layout for the neural input |
-| Loader pattern to copy | `Multitool2Module/Models/CoreMLWrappers/AestheticScorer.swift` | `Bundle.main.url(forResource:withExtension: "mlmodelc") ?? …"mlpackage"`, `MLModel(contentsOf:configuration:)`, wrapped in `VNCoreMLModel` |
+| Legacy Stage-2 model | `contracts/set_composition_net_v1.json`, `convert_coreml.py` | Six inputs / nine outputs. Historical direct supervision is declared for issue, action and delta heads only; this does not prove every component or scalar head was trained. |
+| Intent-aware research candidates | `contracts/set_composition_net_v2.json`, `models/set_composition_net_v2.py`, `export_v2.py` | Frozen v2 model IO; intent is a separate input. Export supports seeded tooling weights and an explicit records checkpoint. |
+| Training evidence | [component supervision v1](contracts/component_supervision_v1.md), `component_supervision.py` | Checkpoint v2 / receipt v3 carry canonical component names, counts and hashes of effective training supervision. Model IO and training-record versions are unchanged. |
+| Input provenance | App `SETCompositionNetRuntimeSchema.swift`, `SETCompositionNetV2InputSchema.swift` | Frame/generation/orientation/ROI and tensor contract checks. These checks do not establish model accuracy or release permission. |
+| Current release barrier | App target membership exception and absence of scorer wiring | Research packages remain outside the production path. Component export metadata is not yet a runtime admission consumer. |
 
-## What integrating a new candidate requires
+`trained_head_mask` means that at least one component has observed direct
+supervision. Use ordered component counts to assess coverage. An unknown issue is
+not a negative label; an absent delta is not zero. Counts commit only after a
+successful optimizer step using the effective augmented masks. Validation and
+failed steps add no counts. Ranking supervision does not establish an absolute
+good-frame target. Best and latest checkpoint states retain separate evidence.
 
-1. ~~**Ship the package.**~~ **Done:** `SETCompositionNet-Stage2-Local.mlpackage` is in
-   `shafinMultitool/Multitool2Module/Models/CoreML/`. Follow-up: a further candidate swap must
-   re-check the Release bundle inventory (`CC-001`/`CC-002`), because model assets are excluded from
-   some configurations by design and the current package is 4.6 MB.
-2. ~~**Write the loader.**~~ **Done:** `Models/CoreMLWrappers/SETCompositionNetScorer.swift`
-   follows `AestheticScorer`'s fail-closed pattern (missing/broken model ⇒ `nil`, never a fabricated score)
-   and exposes `declaredIO()` so tests can pin the contract.
-3. **Map the IO contract into the runtime owner** (still open — `SETCompositionNetRuntimeSchema`
-   mapping of logits to `EvidenceHeadId` / `SupportingSignalTag` / `EvidenceCategoryId` must use the frozen
-   catalog in `SETCompositionNetContract`, never an invented ordering). Raw tensors available from the
-   loader (taken from the conversion receipt of the validated local run):
+Legacy checkpoints have unknown component evidence. They may be exported for
+research or resumed with an unknown prefix; an old aggregate flag cannot establish
+coverage for unrecorded components. Existing checkpoints and receipts are never
+rewritten to claim stronger provenance.
 
-   | Input | Shape |
-   |---|---|
-   | `full_frame_rgb` | [1, 3, 320, 320] |
-   | `subject_crop_rgb` | [1, 3, 192, 192] |
-   | `roi_mask` | [1, 1, 320, 320] |
-   | `roi_normalized_xywh` | [1, 4] |
-   | `scalar_features` | [1, 40] |
-   | `missing_feature_mask` | [1, 40] |
+## Export a real records checkpoint
 
-   | Output | Consumer |
-   |---|---|
-   | `scene_class_logits`, `subjectness_roi_agreement_logits` | scene/subject heads |
-   | `issue_logits`, `action_utility_logits`, `continuous_target_deltas` | the three heads trained by the silver Stage-2 lane |
-   | `good_frame_probability`, `abstention_probability`, `risk_probability` | keep/abstain/risk gating |
-   | `embedding` | representation reuse |
+Run from the repository root in the pinned macOS Python/torch/coremltools
+environment. The checkpoint and matching training config are both required;
+choose a new output outside the app and Git media trees. For example, with paths
+set to the desired immutable run and a fresh research output:
 
-   The `.mlpackage` metadata also records `minimum_deployment_target`, `precision`, `coremltools`/`torch`
-   versions, and the parity report — keep them with the artifact.
-4. **Bind provenance.** Every inference must carry the frame id, generation, orientation and ROI strategy
-   through `SETCompositionNetInput`; the schema rejects mismatches instead of coercing them.
-5. **Verify parity on device.** The offline parity report (`*.parity.json`, `atol` 5e-3) covers Core ML vs
-   PyTorch on the conversion host; a device pass on the physical iPhone is still required before any
-   coaching path consumes the head (this is the owner-gated physical step, not something the simulator can claim).
+```bash
+python3 -B -m ml.camera_coach.export_v2 \
+  --checkpoint "$SETOS_RESEARCH_CHECKPOINT" \
+  --training-config "$SETOS_TRAINING_CONFIG" \
+  --output "$SETOS_RESEARCH_EXPORT"
+```
 
-## Gates that still block shipping the model
+The exporter validates checkpoint version, config/resume semantics, seed, model
+candidate, frozen manifest, selected epoch, state keys/shapes/dtypes, finite
+tensors and selected-state component bindings. It exports the checkpoint's saved
+best state when present and records both selected and current epochs. Seeded
+tooling mode remains available without checkpoint/config and records untrained
+weights explicitly.
 
-The training lanes are explicitly research-only. Both the Stage-2 receipt and the conversion receipt carry
-`research_only: true`, `human_gold: false`, `release_admissible: false`. Replacing the runtime model requires:
+To require actual direct supervision for a named component, add, for example,
+`--require-component issue_logits:subject_too_close_to_edge`. Missing or unknown
+coverage rejects the export before any output mutation or conversion. A legacy
+checkpoint is therefore exportable for research but fails this requirement.
+Passing this check is not release admission: packages and sidecars retain
+`research_only=true`, `human_gold=false`, `release_admissible=false`, and no
+quality/calibration claim. No export option promotes a model into the app.
 
-- human-gold labelling of the evaluation corpus (the silver labels are synthetic corruptions, not human judgement);
-- an on-device evaluation pass on the physical iPhone 13 Pro;
-- an accepted model-registry entry binding contract version, artifact hash and evaluation evidence.
+The Python records loader exposes logical BHWC image/mask tensors; the model's
+existing `_as_bchw` adapter converts image, crop and ROI mask into Core ML BCHW
+transport. Do not send logical BHWC arrays directly to Core ML. The frozen shapes
+are `[1,3,320,320]`, `[1,3,192,192]`, and `[1,1,320,320]` respectively. Preserve
+pixel preprocessing, normalized ROI, scalar masks and intent ordering together.
 
-Until those exist, the model can be measured and compared offline, but it must not be presented as a
-production or release-ready Camera Coach model.
+Every export validates exact IO and nonempty, finite, shape-correct PyTorch ↔
+Core ML outputs at fixed `atol=0.005`, `rtol=0.01`; a failure prevents publishing
+the package. Package tree SHA, tensor-state SHA, checkpoint/config/contract SHA,
+component evidence and parity are retained in adjacent provenance/parity JSON.
+Host numerical parity proves transfer, not useful advice or device performance.
+
+## Verified real checkpoint path
+
+Local evidence root:
+`../setos-backend/local-data/SETOS/verification/component-provenance-20260916-c8ih0apa/`.
+The original four-epoch edge-controls experiment remains a negative quality
+result: balanced accuracy 0.5, versus 1.0 for the analytic ROI-gap baseline.
+It is used here only to verify real checkpoint export and preprocessing.
+
+- `pytest-final.json` / `.log`: 64 focused checks passed, including partial
+  components, zero masks, failed steps, resume/best-state evidence, legacy
+  unknowns and both seeded tooling exports.
+- `verification-receipt.json`: immutable input hashes, connected required-component
+  rejection, actual export and canonical three-case parity; max absolute error
+  `0.00026866793632507324`.
+- `actual-record-parity.json`: four actual validation records, max absolute error
+  `0.00028318166732788086`. Logical-loader and BCHW transport PyTorch outputs are
+  bitwise equal; no private pixels or labels were uploaded.
+- `lineage-final.json`: exported selected epoch 2 tensors match the original fit
+  state hash `5abe229ef5c6c89007169d50b78aaed5a3adbde855fe9e24f7df840592ccf259`.
+  The source checkpoint at epoch 4 remains SHA
+  `1c0464a2d3d8390c82a77be85976edf913e2b29ddb7226db67c1848ee6e0e844`.
+- `negative-fit-export-layout-verified/SETCompositionNet-v2-negative-fit-research.mlpackage`:
+  tree SHA `702df0db7279219b0e3a8e93e6c4109b6ddcda5aa440d4b9dd153edbbba0aa78`.
+  All legacy component coverage remains unknown. The first failed BHWC measurement
+  driver and its log are preserved separately; only the external driver was fixed.
+
+## Required before production use
+
+Keep the research exclusion until source/data/weights rights, per-component
+supervision, independent scenario evaluation, false-advice and temporal metrics,
+calibration, preprocessing/coordinate parity and actual-device latency/energy
+are admitted in the model registry. Human evaluation and physical-device tests
+remain distinct gates. Runtime mapping must bind the accepted catalog and frame,
+scene, ROI and intent provenance to the existing planner and verifier. The
+current successful export does not satisfy those gates.

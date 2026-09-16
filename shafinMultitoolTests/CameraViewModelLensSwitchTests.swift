@@ -162,47 +162,59 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         }
         let base = Date(timeIntervalSince1970: 35_000)
 
-        for index in 0..<3 {
+        // The production presentation confirms a spatial marker across three
+        // frames before the episode stabilizer can count its three inputs.
+        // Supply both owners with their real ingress and captured geometry.
+        for index in 0..<5 {
             let frame = makeProductionEpisodeFrame(
                 pipeline: fixture.pipeline,
                 id: "subject-old-f\(index)",
-                region: CGRect(x: 0.20, y: 0.30, width: 0.20, height: 0.40),
+                region: CGRect(x: 0.80, y: 0.30, width: 0.20, height: 0.40),
                 capturedAt: base.addingTimeInterval(Double(index) * 0.05),
                 subjectDetected: true
             )
-            fixture.pipeline.testingPublishLiveCoachingEpisodeObservation(
+            fixture.pipeline.testingPublishLiveProductionFrame(
                 snapshot: frame.snapshot,
                 semantics: frame.semantics,
+                critique: frame.critique,
                 plan: frame.plan,
                 frameEvidence: frame.evidence,
-                evaluatedAt: frame.capturedAt
+                evaluatedAt: frame.capturedAt,
+                legacySuggestion: nil,
+                structuredAvailable: true
             )
         }
         let baselinePublished = await waitUntil {
             fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
-                && fixture.viewModel.coachingEpisodeState.baseline?.frameID == "subject-old-f2"
+                && fixture.viewModel.coachingEpisodeState.baseline?.frameID == "subject-old-f4"
         }
         XCTAssertTrue(baselinePublished)
         let oldToken = fixture.viewModel.coachingEpisodeState.token
         let oldIdentity = fixture.viewModel.coachingEpisodeState.baseline?.subjectIdentity
         XCTAssertNotNil(oldIdentity)
+        XCTAssertEqual(fixture.pipeline.currentLiveHint?.frameId, "subject-old-f4")
+        XCTAssertEqual(fixture.pipeline.currentLiveHint?.subjectIdentity, oldIdentity)
+        XCTAssertNotNil(fixture.viewModel.coachingEpisodeState.baseline?.geometryContext)
 
         // Produce a real same-action frame with no candidate. The production
         // adapter calls updateLiveSubjectTracker, marks the old identity lost,
         // and publishes the typed subjectChanged terminal itself.
         let lostFrame = makeProductionEpisodeFrame(
             pipeline: fixture.pipeline,
-            id: "subject-lost-f3",
+            id: "subject-lost-f5",
             region: nil,
-            capturedAt: base.addingTimeInterval(0.20),
+            capturedAt: base.addingTimeInterval(0.30),
             subjectDetected: false
         )
-        fixture.pipeline.testingPublishLiveCoachingEpisodeObservation(
+        fixture.pipeline.testingPublishLiveProductionFrame(
             snapshot: lostFrame.snapshot,
             semantics: lostFrame.semantics,
+            critique: lostFrame.critique,
             plan: lostFrame.plan,
             frameEvidence: lostFrame.evidence,
-            evaluatedAt: lostFrame.capturedAt
+            evaluatedAt: lostFrame.capturedAt,
+            legacySuggestion: nil,
+            structuredAvailable: true
         )
         let cancelled = await waitUntil {
             fixture.viewModel.coachingEpisodeState.phase == .cancelled
@@ -210,29 +222,35 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
         }
         XCTAssertTrue(cancelled)
 
-        for index in 0..<3 {
+        for index in 0..<5 {
             let frame = makeProductionEpisodeFrame(
                 pipeline: fixture.pipeline,
                 id: "subject-fresh-f\(index)",
-                region: CGRect(x: 0.52, y: 0.30, width: 0.20, height: 0.40),
-                capturedAt: base.addingTimeInterval(0.25 + Double(index) * 0.05),
+                region: CGRect(x: 0.78, y: 0.30, width: 0.20, height: 0.40),
+                capturedAt: base.addingTimeInterval(0.35 + Double(index) * 0.05),
                 subjectDetected: true
             )
-            fixture.pipeline.testingPublishLiveCoachingEpisodeObservation(
+            fixture.pipeline.testingPublishLiveProductionFrame(
                 snapshot: frame.snapshot,
                 semantics: frame.semantics,
+                critique: frame.critique,
                 plan: frame.plan,
                 frameEvidence: frame.evidence,
-                evaluatedAt: frame.capturedAt
+                evaluatedAt: frame.capturedAt,
+                legacySuggestion: nil,
+                structuredAvailable: true
             )
         }
         let recovered = await waitUntil {
             fixture.viewModel.coachingEpisodeState.phase == .awaitingMovement
-                && fixture.viewModel.coachingEpisodeState.baseline?.frameID == "subject-fresh-f2"
+                && fixture.viewModel.coachingEpisodeState.baseline?.frameID == "subject-fresh-f4"
         }
         XCTAssertTrue(recovered)
         XCTAssertNotEqual(fixture.viewModel.coachingEpisodeState.token, oldToken)
         XCTAssertNotEqual(fixture.viewModel.coachingEpisodeState.baseline?.subjectIdentity, oldIdentity)
+        XCTAssertEqual(fixture.pipeline.currentLiveHint?.frameId, "subject-fresh-f4")
+        XCTAssertEqual(fixture.pipeline.currentLiveHint?.subjectIdentity,
+                       fixture.viewModel.coachingEpisodeState.baseline?.subjectIdentity)
 
         await fixture.viewModel.releaseAndWait()
     }
@@ -594,6 +612,7 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
             reasoningProvider: nil,
             visualEvidenceProvider: nil,
             neuralEvidenceService: nil,
+            episodeConfidenceCalibrator: CameraEpisodeCalibrationFixture.calibrator,
             thermalGovernor: thermalGovernor,
             neuralHeavyModelsEnabledProvider: { true },
             liveHybridFusionEnabled: false,
@@ -763,7 +782,7 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
             readability: .init(
                 subjectReadable: subjectDetected,
                 lookSpaceAdequate: subjectDetected,
-                edgePressureScore: 0.10,
+                edgePressureScore: subjectDetected ? 0.90 : 0,
                 separationScore: subjectDetected ? 0.80 : 0
             ),
             ambiguities: [],
@@ -809,18 +828,40 @@ final class CameraViewModelLensSwitchTests: XCTestCase {
             noChangeRationale: nil,
             planConfidence: 0.96
         )
+        let critique = CritiqueReport(
+            frameId: id,
+            mode: .live,
+            verdict: .needsFix,
+            verdictConfidence: 0.96,
+            strengths: [],
+            issues: [issue],
+            summary: CritiqueSummary(
+                id: "production_subject_summary_\(id)",
+                shortVerdict: "The subject is close to the right edge.",
+                whyProblematic: "A small camera turn gives the subject breathing room."
+            ),
+            traceRefs: [],
+            fallbackUsed: false
+        )
         let evidence = LatestFrameEvidenceStore.Snapshot(
             pixelBuffer: makeProductionEpisodePixelBuffer(),
             orientation: .up,
             sourceFrameId: id,
             capturedAt: capturedAt,
             isStable: true,
+            lensID: CameraLens.wide.rawValue,
+            previewGeometry: CameraPreviewGeometry(
+                destinationSize: CGSize(width: 390, height: 844),
+                imageOrientation: .up,
+                isMirrored: false
+            ),
             adapterState: adapterState,
             lensGeneration: 7
         )!
         return ProductionEpisodeFrameFixture(
             snapshot: snapshot,
             semantics: semantics,
+            critique: critique,
             plan: plan,
             evidence: evidence,
             capturedAt: capturedAt
@@ -923,6 +964,7 @@ private struct CameraViewModelLensSwitchFixture {
 private struct ProductionEpisodeFrameFixture {
     let snapshot: FrameFeatureSnapshot
     let semantics: SceneSemanticsReport
+    let critique: CritiqueReport
     let plan: RecommendationPlan
     let evidence: LatestFrameEvidenceStore.Snapshot
     let capturedAt: Date

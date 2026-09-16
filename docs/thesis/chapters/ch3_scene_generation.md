@@ -4,6 +4,10 @@ source: /Users/unterlantas/Downloads/ДИССЕР.md
 last_synced: 2026-05-29
 chapter: 3_scene_generation
 needs_update_reason: >-
+  2026-09-16 execution: production remote clarification and save-before-publication
+  work supersedes the older disconnected-client statement below. EV-SG-BACKEND-PACKAGE-001
+  qualifies a reproducible deterministic local package only (199 tests, 10 HTTP assertions).
+  Current iOS gate is incomplete; cloud provider/profile, hardware and Release remain open.
   2026-09-13 Q05 sync: EV-SG-SCENE-001/CL-SG-SCENE-001 fixed a production-reachable
   duplicate-phone defect in SceneBundlePipeline (93 tests, 0 failures), and the remote
   SceneGenerationClient is still not connected to the active bundle path (S03b). EV-SG-CLARIFY-001/

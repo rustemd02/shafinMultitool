@@ -1,40 +1,89 @@
 {
-  "claim_scope": "Repository-derived answers with per-item evidence. They are a draft for the owner to confirm and enter into App Store Connect, not a submitted declaration.",
-  "configuration": "Shipping configuration as committed today: the remote Scene provider is fail-closed off and the remote VLM provider cannot be constructed in Release at all.",
+  "claim_scope": "Source-derived release draft, not an App Store Connect submission. Select the profile matching the archived binary and deployed service; the absence of an account does not establish anonymous or unlinked collection.",
+  "configuration": "Configuration dependent. SceneParserService.isRemoteOffloadConfigured reports whether a provider is actually wired. Release Camera visual inference is local; SceneRemoteServiceComposition can enable an authenticated remote Scene service from validated deployment configuration.",
   "data_collection": {
-    "answer": "none in the shipping configuration",
-    "off_device_processing": "Apple Speech may receive microphone audio for spoken scene input. SpeechRecognitionService builds SFSpeechAudioBufferRecognitionRequest without requiresOnDeviceRecognition, so recognition is server-based, and the app's own NSSpeechRecognitionUsageDescription states that audio is sent to Apple servers. This is platform processing rather than developer collection, but it must be disclosed in the privacy policy and reviewed in the App Privacy questionnaire before submission.",
-    "conditional": "If the remote Scene provider is ever enabled by deployment configuration, the scene text and the App Attest attestation/assertion payloads are transmitted to that endpoint, and these answers must be revisited before any release that enables it.",
+    "question": "What data does the app collect off the device?",
+    "answer": "configuration dependent; remote-enabled operation collects data",
+    "off_device_processing": "Spoken input uses SFSpeechAudioBufferRecognitionRequest without requiresOnDeviceRecognition; Apple may process microphone audio remotely. Apple-only collection is not declared as developer collection. The transcript remains editable text and becomes Other User Content if submitted to the configured Scene service. Local recording and the local sound meter do not upload audio.",
+    "conditional": "The final archive endpoint configuration, App Attest state, hosting logs, provider retention and privacy manifest must be revisited before release. A generic no-data-collected answer is invalid when remote Scene requests are enabled.",
+    "profiles": {
+      "remote_disabled": {
+        "developer_collection": "No developer collection demonstrated by the current local Camera/AR/Scene/media paths, provided no remote provider is wired and no additional telemetry is deployed.",
+        "manifest": "The current empty NSPrivacyCollectedDataTypes list is bounded to this profile and is not evidence for a remotely configured binary.",
+        "categories": []
+      },
+      "remote_enabled": {
+        "developer_collection": true,
+        "purpose": "App Functionality",
+        "categories": [
+          {
+            "type": "Other User Content",
+            "linked_to_user": true,
+            "used_for_tracking": false,
+            "evidence": "Scene text, selected object IDs, clarification answers and generated scene content are held in the job store and bound to the authenticated installation. Completion retention is not instantaneous discard.",
+            "manifest_type": "NSPrivacyCollectedDataTypeOtherUserContent",
+            "manifest_purposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+          },
+          {
+            "type": "Device ID",
+            "linked_to_user": true,
+            "used_for_tracking": false,
+            "evidence": "App Attest key/enrollment identity and persisted counter authenticate the same installation across jobs; owner_key binds job records to that installation. This is a conservative device-identifier classification, not an IDFA claim.",
+            "manifest_type": "NSPrivacyCollectedDataTypeDeviceID",
+            "manifest_purposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+          },
+          {
+            "type": "Product Interaction",
+            "linked_to_user": true,
+            "used_for_tracking": false,
+            "evidence": "Job creation and completion times, installation quota events and job state retain the history of requesting generation for app functionality and abuse prevention.",
+            "manifest_type": "NSPrivacyCollectedDataTypeProductInteraction",
+            "manifest_purposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+          }
+        ],
+        "additional_deployment_inventory_required": [
+          "Classify actual hosted diagnostic/error/performance logs if retained; the local server fixture does not prove production logging or reverse-proxy IP policy.",
+          "Provider retention, secondary uses, subprocessors, location and linkage need the actual account/model agreement. A local database purge does not establish provider deletion.",
+          "Update NSPrivacyCollectedDataTypes for the selected remote-enabled release profile and validate the built privacy report; the current empty manifest does not satisfy this profile."
+        ]
+      }
+    },
     "evidence": [
-      "camera frames are analysed on device (Vision, DETR, NIMA, deterministic critique) and never uploaded",
-      "scene text, photos and videos are written to the app container and the user's photo library only when the user asks",
-      "VisualSemanticEvidenceProviderFactory returns a remote provider only under #if DEBUG; the Release build has no VLM network path",
-      "SceneRemoteServiceComposition is fail-closed: without an explicitly configured https endpoint and App Attest the remote provider is nil",
-      "S07 2026-09-13: the Speech path is not on-device; the privacy policy must state that spoken input is processed by Apple"
-    ],
-    "question": "What data does the app collect off the device?"
+      "SceneGenerationClient creates a typed script/marker/clarification request without camera frames, recordings or AR maps.",
+      "VisualSemanticEvidenceProviderFactory constructs the remote visual provider only in DEBUG.",
+      "Camera recording and Scene recording use local RecordingArtifactStore; Photos/share are explicit user actions.",
+      "setos-backend/store.py retains owner/idempotency hashes, timestamps and fixed versions after clearing job content.",
+      "setos-backend/app_attest_state.py retains installation identity and replay counters separately from job metadata."
+    ]
   },
   "data_linked_to_identity": {
-    "answer": false,
+    "question": "Is collected data linked to the user?",
+    "answer": "yes for the remote-enabled profile through the installation identity; not applicable to purely local data",
     "evidence": [
-      "the app has no account, sign-in or user identifier; App Attest keys are per-installation and carry no identity"
-    ],
-    "question": "Is any collected data linked to the user's identity?"
+      "Jobs are bound to App Attest installation identity. No de-identification boundary that breaks this association before collection is implemented. No account does not mean no linkage."
+    ]
   },
   "data_used_for_tracking": {
+    "question": "Is data used for tracking across apps or websites?",
     "answer": false,
+    "scope": "Application and prepared backend behavior inspected; final provider/hosting terms remain a release gate.",
     "evidence": [
-      "no tracking SDKs, no identifiers, no tracking domains"
-    ],
-    "question": "Is data used for tracking across apps or websites?"
+      "No advertising identifier or ad/analytics SDK is used. App Attest identifiers are used for authentication, quotas and security."
+    ]
   },
   "privacy_policy": {
-    "answer": null,
-    "note": "Gate 5 of the product plan requires a hosted policy URL plus an in-app policy; neither exists yet.",
     "question": "Privacy policy URL",
-    "status": "owner_required"
+    "answer": null,
+    "status": "owner_hosting_and_final_service_policy_required",
+    "note": "The in-app Privacy & licenses page is prepared for Library and pre-camera entry. It is an information page, not explicit consent to transfer a scene. No public URL or support contact is fabricated. Provider-specific consent and the matching hosted policy remain required before enabling remote generation for publication."
   },
-  "report_id": "app-privacy-answers-2026-09-12",
+  "report_id": "app-privacy-answers-2026-09-16",
   "required_reason_apis": {
     "answer": [
       {
@@ -74,20 +123,50 @@
     "question": "Which Required Reason APIs does the app use?",
     "verified_by": "tools owner, S07 handover: the usage scan in tools/tests/test_release_metadata.py confirms all four APIs and fails if the manifest omits any of them"
   },
-  "s07_review_flags": [
-    "The Speech input path sends microphone audio to Apple servers; the hosted privacy policy must disclose this.",
-    "The remote VLM seam transmits a redacted, EXIF-stripped visual reference but is #if DEBUG only and not constructible in Release.",
-    "The remote Scene provider is fail-closed off; enabling it requires revisiting these answers (C09).",
-    "tools/tests/test_release_metadata.py still pins the legacy two-entry required-reason list and must be updated by the tools owner."
-  ],
   "tracking": {
     "answer": false,
     "evidence": [
-      "PrivacyInfo.xcprivacy declares NSPrivacyTracking=false with an empty NSPrivacyTrackingDomains",
-      "no AdSupport, ATT or IDFA API is referenced anywhere in the app sources",
-      "the Podfile declares SnapKit only; no analytics, attribution or crash-reporting SDK is linked"
+      "PrivacyInfo.xcprivacy declares NSPrivacyTracking=false; no advertising or analytics SDK is linked.",
+      "App Attest installation identifiers are present for authentication and quota enforcement; this is distinct from advertising tracking.",
+      "Provider/hosting practices must match the final release disclosure; a no-tracking source audit does not establish unverified third-party terms."
     ],
     "question": "Does the app track users?"
   },
-  "utc": "2026-09-12T20:56:24+00:00"
+  "utc": "2026-09-16T00:00:00Z",
+  "apple_basis": {
+    "reviewed_on": "2026-09-16",
+    "sources": [
+      "https://developer.apple.com/app-store/app-privacy-details/",
+      "https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy/"
+    ],
+    "interpretation": "Apple separates on-device processing from collection retained beyond servicing a request. App-functionality collection still needs disclosure. Device association can make collected data linked even without an account. Apple-only processing is not developer collection. These rules are applied below to repository behavior; the category and linkage decisions are engineering inferences, pending the final deployed-service inventory."
+  },
+  "retention": {
+    "working_job_database": "Verified local implementation removes raw request on terminal state, completed result after 14 minutes, and all unfinished job content at 23 hours 59 minutes from creation. Maintenance is bounded to 30-second intervals and runs at startup/access. Explicit owned DELETE purges completed content and retains the idempotency tombstone. These operational margins target the master 15-minute/24-hour limits while the service is running.",
+    "job_metadata": "Owner/idempotency/request hashes, IDs, fixed versions and timestamps expire 30 days from job creation.",
+    "app_attest_security_state": "Installation key, replay counter and revocation identity are retained separately without automatic expiry. An approved identity deletion/retirement policy is still required; blindly deleting these records would weaken replay protection.",
+    "excluded_from_local_proof": [
+      "External AI provider storage",
+      "Backups and restored copies",
+      "Reverse proxy or host logs",
+      "Cleanup while the service is offline",
+      "Provider budget and App Attest security state"
+    ],
+    "evidence": {
+      "full_gate_receipt": "setos-backend/local-data/SETOS/verification/backend-content-retention-20260916/20260916T160603869364Z-receipt.json",
+      "full_gate_receipt_sha256": "9c1db4824e2626ba6fb02b13653a6db49df90bc622811df0fad0859b29a5f9be",
+      "result": "353 collected/executed tests across 29 module groups; zero skips/failures/errors; source unchanged; 10 real loopback HTTP checks.",
+      "package_receipt": "setos-backend/local-data/SETOS/verification/backend-content-retention-20260916/20260916T160813829260Z-package-receipt.json",
+      "package_receipt_sha256": "ce88692c8100be319844db8fd9af3f01b3652edf32979dbac27f269fefd57530",
+      "archive_sha256": "c07e7495b5cf105bdc8f5b015a2bd8c25263ecc46c5eef3e495b2ddfa7040f39",
+      "snapshot_scope": "New stopped-state snapshot v2 exports Scene metadata tombstones without inserting private content, including interrupted exports. Extracted-package smoke and independent snapshot verification passed. Prior backups remain unchanged; auth/spend databases, provider retention, host downtime and security identity lifecycle are not covered by Scene content purging."
+    }
+  },
+  "release_gates": [
+    "Runtime consent before transferring content: actual named operator/provider, region, retention, policy version, explicit accept/decline, cancellation and stale-request fencing.",
+    "A hosted privacy/support page with owner-confirmed contact and effective date.",
+    "Actual production endpoint, provider terms, logging/backup/deletion proof and security-identity lifecycle policy.",
+    "Built privacy manifest and final App Store answers matching the selected runtime profile.",
+    "In-app page UI tests on iPhone/iPad, RU/EN and large Dynamic Type; source presence alone is not acceptance."
+  ]
 }

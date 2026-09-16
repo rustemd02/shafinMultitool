@@ -458,6 +458,127 @@ final class LatestFrameEvidenceStoreTests: XCTestCase {
         }
     }
 
+
+    func testTrackedDetrKeepsSourceClockAndValidatesLinkageAtBothSnapshotBoundaries() {
+        let sourceDate = Date(timeIntervalSince1970: 100)
+        func frame(_ id: String, pts: Int64, generation: UInt64 = 7,
+                   session: UInt64? = 4, lifecycle: UInt64 = 9,
+                   orientation: CGImagePropertyOrientation = .up) -> VisionObjectFrame {
+            VisionObjectFrame(frameID: id, captureGeneration: generation, sessionGeneration: session,
+                              lifecycleGeneration: lifecycle, orientation: orientation,
+                              samplePTS: CMTime(value: pts, timescale: 10),
+                              capturedAt: sourceDate.addingTimeInterval(Double(pts - 10) / 10))
+        }
+        let source = frame("source", pts: 10)
+        let current = frame("current", pts: 12)
+        let detection = FeatureSnapshotDetectedObject(
+            boundingBox: CGRect(x: 0.4, y: 0.3, width: 0.2, height: 0.2),
+            label: "chair", confidence: 0.24)
+        let cases: [(String, VisionObjectFrame, VisionObjectFrame, Date, Date, [Float], Bool)] = [
+            ("valid", source, current, sourceDate, current.capturedAt, [0.99], true),
+            ("renewed source clock", source, current, current.capturedAt, current.capturedAt, [0.99], false),
+            ("capture mismatch", frame("source", pts: 10, generation: 6), current, sourceDate, current.capturedAt, [0.99], false),
+            ("session mismatch", frame("source", pts: 10, session: 3), current, sourceDate, current.capturedAt, [0.99], false),
+            ("lifecycle mismatch", frame("source", pts: 10, lifecycle: 8), current, sourceDate, current.capturedAt, [0.99], false),
+            ("orientation mismatch", frame("source", pts: 10, orientation: .right), current, sourceDate, current.capturedAt, [0.99], false),
+            ("future source", frame("source", pts: 13), current, sourceDate.addingTimeInterval(0.3), current.capturedAt, [0.99], false),
+            ("old source at completion", source, current, sourceDate, sourceDate.addingTimeInterval(1.21), [0.99], false),
+            ("low raw tracking quality", source, current, sourceDate, current.capturedAt, [0.74], false),
+            ("missing per-object quality", source, current, sourceDate, current.capturedAt, [], false),
+            ("forged current frame", source, frame("different", pts: 12), sourceDate, current.capturedAt, [0.99], false)
+        ]
+        for (name, sourceContext, currentContext, measuredAt, geometryMeasuredAt, quality, expected) in cases {
+            let sample = FeatureSample(
+                value: FeatureSnapshotDetrPayload(detections: [detection],
+                    tracking: FeatureSnapshotDetrTracking(source: sourceContext, current: currentContext,
+                        geometryMeasuredAt: geometryMeasuredAt, qualities: quality,
+                        geometries: [VisionObjectGeometry(seedSlot: 0, rawBoundingBox: detection.boundingBox)!])),
+                measuredAt: measuredAt, baseConfidence: 0.24, provenance: current.featureProvenance)
+            let state = PipelineFeatureSnapshotAdapterState(
+                features: CoachingFeatures(),
+                debugData: DebugData(detrDetections: [DETRDetection(
+                    boundingBox: detection.boundingBox, label: detection.label, confidence: 0.24)],
+                    detrMeasuredAt: measuredAt),
+                vision: nil, horizonMeasuredAt: nil, horizon: nil,
+                lightingMeasuredAt: nil, lighting: nil, detr: sample,
+                aestheticMeasuredAt: nil, aesthetic: nil)
+            let snapshot = LatestFrameEvidenceStore.Snapshot(
+                pixelBuffer: makePixelBuffer(), orientation: .up, sourceFrameId: current.frameID,
+                capturedAt: current.capturedAt, isStable: true, adapterState: state,
+                lensGeneration: 7, samplePresentationTimestamp: current.samplePTS, sessionGeneration: 4)
+            XCTAssertEqual(snapshot?.adapterState?.detr != nil, expected, name)
+            XCTAssertEqual(snapshot?.adapterState?.debugData.detrDetections.isEmpty, !expected, name)
+            let input = PipelineFeatureSnapshotAdapter().makeInput(
+                frameId: current.frameID, mode: .live, capturedAt: current.capturedAt,
+                expectedDetrProvenance: current.featureProvenance, state: state)
+            XCTAssertEqual(input.detr != nil, expected, name)
+            if expected {
+                XCTAssertEqual(input.detr?.measuredAt, sourceDate)
+                XCTAssertEqual(input.detr?.value.detections.first?.confidence, 0.24)
+                XCTAssertEqual(input.detr?.value.tracking?.source.frameID, "source")
+                XCTAssertEqual(input.detr?.provenance?.frameID, "current")
+            }
+        }
+    }
+
+    func testTrackedGeometryCannotLoseOrCrossWireItsRawMeasurementAtSnapshotBoundary() throws {
+        let date = Date(timeIntervalSince1970: 200)
+        let source = VisionObjectFrame(frameID: "source", captureGeneration: 7, sessionGeneration: 4,
+            lifecycleGeneration: 9, orientation: .up, samplePTS: CMTime(value: 10, timescale: 10), capturedAt: date)
+        let current = VisionObjectFrame(frameID: "current", captureGeneration: 7, sessionGeneration: 4,
+            lifecycleGeneration: 9, orientation: .up, samplePTS: CMTime(value: 11, timescale: 10),
+            capturedAt: date.addingTimeInterval(0.1))
+        let left = try XCTUnwrap(VisionObjectGeometry(seedSlot: 0,
+            rawBoundingBox: CGRect(x: 0.1, y: -0.01, width: 0.2, height: 0.3)))
+        let right = try XCTUnwrap(VisionObjectGeometry(seedSlot: 1,
+            rawBoundingBox: CGRect(x: 0.6, y: 0.2, width: 0.2, height: 0.3)))
+        let duplicate = try XCTUnwrap(VisionObjectGeometry(seedSlot: 0, rawBoundingBox: right.rawBoundingBox))
+        let detections = [left, right].map {
+            FeatureSnapshotDetectedObject(boundingBox: $0.visibleImageIntersection, label: "chair", confidence: 0.9)
+        }
+        for (geometries, expected) in [([left, right], true), ([], false), ([left], false),
+                                        ([right, left], false), ([left, duplicate], false)] {
+            let tracking = FeatureSnapshotDetrTracking(source: source, current: current,
+                geometryMeasuredAt: current.capturedAt, qualities: [0.95, 0.95], geometries: geometries)
+            let sample = FeatureSample(value: FeatureSnapshotDetrPayload(detections: detections, tracking: tracking),
+                measuredAt: date, baseConfidence: 0.9, provenance: current.featureProvenance)
+            XCTAssertEqual(sample.hasValidTrackingLinkage, expected)
+            let state = PipelineFeatureSnapshotAdapterState(features: CoachingFeatures(), debugData: DebugData(),
+                vision: nil, horizonMeasuredAt: nil, horizon: nil, lightingMeasuredAt: nil, lighting: nil,
+                detr: sample, aestheticMeasuredAt: nil, aesthetic: nil)
+            let frozen = LatestFrameEvidenceStore.Snapshot(pixelBuffer: makePixelBuffer(), orientation: .up,
+                sourceFrameId: "current", capturedAt: current.capturedAt, isStable: true, adapterState: state,
+                lensGeneration: 7, samplePresentationTimestamp: current.samplePTS, sessionGeneration: 4)
+            XCTAssertEqual(frozen?.adapterState?.detr != nil, expected)
+            if expected {
+                XCTAssertEqual(frozen?.adapterState?.detr?.value.tracking?.geometries, [left, right])
+                XCTAssertEqual(tracking.objectObservationCoverage, .complete,
+                               "Retained inventory and clipped image geometry describe different facts")
+                XCTAssertEqual(tracking.trackingGeometryStatus, .clipped)
+            }
+        }
+    }
+
+    func testTrackingRequestSlotMustExistWithinItsOriginalSourceCandidateCount() throws {
+        let date = Date(timeIntervalSince1970: 200)
+        let source = VisionObjectFrame(frameID: "source", captureGeneration: 7, sessionGeneration: 4,
+            lifecycleGeneration: 9, orientation: .up, samplePTS: CMTime(value: 10, timescale: 10), capturedAt: date)
+        let current = VisionObjectFrame(frameID: "current", captureGeneration: 7, sessionGeneration: 4,
+            lifecycleGeneration: 9, orientation: .up, samplePTS: CMTime(value: 11, timescale: 10),
+            capturedAt: date.addingTimeInterval(0.1))
+        let box = CGRect(x: 0.2, y: 0.2, width: 0.3, height: 0.3)
+        for (slot, count, expected) in [(3, 1, false), (2, 3, true), (3, 4, true)] {
+            let tracking = FeatureSnapshotDetrTracking(source: source, current: current,
+                geometryMeasuredAt: current.capturedAt, qualities: [0.95],
+                geometries: [try XCTUnwrap(VisionObjectGeometry(seedSlot: slot, rawBoundingBox: box))],
+                sourceCandidateCount: count)
+            let sample = FeatureSample(value: FeatureSnapshotDetrPayload(detections: [
+                FeatureSnapshotDetectedObject(boundingBox: box, label: "chair", confidence: 0.9)], tracking: tracking),
+                measuredAt: date, baseConfidence: 0.9, provenance: current.featureProvenance)
+            XCTAssertEqual(sample.hasValidTrackingLinkage, expected)
+        }
+    }
+
     private func makeAdapterState(marker: Int) -> PipelineFeatureSnapshotAdapterState {
         var features = CoachingFeatures()
         features.lensRecommendation = marker

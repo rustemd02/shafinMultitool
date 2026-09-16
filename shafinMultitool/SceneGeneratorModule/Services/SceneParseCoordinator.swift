@@ -10,7 +10,7 @@ import Foundation
 /// The bounded answer vocabulary owned by one generator clarification
 /// request.  Free text is still checked against observed candidate aliases;
 /// it is not a second parser input channel.
-enum SceneClarificationAnswer: Equatable {
+enum SceneClarificationAnswer: Equatable, Sendable {
     case choice(String)
     case option(String)
     case freeText(String)
@@ -52,7 +52,7 @@ enum SceneClarificationSubmissionResult: Equatable {
     }
 }
 
-struct SceneClarificationOption: Codable, Equatable, Identifiable {
+struct SceneClarificationOption: Codable, Equatable, Identifiable, Sendable {
     let id: String
     let label: String
 
@@ -62,7 +62,7 @@ struct SceneClarificationOption: Codable, Equatable, Identifiable {
 /// Immutable, request-owned clarification surface.  The payload contains
 /// only candidate IDs observed in the submitted parser/binding snapshot and
 /// carries the same request UUID/epoch as the state machine.
-struct SceneClarificationPayload: Codable, Equatable, Identifiable {
+struct SceneClarificationPayload: Codable, Equatable, Identifiable, Sendable {
     let id: String
     let requestID: UUID
     let epoch: UInt
@@ -75,6 +75,24 @@ struct SceneClarificationPayload: Codable, Equatable, Identifiable {
     let attempt: Int
 
     static let defaultMaximumFreeTextCharacters = 160
+
+    /// The UI is bound to its generation owner; the client retains the
+    /// original server payload for the wire request. Chunk jobs may have a
+    /// different UUID/epoch and must never overwrite the owner's identity.
+    func presented(requestID: UUID, epoch: UInt) -> Self {
+        Self(
+            id: id,
+            requestID: requestID,
+            epoch: epoch,
+            prompt: prompt,
+            targetReference: targetReference,
+            options: options,
+            allowsFreeText: allowsFreeText,
+            maximumFreeTextCharacters: maximumFreeTextCharacters,
+            observedDiagnostics: observedDiagnostics,
+            attempt: attempt
+        )
+    }
 
     static func make(
         requestID: UUID,
@@ -327,7 +345,8 @@ final class SceneParseCoordinator {
                 script: compiledScript,
                 description: description,
                 markedObjects: markedObjects,
-                trace: trace
+                trace: trace,
+                generationContributors: providerResult?.generationContributors
             )
             return (result, trace)
 
@@ -405,7 +424,8 @@ final class SceneParseCoordinator {
             script: remoteCompiled.script,
             description: description,
             markedObjects: markedObjects,
-            trace: remoteTrace
+            trace: remoteTrace,
+            generationContributors: remoteResult.generationContributors
         )
         return (result, remoteTrace)
     }
@@ -414,7 +434,8 @@ final class SceneParseCoordinator {
         script: SceneScript,
         description: String,
         markedObjects: [MarkedObject],
-        trace: SceneRuntimeTrace
+        trace: SceneRuntimeTrace,
+        generationContributors: [SceneGenerationContributor]?
     ) -> ParsingResult {
         let matchedMarkedObjectIDs = matchedMarkedObjectIDs(from: script.objects, markedObjects: markedObjects)
         var diagnostics = diagnosticsCalculator.calculateDiagnostics(
@@ -424,11 +445,17 @@ final class SceneParseCoordinator {
             matchedMarkedObjects: matchedMarkedObjectIDs
         )
         diagnostics = mergeTrace(diagnostics, trace: trace)
-        return ParsingResult(script: script, diagnostics: diagnostics)
+        return ParsingResult(
+            script: script, diagnostics: diagnostics,
+            generationProvenance: .direct(sourceText: description, contributors: generationContributors)
+        )
     }
 
     private func augmentFallback(_ result: ParsingResult, with trace: SceneRuntimeTrace) -> ParsingResult {
-        ParsingResult(script: result.script, diagnostics: mergeTrace(result.diagnostics, trace: trace))
+        ParsingResult(
+            script: result.script, diagnostics: mergeTrace(result.diagnostics, trace: trace),
+            generationProvenance: result.generationProvenance
+        )
     }
 
     private func mergeTrace(_ diagnostics: ParsingDiagnostics, trace: SceneRuntimeTrace) -> ParsingDiagnostics {

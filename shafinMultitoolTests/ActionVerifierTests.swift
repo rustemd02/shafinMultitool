@@ -600,6 +600,22 @@ final class ActionVerifierTests: XCTestCase {
         assertFiniteDiagnostics(calibrationMismatch)
     }
 
+    func testUncalibratedMeasuredImprovementCannotBecomeSuccessfulVerification() {
+        let action = SemanticActionType.levelHorizon.rawValue
+        let before = frame(id: "uncalibrated-before", capturedAt: startDate, actionID: action,
+                           metrics: UserMovementMetrics(horizonAngleDegrees: 12),
+                           calibrated: false, calibrationVersion: nil)
+        let after = frame(id: "uncalibrated-after", capturedAt: startDate.addingTimeInterval(0.1),
+                          actionID: action, metrics: UserMovementMetrics(horizonAngleDegrees: 1),
+                          calibrated: false, calibrationVersion: nil)
+        XCTAssertEqual(before.metrics.horizonAngleDegrees, 12)
+        XCTAssertEqual(after.metrics.horizonAngleDegrees, 1)
+        let result = ActionVerifier.verify(input(actionID: action, before: before, after: after))
+        XCTAssertEqual(decision(result), .incomparable(reason: .calibrationMismatch))
+        XCTAssertTrue(result.deltas.isEmpty,
+                      "the verifier must retain its calibration gate rather than invent admissible deltas")
+    }
+
     func testSceneMismatchAndMissingProvenanceFailClosed() {
         let action = SemanticActionType.levelHorizon.rawValue
         let before = frame(
@@ -1100,6 +1116,93 @@ final class ActionVerifierTests: XCTestCase {
         XCTAssertEqual(worse.reasonCode, .regression)
         XCTAssertEqual(worse.protectedRegressions.map(\.entityRef), ["person1"])
         XCTAssertEqual(worse.goalSatisfied, false)
+    }
+
+    func testPartialTargetRectangleCannotProveDisplacementFromChangingIntersection() throws {
+        let action = SemanticActionType.moveObjectLeft.rawValue
+        let scope = ActionVerificationScope(targetRefs: ["lampA"], allowedChanges: [.targetPosition])
+        let partial = try XCTUnwrap(UserMovementEntityObservation(
+            entityRef: "lampA", trackID: "ta", visibility: .partial,
+            region: NormalizedRect(x: 0.30, y: 0, width: 0.2, height: 0.2)))
+        XCTAssertTrue(partial.isObserved, "Keep the measurement for diagnostics")
+        XCTAssertFalse(partial.hasComparableGeometry)
+        for partialBefore in [false, true] {
+            let before = entityFrame(id: "partial-before", capturedAt: startDate, actionID: action,
+                entities: [partialBefore ? partial : entity("lampA", track: "ta", x: 0.45)])
+            let after = entityFrame(id: "partial-after", capturedAt: startDate.addingTimeInterval(0.1),
+                actionID: action, entities: [partialBefore ? entity("lampA", track: "ta", x: 0.20) : partial])
+            let result = ActionVerifier.verify(input(actionID: action, before: before, after: after, scope: scope))
+            XCTAssertEqual(decision(result), .incomparable(reason: .targetMissing))
+            XCTAssertNil(result.goalSatisfied)
+        }
+    }
+
+    func testPartialProtectedRectangleCannotCertifyPreservationDuringTargetMove() throws {
+        let action = SemanticActionType.moveObjectLeft.rawValue
+        let before = entityFrame(id: "protected-before", capturedAt: startDate, actionID: action,
+            entities: [entity("lampA", track: "ta", x: 0.45), entity("lampB", track: "tb", x: 0.70)])
+        let partial = try XCTUnwrap(UserMovementEntityObservation(
+            entityRef: "lampB", trackID: "tb", visibility: .partial,
+            region: NormalizedRect(x: 0.7, y: 0, width: 0.2, height: 0.2)))
+        let after = entityFrame(id: "protected-after", capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action, entities: [entity("lampA", track: "ta", x: 0.35), partial])
+        let result = ActionVerifier.verify(input(actionID: action, before: before, after: after,
+            scope: ActionVerificationScope(targetRefs: ["lampA"], protectedRefs: ["lampB"],
+                                           allowedChanges: [.targetPosition])))
+        XCTAssertEqual(decision(result), .incomparable(reason: .protectedEvidenceMissing))
+        XCTAssertNil(result.goalSatisfied)
+    }
+
+    func testExplicitAbsenceRetainsItsSeparateProofForInitiallyPartialRectangles() throws {
+        let action = SemanticActionType.removeDistractingObject.rawValue
+        let target = try XCTUnwrap(UserMovementEntityObservation(
+            entityRef: "lampA", trackID: "ta", visibility: .partial,
+            region: NormalizedRect(x: 0.4, y: 0, width: 0.2, height: 0.2)))
+        let protected = try XCTUnwrap(UserMovementEntityObservation(
+            entityRef: "lampB", trackID: "tb", visibility: .partial,
+            region: NormalizedRect(x: 0.7, y: 0, width: 0.2, height: 0.2)))
+        let before = entityFrame(id: "partial-exit-before", capturedAt: startDate, actionID: action,
+            entities: [target, protected])
+        let after = entityFrame(id: "partial-exit-after", capturedAt: startDate.addingTimeInterval(0.1),
+            actionID: action, entities: [absentEntity("lampA", track: "ta"), protected])
+        let scope = ActionVerificationScope(targetRefs: ["lampA"], protectedRefs: ["lampB"],
+                                            expectedAbsenceRefs: ["lampA"])
+        for confirmed in [false, true] {
+            let result = ActionVerifier.verify(input(actionID: action, before: before, after: after,
+                scope: scope, absenceEvidence: [ActionVerificationAbsenceEvidence(
+                    entityRef: "lampA", observedPresentBefore: true, observedExitFromRegion: confirmed,
+                    regionConfirmedFreeAfter: confirmed, associationLossExplained: confirmed)]))
+            XCTAssertEqual(decision(result), confirmed
+                ? .comparable(outcome: .improved) : .incomparable(reason: .expectedAbsenceUnverified))
+            XCTAssertEqual(result.goalSatisfied, confirmed ? true : nil)
+        }
+    }
+
+    func testScopedObjectAreaCannotUseUnrelatedPrimarySubjectScalar() {
+        for action in [SemanticActionType.moveObjectForward.rawValue, SemanticActionType.moveObjectBack.rawValue] {
+            let target = entity("lampA", track: "ta", x: 0.45)
+            let before = entityFrame(id: "area-before", capturedAt: startDate, actionID: action,
+                entities: [target], metrics: UserMovementMetrics(subjectAreaRatio: 0.10))
+            let after = entityFrame(id: "area-after", capturedAt: startDate.addingTimeInterval(0.1),
+                actionID: action, entities: [target], metrics: UserMovementMetrics(subjectAreaRatio: 0.30))
+            let result = ActionVerifier.verify(input(actionID: action, before: before, after: after,
+                scope: ActionVerificationScope(targetRefs: ["lampA"])))
+            XCTAssertEqual(decision(result), .incomparable(reason: .unsupportedAction))
+            XCTAssertTrue(result.deltas.isEmpty)
+            XCTAssertNil(result.goalSatisfied)
+        }
+    }
+
+    func testMultipleDeclaredTargetsCannotUseOnlyTheFirstDisplacement() {
+        let action = SemanticActionType.moveObjectLeft.rawValue
+        let before = entityFrame(id: "multi-before", capturedAt: startDate, actionID: action,
+            entities: [entity("lampA", track: "ta", x: 0.45), entity("lampB", track: "tb", x: 0.70)])
+        let after = entityFrame(id: "multi-after", capturedAt: startDate.addingTimeInterval(0.1), actionID: action,
+            entities: [entity("lampA", track: "ta", x: 0.35), entity("lampB", track: "tb", x: 0.70)])
+        let result = ActionVerifier.verify(input(actionID: action, before: before, after: after,
+            scope: ActionVerificationScope(targetRefs: ["lampA", "lampB"], allowedChanges: [.targetPosition])))
+        XCTAssertEqual(decision(result), .incomparable(reason: .unsupportedAction))
+        XCTAssertNil(result.goalSatisfied)
     }
 
     /// (b) A vanished bbox is not a confirmed removal: expected absence needs

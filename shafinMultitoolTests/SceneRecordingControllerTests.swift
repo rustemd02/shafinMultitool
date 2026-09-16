@@ -18,6 +18,11 @@ final class SceneRecordingControllerTests: XCTestCase {
         try await controller.start(requestedFPS: 30, audioMode: .disabled)
         let firstRecorder = try XCTUnwrap(box.recorder(at: 0))
         let firstSourceToken = try XCTUnwrap(controller.recordingSourceToken)
+        let firstConfiguration = try XCTUnwrap(firstRecorder.configuration)
+        XCTAssertEqual(UUID(uuidString: firstConfiguration.outputURL.deletingPathExtension().lastPathComponent),
+                       firstConfiguration.id.rawValue)
+        XCTAssertEqual(firstSourceToken.recordingID, firstConfiguration.id)
+        XCTAssertEqual(firstSourceToken.source, .arWorkspace)
 
         controller.enqueueVideo(pixelBuffer, at: 0.010, ownerToken: controller.recordingSourceToken)
         controller.enqueueVideo(pixelBuffer, at: 0.020, ownerToken: controller.recordingSourceToken)
@@ -49,6 +54,10 @@ final class SceneRecordingControllerTests: XCTestCase {
         )
         let secondRecorder = try XCTUnwrap(box.recorder(at: 1))
         let secondSourceToken = try XCTUnwrap(controller.recordingSourceToken)
+        let secondConfiguration = try XCTUnwrap(secondRecorder.configuration)
+        XCTAssertEqual(UUID(uuidString: secondConfiguration.outputURL.deletingPathExtension().lastPathComponent),
+                       secondConfiguration.id.rawValue)
+        XCTAssertEqual(secondSourceToken.recordingID, secondConfiguration.id)
 
         XCTAssertNotEqual(firstRecorder.configuration?.id, secondRecorder.configuration?.id)
         XCTAssertEqual(secondSourceToken.ownerID, firstSourceToken.ownerID)
@@ -62,6 +71,35 @@ final class SceneRecordingControllerTests: XCTestCase {
         XCTAssertNotNil(secondResult)
         _ = await controller.releaseAndWait()
         XCTAssertNil(controller.recordingSourceToken)
+    }
+
+    func testCameraCoachSourceRejectsSameOwnerTokenFromDifferentWorkspace() async throws {
+        let (controller, box, temporaryDirectory) = try makeController(source: .cameraCoach)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+        let pixelBuffer = try makePixelBuffer(width: 640, height: 480)
+        controller.enqueueVideo(pixelBuffer, at: 1)
+        try await controller.start(requestedFPS: 30, audioMode: .disabled)
+
+        let recorder = try XCTUnwrap(box.recorder(at: 0))
+        let token = try XCTUnwrap(controller.recordingSourceToken)
+        XCTAssertEqual(token.source, .cameraCoach)
+        let foreignToken = RecordingOwnerToken(
+            source: .arWorkspace,
+            ownerID: token.ownerID,
+            recordingID: token.recordingID,
+            generation: token.generation
+        )
+        controller.enqueueVideo(pixelBuffer, at: 1.1,
+                                ownerID: token.ownerID, ownerToken: foreignToken)
+        XCTAssertEqual(recorder.enqueuedTimestamps, [1])
+        controller.enqueueVideo(pixelBuffer, at: 1.2,
+                                ownerID: token.ownerID, ownerToken: token)
+        XCTAssertEqual(recorder.enqueuedTimestamps, [1, 1.2])
+
+        _ = await controller.stop(reason: .user)
+        _ = await controller.releaseAndWait()
+        XCTAssertNil(controller.recordingSourceToken)
+        XCTAssertEqual(recorder.stopCount, 1)
     }
 
     /// M7-005/M7-007: the writer configuration is built from the active
@@ -969,7 +1007,8 @@ final class SceneRecordingControllerTests: XCTestCase {
 
     private func makeController(
         stopGate: ControllerAsyncGate? = nil,
-        initialEnqueueObserver: (@Sendable () -> Void)? = nil
+        initialEnqueueObserver: (@Sendable () -> Void)? = nil,
+        source: RecordingWorkspaceSource = .arWorkspace
     ) throws -> (SceneRecordingController, ControllerRecorderBox, URL) {
         let temporaryDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("scene-recording-controller-\(UUID().uuidString)", isDirectory: true)
@@ -981,7 +1020,7 @@ final class SceneRecordingControllerTests: XCTestCase {
             applicationSupportDirectoryURL: temporaryDirectory
         )
         let box = ControllerRecorderBox()
-        let controller = SceneRecordingController(artifactStore: artifactStore) { configuration in
+        let controller = SceneRecordingController(artifactStore: artifactStore, source: source) { configuration in
             let recorder = ControllerTestRecorder(
                 stopGate: stopGate,
                 fenceProvider: { box.currentFence() },
@@ -1205,8 +1244,7 @@ private final class ControllerTestRecorder: MediaRecording, @unchecked Sendable 
 
     func claimRecordingSource(_ ownerToken: RecordingOwnerToken) async -> Bool {
         withLock {
-            guard ownerToken.isValid,
-                  ownerToken.source == .arWorkspace else { return false }
+            guard ownerToken.isValid else { return false }
             if ownerTokenStorage == ownerToken { return true }
             guard ownerTokenStorage == nil,
                   stateStorage == .idle || stateStorage == .prepared,

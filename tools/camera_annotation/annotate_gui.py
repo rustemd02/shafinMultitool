@@ -43,6 +43,7 @@ from annotation_labels import (  # noqa: E402
     append_label,
     build_label,
     load_labels,
+    local_media_path,
     sha256_file,
 )
 from assist_hints import ASSIST_SOURCE, beauty_from_score, hints_for_image  # noqa: E402
@@ -1258,7 +1259,10 @@ def load_queue(path: Path) -> list[dict]:
     records = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip():
-            records.append(json.loads(line))
+            record = json.loads(line)
+            if record.get("image_path"):
+                record["image_path"] = str(local_media_path(record["image_path"]))
+            records.append(record)
     return records
 
 

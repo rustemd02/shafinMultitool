@@ -122,7 +122,7 @@ final class RecordingArtifactPromotionTests: XCTestCase {
 
     /// Drives the deterministic crash point, then verifies the state after
     /// the "crash" and that a retried promotion converges to exactly one
-    /// valid reference with no duplicate file and no leftover journal record.
+    /// valid reference with no duplicate file and a durable unacknowledged journal.
     private func attemptAndRecover(faultPoint: RecordingArtifactStore.PromotionFaultPoint) throws {
         let artifact = try makePendingArtifact()
         let projectID = UUID()
@@ -151,9 +151,10 @@ final class RecordingArtifactPromotionTests: XCTestCase {
             FileManager.default.fileExists(atPath: artifact.localURL.path),
             "recovery must consume the pending source exactly once"
         )
-        XCTAssertNil(
-            try store.journal.entry(for: artifact.id.rawValue),
-            "a converged promotion must leave no journal record behind"
+        XCTAssertEqual(
+            try store.journal.entry(for: artifact.id.rawValue)?.state,
+            .promoted,
+            "a filesystem commit must retain intent until its project reference is durable"
         )
         store.testPromotionFaultPoint = nil
     }
@@ -170,8 +171,32 @@ final class RecordingArtifactPromotionTests: XCTestCase {
         try attemptAndRecover(faultPoint: .afterRename)
     }
 
+    func testPromotionRecoversFromCrashAfterPromotionMarked() throws {
+        try attemptAndRecover(faultPoint: .afterPromotionMarked)
+    }
+
     func testPromotionRecoversFromCrashAfterJournalRemoval() throws {
-        try attemptAndRecover(faultPoint: .afterJournalRemoval)
+        // Journal removal now belongs to the persisted-reference acknowledgement
+        // phase; retain the existing regression selector for that crash window.
+        let artifact = try makePendingArtifact()
+        let projectID = UUID()
+        let reference = try store.promoteFinalizedArtifact(artifact, projectID: projectID)
+        let destination = try XCTUnwrap(store.resolve(reference, ownedBy: projectID))
+        let bytes = try Data(contentsOf: destination)
+
+        XCTAssertThrowsError(try store.acknowledgePersistedReference(reference, projectID: UUID()))
+        XCTAssertEqual(try store.journal.entry(for: artifact.id.rawValue)?.state, .promoted)
+
+        store.testPromotionFaultPoint = .beforeJournalRemoval
+        XCTAssertThrowsError(try store.acknowledgePersistedReference(reference, projectID: projectID))
+        XCTAssertEqual(try store.journal.entry(for: artifact.id.rawValue)?.state, .promoted)
+
+        store.testPromotionFaultPoint = .afterJournalRemoval
+        XCTAssertThrowsError(try store.acknowledgePersistedReference(reference, projectID: projectID))
+        XCTAssertNil(try store.journal.entry(for: artifact.id.rawValue))
+        let reopened = try RecordingArtifactStore(applicationSupportDirectoryURL: applicationSupportURL)
+        XCTAssertNoThrow(try reopened.acknowledgePersistedReference(reference, projectID: projectID))
+        XCTAssertEqual(try Data(contentsOf: destination), bytes)
     }
 
     // MARK: - Helpers

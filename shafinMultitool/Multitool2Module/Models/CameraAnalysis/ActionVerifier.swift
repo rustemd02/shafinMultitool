@@ -509,6 +509,9 @@ enum ActionVerifier {
         let targetRefs = input.scope.targetRefs
         let protectedRefs = input.scope.protectedRefs
         let absenceRefs = Set(input.scope.expectedAbsenceRefs)
+        // Explicit absence uses its separate exit/free-region/association proof;
+        // it does not compare rectangle centres or areas.
+        let requiresComparableGeometry = absenceRefs.isEmpty
 
         guard Set(targetRefs).isDisjoint(with: Set(protectedRefs)) else {
             // The changed object and a protected object may not be the same.
@@ -526,6 +529,7 @@ enum ActionVerifier {
         for ref in targetRefs {
             guard let beforeObservation = input.before.entityObservation(for: ref),
                   beforeObservation.isObserved,
+                  (!requiresComparableGeometry || beforeObservation.hasComparableGeometry),
                   let beforeTrack = beforeObservation.trackID else {
                 return EntityScopeEvaluation(
                     blocked: result(
@@ -558,6 +562,7 @@ enum ActionVerifier {
             }
             guard let afterObservation = input.after.entityObservation(for: ref),
                   afterObservation.isObserved,
+                  (!requiresComparableGeometry || afterObservation.hasComparableGeometry),
                   let afterTrack = afterObservation.trackID else {
                 return EntityScopeEvaluation(
                     blocked: result(
@@ -587,6 +592,7 @@ enum ActionVerifier {
             guard let beforeObservation = input.before.entityObservation(for: ref),
                   let beforeTrack = beforeObservation.trackID,
                   beforeObservation.isObserved,
+                  (!requiresComparableGeometry || beforeObservation.hasComparableGeometry),
                   let afterObservation = input.after.entityObservation(for: ref),
                   let afterTrack = afterObservation.trackID else {
                 return EntityScopeEvaluation(
@@ -616,6 +622,12 @@ enum ActionVerifier {
                         entityRef: ref,
                         reason: .protectedEntityLost
                     )
+                )
+            } else if requiresComparableGeometry && !afterObservation.hasComparableGeometry {
+                return EntityScopeEvaluation(
+                    blocked: result(input, decision: .incomparable(reason: .protectedEvidenceMissing),
+                                    reasonCode: .missingEvidence, deltas: diagnosticDeltas),
+                    protectedRegressions: []
                 )
             }
         }
@@ -846,6 +858,8 @@ enum ActionVerifier {
         family: UserMovementActionFamily?
     ) -> ActionVerificationIncomparableReason {
         switch observerReason {
+        case "unsupported_action":
+            return .unsupportedAction
         case "evidence_missing":
             return .evidenceMissing
         case "frame_identity":

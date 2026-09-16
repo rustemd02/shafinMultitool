@@ -8,6 +8,7 @@
 //
 
 import XCTest
+import CoreMedia
 @testable import shafinMultitool
 
 final class UserMovementObserverTests: XCTestCase {
@@ -1221,6 +1222,12 @@ final class UserMovementObserverTests: XCTestCase {
                                                      current: uncalibrated,
                                                      action: .moveSubjectRight),
                        .uncertain(reason: "uncalibrated"))
+        XCTAssertEqual(uncalibrated.subjectRegion, uncalibratedBinding.coachingRegion)
+        XCTAssertEqual(uncalibrated.metrics.subjectAreaRatio ?? .nan,
+                       rawRegion.width * rawRegion.height, accuracy: 1e-12)
+        XCTAssertEqual(uncalibrated.evidence?.featureMeasuredAt[.subjectDisplacement], secondCapture)
+        XCTAssertEqual(uncalibrated.evidence?.sourceAvailability[.subjectDisplacement], true,
+                       "missing calibration must not erase separately measured geometry")
     }
 
     func testActionAwareObservationFailsClosedForInvalidEvidence() {
@@ -1435,5 +1442,329 @@ final class UserMovementObserverTests: XCTestCase {
         ))
         XCTAssertEqual(commandedMoved, .relevant)
         XCTAssertTrue(tracker.movementGoalReached)
+    }
+}
+
+// MARK: - Accepted current-object measurement adapter
+
+extension UserMovementObserverTests {
+    private struct EntityMeasurementFixture {
+        let frame: ObjectTrackFrame
+        let sample: FeatureSample<FeatureSnapshotDetrPayload>
+        var observations: [UserMovementEntityObservation] {
+            UserMovementEntityProvenance.observations(frame: frame, sample: sample, pipelineGeneration: 0)
+        }
+    }
+
+    /// The real identity owner receives the exact measured rectangles. Reverse
+    /// detector order deliberately differs from the tracker's spatial ordering.
+    private func entityMeasurementFixture(rawBoxes: [CGRect]? = nil) throws -> EntityMeasurementFixture {
+        let boxes = rawBoxes ?? [
+            CGRect(x: 0.65, y: 0.2, width: 0.2, height: 0.3),
+            CGRect(x: 0.1, y: 0.1, width: 0.2, height: 0.3)
+        ]
+        let geometries = try boxes.enumerated().map {
+            try XCTUnwrap(VisionObjectGeometry(seedSlot: $0.offset, rawBoundingBox: $0.element))
+        }
+        let source = VisionObjectFrame(
+            frameID: "entity-source", captureGeneration: 7, sessionGeneration: 3,
+            lifecycleGeneration: 0, orientation: .up,
+            samplePTS: CMTime(value: 900, timescale: 1_000),
+            capturedAt: evidenceTime.addingTimeInterval(-0.1))
+        let current = VisionObjectFrame(
+            frameID: "entity-current", captureGeneration: 7, sessionGeneration: 3,
+            lifecycleGeneration: 0, orientation: .up,
+            samplePTS: CMTime(value: 1_000, timescale: 1_000), capturedAt: evidenceTime)
+        let detections = geometries.enumerated().map { index, geometry in
+            FeatureSnapshotDetectedObject(
+                boundingBox: geometry.visibleImageIntersection, label: "chair",
+                confidence: index == 0 ? 0.81 : 0.61)
+        }
+        let sample = FeatureSample(
+            value: FeatureSnapshotDetrPayload(
+                detections: detections,
+                tracking: FeatureSnapshotDetrTracking(
+                    source: source, current: current,
+                    geometryMeasuredAt: evidenceTime.addingTimeInterval(0.005),
+                    qualities: geometries.indices.map { $0 == 0 ? Float(0.92) : Float(0.83) },
+                    geometries: geometries)),
+            measuredAt: source.capturedAt, baseConfidence: 0.81, provenance: current.featureProvenance)
+        XCTAssertTrue(sample.hasValidTrackingLinkage)
+        let tracker = SubjectTracker()
+        let objects = detections.enumerated().map { index, detection in
+            let b = detection.boundingBox
+            return SubjectCandidate(
+                id: "detector-local-\(index)", kind: .object, label: detection.label,
+                region: NormalizedRect(x: Double(b.origin.x), y: Double(b.origin.y),
+                                       width: Double(b.size.width), height: Double(b.size.height)),
+                confidence: detection.confidence)
+        }
+        let frame = try XCTUnwrap(tracker.acceptObjectFrame(
+            candidates: objects, frameID: current.frameID, generation: 7,
+            sampleSequence: 5, capturedAt: current.capturedAt))
+        return EntityMeasurementFixture(frame: frame, sample: sample)
+    }
+
+    private func entityEnvelope(_ fixture: EntityMeasurementFixture,
+                                frameID: String? = nil, generation: UInt64 = 7,
+                                session: UInt64? = 3, pts: CMTime = CMTime(value: 1, timescale: 1),
+                                orientation: CGImagePropertyOrientation = .up,
+                                capturedAt: Date? = nil, sourceDate: Date? = nil) -> AcceptedFrameEnvelope {
+        AcceptedFrameEnvelope(
+            frameID: frameID ?? fixture.frame.frameID, capturedAt: capturedAt ?? fixture.frame.capturedAt,
+            orientation: orientation, lensGeneration: generation, pixelBuffer: makePixelBuffer(),
+            featureSourceTimestamps: [.detr: sourceDate ?? fixture.sample.measuredAt],
+            samplePresentationTimestamp: pts, sessionGeneration: session)
+    }
+
+    private func entityAdapterFrame(_ fixture: EntityMeasurementFixture,
+                                    observations: [UserMovementEntityObservation]? = nil,
+                                    envelope: AcceptedFrameEnvelope? = nil,
+                                    pipelineGeneration: UInt64? = 0,
+                                    evaluatedAt: Date? = nil, detrAvailable: Bool = true,
+                                    isCalibrated: Bool = false) -> UserMovementFrame? {
+        let accepted = envelope ?? entityEnvelope(fixture)
+        let snapshot = adapterSnapshot(
+            frameID: fixture.frame.frameID, capturedAt: fixture.frame.capturedAt,
+            primaryRegion: NormalizedRect(x: 0.1, y: 0.1, width: 0.2, height: 0.3),
+            detrAvailable: detrAvailable, detrConfidence: 0.81, primaryCandidateSource: .detr)
+        return UserMovementFrame(
+            snapshot: snapshot, envelope: accepted, subjectBinding: nil,
+            entityObservations: observations ?? fixture.observations,
+            pipelineGeneration: pipelineGeneration,
+            evaluatedAt: evaluatedAt ?? evidenceTime.addingTimeInterval(0.02),
+            isCalibrated: isCalibrated, calibrationVersion: nil, orientation: .landscapeRight)
+    }
+
+    private func changedEntityProvenance(
+        _ p: UserMovementEntityProvenance, frameID: String? = nil,
+        sequence: UInt64? = nil, orientationRaw: UInt32? = nil,
+        sourceID: String? = nil, sourcePTS: CMTime? = nil,
+        sourceDate: Date? = nil, geometryDate: Date? = nil,
+        support: Double? = nil, quality: Float? = nil,
+        slot: Int? = nil, rawBox: CGRect? = nil, visibleBox: CGRect? = nil,
+        clippedFraction: Double? = nil, clippedEdges: UInt8? = nil
+    ) -> UserMovementEntityProvenance {
+        UserMovementEntityProvenance(
+            identity: p.identity, frameID: frameID ?? p.frameID,
+            sampleSequence: sequence ?? p.sampleSequence, sessionGeneration: p.sessionGeneration,
+            pipelineGeneration: p.pipelineGeneration, orientationRawValue: orientationRaw ?? p.orientationRawValue,
+            samplePresentationTimestamp: p.samplePresentationTimestamp, capturedAt: p.capturedAt,
+            semanticSourceFrameID: sourceID ?? p.semanticSourceFrameID,
+            semanticSamplePresentationTimestamp: sourcePTS ?? p.semanticSamplePresentationTimestamp,
+            semanticMeasuredAt: sourceDate ?? p.semanticMeasuredAt,
+            geometryMeasuredAt: geometryDate ?? p.geometryMeasuredAt,
+            semanticSupport: support ?? p.semanticSupport, trackingQuality: quality ?? p.trackingQuality,
+            sourceRequestSlot: slot ?? p.sourceRequestSlot, rawBoundingBox: rawBox ?? p.rawBoundingBox,
+            visibleImageIntersection: visibleBox ?? p.visibleImageIntersection,
+            rectangleClippedFraction: clippedFraction ?? p.rectangleClippedFraction,
+            clippedEdges: clippedEdges ?? p.clippedEdges)
+    }
+
+    func testEntityFactoryBindsSameLabelObjectsByExactCurrentIdentityAndMeasurement() throws {
+        let fixture = try entityMeasurementFixture()
+        let observations = fixture.observations
+        XCTAssertEqual(observations.count, 2)
+        XCTAssertEqual(Set(observations.map(\.entityRef)).count, 2)
+        for object in fixture.frame.currentObjects {
+            let observation = try XCTUnwrap(observations.first { $0.trackID == object.identity.trackID })
+            let p = try XCTUnwrap(observation.provenance)
+            let sourceSlot = object.region!.x < 0.5 ? 1 : 0
+            XCTAssertEqual(p.identity, object.identity)
+            XCTAssertEqual(p.sourceRequestSlot, sourceSlot, "Detector order is not identity order")
+            XCTAssertEqual(p.semanticSupport, sourceSlot == 0 ? 0.81 : 0.61)
+            XCTAssertEqual(p.trackingQuality, sourceSlot == 0 ? Float(0.92) : Float(0.83))
+            XCTAssertEqual(p.semanticSourceFrameID, "entity-source")
+            XCTAssertEqual(p.frameID, "entity-current")
+            XCTAssertEqual(p.semanticMeasuredAt, evidenceTime.addingTimeInterval(-0.1))
+            XCTAssertEqual(p.capturedAt, evidenceTime)
+            XCTAssertEqual(p.geometryMeasuredAt, evidenceTime.addingTimeInterval(0.005))
+            XCTAssertEqual(CMTimeCompare(p.semanticSamplePresentationTimestamp, CMTime(value: 9, timescale: 10)), 0)
+            XCTAssertEqual(CMTimeCompare(p.samplePresentationTimestamp, CMTime(value: 1, timescale: 1)), 0)
+            XCTAssertEqual(p.sampleSequence, 5)
+            XCTAssertEqual(p.pipelineGeneration, 0, "Initial pipeline generation zero is valid")
+            XCTAssertEqual(observation.region?.x, object.region?.x)
+            XCTAssertEqual(try XCTUnwrap(observation.region).y,
+                           1 - object.region!.y - object.region!.height, accuracy: 1e-12)
+            XCTAssertEqual(try XCTUnwrap(observation.region).width, object.region!.width, accuracy: 1e-12)
+            XCTAssertEqual(observation.visibility, .visible)
+            XCTAssertTrue(observation.hasComparableGeometry)
+        }
+        let adapted = try XCTUnwrap(entityAdapterFrame(fixture))
+        XCTAssertEqual(adapted.entityObservations, observations)
+        XCTAssertEqual(adapted.evidence?.isCalibrated, false)
+        XCTAssertNil(adapted.evidence?.calibrationVersion)
+        XCTAssertNil(adapted.evidence?.subjectBinding, "Entity measurements do not select a primary subject")
+    }
+
+    func testClippedEntityRemainsPartialAndLossDoesNotManufactureAbsence() throws {
+        let fixture = try entityMeasurementFixture(rawBoxes: [
+            CGRect(x: 0.65, y: -0.01, width: 0.2, height: 0.3)
+        ])
+        let observation = try XCTUnwrap(fixture.observations.first)
+        XCTAssertEqual(observation.visibility, .partial)
+        XCTAssertTrue(observation.isObserved)
+        XCTAssertFalse(observation.hasComparableGeometry)
+        XCTAssertEqual(observation.provenance?.rawBoundingBox.origin.y, -0.01)
+        XCTAssertEqual(observation.provenance?.visibleImageIntersection.origin.y, 0)
+        XCTAssertGreaterThan(try XCTUnwrap(observation.provenance).rectangleClippedFraction, 0)
+        XCTAssertEqual(entityAdapterFrame(fixture)?.entityObservations, [observation])
+        let lost = fixture.frame.objects.map {
+            ObjectTrackState(identity: $0.identity, label: $0.label,
+                lastObservedRegion: $0.lastObservedRegion, lastObservedFrameID: $0.lastObservedFrameID,
+                lastObservedSampleSequence: $0.lastObservedSampleSequence, phase: .lost,
+                frameID: $0.frameID, sampleSequence: $0.sampleSequence)
+        }
+        let frame = ObjectTrackFrame(frameID: fixture.frame.frameID, generation: 7,
+            sampleSequence: 5, capturedAt: evidenceTime, objects: lost)
+        let result = UserMovementEntityProvenance.observations(
+            frame: frame, sample: fixture.sample, pipelineGeneration: 0)
+        XCTAssertTrue(result.isEmpty)
+        XCTAssertFalse(result.contains { $0.visibility == .absent })
+        XCTAssertTrue(entityAdapterFrame(fixture, observations: [])?.entityObservations.isEmpty == true)
+    }
+
+    func testEntityFactoryRejectsDuplicateMeasurementsAndDuplicateIdentities() throws {
+        let box = CGRect(x: 0.1, y: 0.1, width: 0.2, height: 0.3)
+        let duplicateDetections = try entityMeasurementFixture(rawBoxes: [box, box])
+        XCTAssertEqual(duplicateDetections.frame.currentObjects.count, 1,
+                       "The actual tracker deduplicates identical same-label rectangles")
+        XCTAssertTrue(duplicateDetections.observations.isEmpty,
+                      "One identity must not arbitrarily choose among two measurement slots")
+        let fixture = try entityMeasurementFixture()
+        let objects = fixture.frame.currentObjects
+        let repeatedIdentity = objects.map {
+            ObjectTrackState(identity: objects[0].identity, label: $0.label,
+                lastObservedRegion: $0.lastObservedRegion, lastObservedFrameID: $0.lastObservedFrameID,
+                lastObservedSampleSequence: $0.lastObservedSampleSequence, phase: .active,
+                frameID: $0.frameID, sampleSequence: $0.sampleSequence)
+        }
+        for invalid in [repeatedIdentity, [objects[0], objects[0]]] {
+            let frame = ObjectTrackFrame(frameID: fixture.frame.frameID, generation: 7,
+                sampleSequence: 5, capturedAt: evidenceTime, objects: invalid)
+            XCTAssertTrue(UserMovementEntityProvenance.observations(
+                frame: frame, sample: fixture.sample, pipelineGeneration: 0).isEmpty)
+        }
+    }
+
+    func testEntityFactoryRejectsDifferentFrameCaptureSequenceAndPipeline() throws {
+        let fixture = try entityMeasurementFixture()
+        let frames = [
+            ObjectTrackFrame(frameID: "stale", generation: 7, sampleSequence: 5,
+                             capturedAt: evidenceTime, objects: fixture.frame.objects),
+            ObjectTrackFrame(frameID: fixture.frame.frameID, generation: 8, sampleSequence: 5,
+                             capturedAt: evidenceTime, objects: fixture.frame.objects),
+            ObjectTrackFrame(frameID: fixture.frame.frameID, generation: 7, sampleSequence: 6,
+                             capturedAt: evidenceTime, objects: fixture.frame.objects),
+            ObjectTrackFrame(frameID: fixture.frame.frameID, generation: 7, sampleSequence: 5,
+                             capturedAt: evidenceTime.addingTimeInterval(0.01), objects: fixture.frame.objects)
+        ]
+        for frame in frames {
+            XCTAssertTrue(UserMovementEntityProvenance.observations(
+                frame: frame, sample: fixture.sample, pipelineGeneration: 0).isEmpty)
+        }
+        XCTAssertTrue(UserMovementEntityProvenance.observations(
+            frame: fixture.frame, sample: fixture.sample, pipelineGeneration: 1).isEmpty)
+    }
+
+    func testEntityAdapterRequiresExactEnvelopeEpochClockAndFreshness() throws {
+        let fixture = try entityMeasurementFixture()
+        XCTAssertNotNil(entityAdapterFrame(fixture))
+        let invalid = [
+            entityEnvelope(fixture, frameID: "different"),
+            entityEnvelope(fixture, generation: 8),
+            entityEnvelope(fixture, session: 4),
+            entityEnvelope(fixture, session: nil),
+            entityEnvelope(fixture, pts: .invalid),
+            entityEnvelope(fixture, pts: CMTime(value: 1001, timescale: 1000)),
+            entityEnvelope(fixture, orientation: .right),
+            entityEnvelope(fixture, capturedAt: evidenceTime.addingTimeInterval(0.01)),
+            entityEnvelope(fixture, sourceDate: fixture.sample.measuredAt.addingTimeInterval(0.01))
+        ]
+        for envelope in invalid { XCTAssertNil(entityAdapterFrame(fixture, envelope: envelope)) }
+        XCTAssertNil(entityAdapterFrame(fixture, pipelineGeneration: nil))
+        XCTAssertNil(entityAdapterFrame(fixture, pipelineGeneration: 1))
+        XCTAssertNil(entityAdapterFrame(fixture, evaluatedAt: evidenceTime.addingTimeInterval(0.004)),
+                     "The pixel measurement has not completed yet")
+        XCTAssertNotNil(entityAdapterFrame(fixture, evaluatedAt: evidenceTime.addingTimeInterval(0.25)))
+        XCTAssertNil(entityAdapterFrame(fixture, evaluatedAt: evidenceTime.addingTimeInterval(0.251)))
+        XCTAssertNil(entityAdapterFrame(fixture, detrAvailable: false))
+    }
+
+    func testEntitySemanticFreshnessDoesNotRenewAtCurrentGeometryTime() throws {
+        let fixture = try entityMeasurementFixture()
+        let observation = try XCTUnwrap(fixture.observations.first)
+        let original = try XCTUnwrap(observation.provenance)
+        for (age, expected) in [(0.79, true), (0.81, false)] {
+            let sourceDate = evidenceTime.addingTimeInterval(-age)
+            let p = changedEntityProvenance(original,
+                sourcePTS: CMTime(seconds: 1 - age, preferredTimescale: 1000), sourceDate: sourceDate)
+            let value = try XCTUnwrap(UserMovementEntityObservation(
+                entityRef: p.observationRef, trackID: p.identity.trackID,
+                visibility: .visible, region: p.measuredRegion, provenance: p))
+            let result = entityAdapterFrame(fixture, observations: [value],
+                envelope: entityEnvelope(fixture, sourceDate: sourceDate), evaluatedAt: evidenceTime.addingTimeInterval(0.005))
+            XCTAssertEqual(result != nil, expected,
+                           "Movement retains its .8s semantic window despite 1.2s tracking and fresh geometry")
+        }
+    }
+
+    func testEntityObservationRejectsAlteredReferenceTrackRegionAndGeometry() throws {
+        let fixture = try entityMeasurementFixture()
+        let good = try XCTUnwrap(fixture.observations.first)
+        let p = try XCTUnwrap(good.provenance)
+        XCTAssertNil(UserMovementEntityObservation(entityRef: "other", trackID: good.trackID,
+            visibility: good.visibility, region: good.region, provenance: p))
+        XCTAssertNil(UserMovementEntityObservation(entityRef: good.entityRef, trackID: "other",
+            visibility: good.visibility, region: good.region, provenance: p))
+        XCTAssertNil(UserMovementEntityObservation(entityRef: good.entityRef, trackID: good.trackID,
+            visibility: good.visibility, region: NormalizedRect(x: 0.4, y: 0.1, width: 0.2, height: 0.3), provenance: p))
+        XCTAssertNil(UserMovementEntityObservation(entityRef: good.entityRef, trackID: good.trackID,
+            visibility: .absent, region: nil, provenance: p))
+        let corrupt = [
+            changedEntityProvenance(p, visibleBox: CGRect(x: 0.4, y: 0.1, width: 0.2, height: 0.3)),
+            changedEntityProvenance(p, clippedFraction: .nan),
+            changedEntityProvenance(p, clippedFraction: 0.5),
+            changedEntityProvenance(p, clippedEdges: 1),
+            changedEntityProvenance(p, slot: 4),
+            changedEntityProvenance(p, rawBox: CGRect(x: 0.1, y: 0.1, width: -0.2, height: 0.3))
+        ]
+        for value in corrupt {
+            XCTAssertNil(UserMovementEntityObservation(entityRef: good.entityRef, trackID: good.trackID,
+                visibility: good.visibility, region: good.region, provenance: value))
+        }
+    }
+
+    func testEntityObservationRejectsCorruptSourceProvenanceAndAdapterRejectsLegacyRows() throws {
+        let fixture = try entityMeasurementFixture()
+        let good = try XCTUnwrap(fixture.observations.first)
+        let p = try XCTUnwrap(good.provenance)
+        let corrupt = [
+            changedEntityProvenance(p, frameID: ""),
+            changedEntityProvenance(p, sequence: 0),
+            changedEntityProvenance(p, orientationRaw: 0),
+            changedEntityProvenance(p, sourceID: ""),
+            changedEntityProvenance(p, sourceID: p.frameID),
+            changedEntityProvenance(p, sourcePTS: .invalid),
+            changedEntityProvenance(p, sourcePTS: p.samplePresentationTimestamp),
+            changedEntityProvenance(p, sourcePTS: CMTime(value: 2, timescale: 1)),
+            changedEntityProvenance(p, sourceDate: evidenceTime.addingTimeInterval(0.001)),
+            changedEntityProvenance(p, geometryDate: evidenceTime.addingTimeInterval(-0.001)),
+            changedEntityProvenance(p, support: .nan),
+            changedEntityProvenance(p, support: -0.01),
+            changedEntityProvenance(p, quality: .nan),
+            changedEntityProvenance(p, quality: 0.749),
+            changedEntityProvenance(p, quality: 1.01)
+        ]
+        for value in corrupt {
+            XCTAssertNil(UserMovementEntityObservation(entityRef: good.entityRef, trackID: good.trackID,
+                visibility: good.visibility, region: good.region, provenance: value))
+        }
+        let legacy = try XCTUnwrap(UserMovementEntityObservation(
+            entityRef: good.entityRef, trackID: good.trackID, visibility: good.visibility, region: good.region))
+        XCTAssertNil(entityAdapterFrame(fixture, observations: [legacy]))
+        XCTAssertNil(entityAdapterFrame(fixture, observations: [good, good]))
+        XCTAssertNotNil(entityAdapterFrame(fixture, observations: []),
+                        "No entity measurements does not invalidate independent frame-global evidence")
     }
 }

@@ -836,14 +836,14 @@ final class SemanticTipPlannerTests: XCTestCase {
             semanticActionTypes: [.moveObjectLeft],
             mode: .live,
             snapshot: staleSnapshot,
-            semantics: semantics
+            semantics: semantics, objectTrackingGeometryStatus: .unclipped
         ))
         XCTAssertFalse(LiveCoachQualityGate.allows(
             action: .reduceBackgroundDistractions,
             semanticActionTypes: [.repositionPropForBalance],
             mode: .live,
             snapshot: unavailableSnapshot,
-            semantics: semantics
+            semantics: semantics, objectTrackingGeometryStatus: .unclipped
         ))
     }
 
@@ -856,21 +856,21 @@ final class SemanticTipPlannerTests: XCTestCase {
             semanticActionTypes: [.moveObjectRight],
             mode: .live,
             snapshot: groundedSnapshotWithoutObjects,
-            semantics: semantics
+            semantics: semantics, objectTrackingGeometryStatus: .unclipped
         ))
         XCTAssertFalse(LiveCoachQualityGate.allows(
             action: .reduceBackgroundDistractions,
             semanticActionTypes: [.removeDistractingObject],
             mode: .live,
             snapshot: groundedSnapshotWithoutObjects,
-            semantics: semantics
+            semantics: semantics, objectTrackingGeometryStatus: .unclipped
         ))
         XCTAssertTrue(LiveCoachQualityGate.allows(
             action: .reduceBackgroundDistractions,
             semanticActionTypes: [.moveObjectRight],
             mode: .live,
             snapshot: makeLiveCoachSnapshot(objectCount: 2, objectLabels: ["lamp", "vase"]),
-            semantics: semantics
+            semantics: semantics, objectTrackingGeometryStatus: .unclipped
         ))
     }
 
@@ -878,31 +878,37 @@ final class SemanticTipPlannerTests: XCTestCase {
     /// object-targeted move ambiguous — the advice cannot ground itself to one
     /// of the two lamps. The gate must withhold the object-scoped correction
     /// while frame-global corrections stay actionable.
-    /// CC-O02 tap-grounding: once the operator taps one of the merged
-    /// instances, the target is identified and the overlap refusal lifts.
-    func testLiveCoachQualityGateAllowsObjectMoveWhenTapGrounded() {
+    /// A selected object is not automatically the semantic action's target;
+    /// overlap remains withheld until that exact typed binding exists.
+    func testLiveCoachQualityGateKeepsOverlapFenceAfterAValidObjectTap() throws {
         let semantics = makeLiveCoachSemantics()
         let groundedSnapshot = makeLiveCoachSnapshot(objectCount: 2, objectLabels: ["lamp", "lamp"])
-
-        XCTAssertTrue(LiveCoachQualityGate.allows(
-            action: .reduceBackgroundDistractions,
-            semanticActionTypes: [.moveObjectRight],
-            mode: .live,
-            snapshot: groundedSnapshot,
-            semantics: semantics,
-            overlappingInstancePairCount: 1,
-            tapGroundedObjectTarget: true
+        let now = Date()
+        let tracker = SubjectTracker()
+        let frame = try XCTUnwrap(tracker.acceptObjectFrame(
+            candidates: [SubjectCandidate(
+                id: "lamp", kind: .object, label: "lamp",
+                region: NormalizedRect(x: 0.1, y: 0.2, width: 0.2, height: 0.3),
+                confidence: 0.95
+            )],
+            frameID: groundedSnapshot.frameId, generation: 7, sampleSequence: 1, capturedAt: now
         ))
-
-        // Without the tap the refusal stands (guard against a silent lift).
+        XCTAssertNotNil(SceneTapEvidence(sceneX: 0.2, sceneY: 0.3, frame: frame, now: now))
+        // Selection alone carries no binding to the evaluated semantic action.
         XCTAssertFalse(LiveCoachQualityGate.allows(
-            action: .reduceBackgroundDistractions,
-            semanticActionTypes: [.moveObjectRight],
-            mode: .live,
-            snapshot: groundedSnapshot,
-            semantics: semantics,
-            overlappingInstancePairCount: 1,
-            tapGroundedObjectTarget: false
+            action: .reduceBackgroundDistractions, semanticActionTypes: [.moveObjectRight],
+            mode: .live, snapshot: groundedSnapshot, semantics: semantics,
+            overlappingInstancePairCount: 1, objectTrackingGeometryStatus: .unclipped
+        ))
+        // The equivalent eligible object move remains useful without overlap.
+        XCTAssertTrue(LiveCoachQualityGate.allows(
+            action: .reduceBackgroundDistractions, semanticActionTypes: [.moveObjectRight],
+            mode: .live, snapshot: groundedSnapshot, semantics: semantics,
+            overlappingInstancePairCount: 0, objectTrackingGeometryStatus: .unclipped
+        ))
+        XCTAssertTrue(LiveCoachQualityGate.allows(
+            action: .changeAngle, mode: .live, snapshot: groundedSnapshot,
+            semantics: semantics, overlappingInstancePairCount: 1
         ))
     }
 
@@ -924,7 +930,7 @@ final class SemanticTipPlannerTests: XCTestCase {
 
         // Tap inside the second instance's region resolves to a tracked
         // instance whose region contains the tap.
-        let hit = registry.instance(atSceneX: 0.80, y: 0.66)
+        let hit = registry.instance(atSceneX: 0.80, y: 0.66, frameId: "frame-tap-1", generation: 7)
         XCTAssertNotNil(hit)
         if let hit {
             XCTAssertTrue(hit.region.x <= 0.80 && 0.80 <= hit.region.x + hit.region.width)
@@ -932,7 +938,7 @@ final class SemanticTipPlannerTests: XCTestCase {
         }
 
         // Tap far from every instance resolves to nothing.
-        XCTAssertNil(registry.instance(atSceneX: 0.45, y: 0.45))
+        XCTAssertNil(registry.instance(atSceneX: 0.45, y: 0.45, frameId: "frame-tap-1", generation: 7))
     }
 
     func testLiveCoachQualityGateRejectsObjectMoveWhenTrackedInstancesOverlap() {
@@ -944,7 +950,7 @@ final class SemanticTipPlannerTests: XCTestCase {
             semanticActionTypes: [.moveObjectRight],
             mode: .live,
             snapshot: groundedSnapshot,
-            semantics: semantics
+            semantics: semantics, objectTrackingGeometryStatus: .unclipped
         ))
 
         XCTAssertFalse(LiveCoachQualityGate.allows(
@@ -953,7 +959,7 @@ final class SemanticTipPlannerTests: XCTestCase {
             mode: .live,
             snapshot: groundedSnapshot,
             semantics: semantics,
-            overlappingInstancePairCount: 1
+            overlappingInstancePairCount: 1, objectTrackingGeometryStatus: .unclipped
         ))
         XCTAssertFalse(LiveCoachQualityGate.allows(
             action: .reduceBackgroundDistractions,
@@ -961,7 +967,7 @@ final class SemanticTipPlannerTests: XCTestCase {
             mode: .live,
             snapshot: groundedSnapshot,
             semantics: semantics,
-            overlappingInstancePairCount: 2
+            overlappingInstancePairCount: 2, objectTrackingGeometryStatus: .unclipped
         ))
 
         // Frame-global corrections remain actionable: the ambiguity is about
@@ -982,8 +988,82 @@ final class SemanticTipPlannerTests: XCTestCase {
             mode: .live,
             snapshot: groundedSnapshot,
             semantics: semantics,
-            overlappingInstancePairCount: nil
+            overlappingInstancePairCount: nil, objectTrackingGeometryStatus: .unclipped
         ))
+    }
+
+    func testLiveCoachObjectMovesRequireCompleteObservationCoverageEvenWithoutOverlap() {
+        let semantics = makeLiveCoachSemantics()
+        let snapshot = makeLiveCoachSnapshot(objectCount: 2, objectLabels: ["lamp", "vase"])
+        let objectMoves: [SemanticActionType] = [
+            .moveObjectLeft, .moveObjectRight, .moveObjectForward, .moveObjectBack,
+            .removeDistractingObject, .repositionPropForBalance
+        ]
+        let coverageCases: [(ObjectObservationCoverage, Bool)] = [
+            (.complete, true), (.partial, false), (.unavailable, false)
+        ]
+
+        // Every case has fresh, matching, strong evidence and zero overlapping
+        // pairs. Only coverage changes; the complete positive proves the
+        // object action is otherwise eligible under the existing gate.
+        for move in objectMoves {
+            for (coverage, expected) in coverageCases {
+                XCTAssertEqual(LiveCoachQualityGate.allows(
+                    action: .reduceBackgroundDistractions,
+                    semanticActionTypes: [move], mode: .live,
+                    snapshot: snapshot, semantics: semantics,
+                    overlappingInstancePairCount: 0,
+                    objectObservationCoverage: coverage, objectTrackingGeometryStatus: .unclipped
+                ), expected, "\(move) with \(coverage) observation coverage")
+            }
+        }
+    }
+
+    func testLiveCoachFrameGlobalSpatialAdviceKeepsExistingGroundingAcrossCoverageStates() {
+        let semantics = makeLiveCoachSemantics()
+        let snapshot = makeLiveCoachSnapshot(objectCount: 2, objectLabels: ["lamp", "vase"])
+        let staleSnapshot = makeLiveCoachSnapshot(
+            vision: .init(available: true,
+                          freshnessMs: LiveCoachQualityGate.maxVisionFreshnessMilliseconds + 1,
+                          confidence: 0.88),
+            objectCount: 2, objectLabels: ["lamp", "vase"]
+        )
+        let coverageStates: [ObjectObservationCoverage] = [.complete, .partial, .unavailable]
+        for coverage in coverageStates {
+            XCTAssertTrue(LiveCoachQualityGate.allows(
+                action: .moveFrameLeft, semanticActionTypes: [.shiftFrameLeft], mode: .live,
+                snapshot: snapshot, semantics: semantics,
+                overlappingInstancePairCount: 0, objectObservationCoverage: coverage
+            ), "Frame-wide correction remains eligible with \(coverage) object coverage")
+            XCTAssertFalse(LiveCoachQualityGate.allows(
+                action: .moveFrameLeft, semanticActionTypes: [.shiftFrameLeft], mode: .live,
+                snapshot: staleSnapshot, semantics: semantics,
+                overlappingInstancePairCount: 0, objectObservationCoverage: coverage
+            ), "Coverage must not bypass the existing fresh-evidence requirement")
+        }
+    }
+
+    func testClippedGeometryBlocksObjectMovesSeparatelyFromCoverageButKeepsFramingEligible() {
+        let semantics = makeLiveCoachSemantics()
+        let snapshot = makeLiveCoachSnapshot(objectCount: 1, objectLabels: ["lamp"])
+        let moves: [SemanticActionType] = [.moveObjectLeft, .moveObjectRight, .moveObjectForward,
+            .moveObjectBack, .removeDistractingObject, .repositionPropForBalance]
+        for status in [ObjectTrackingGeometryStatus.unclipped, .clipped, .unavailable] {
+            for move in moves {
+                XCTAssertEqual(LiveCoachQualityGate.allows(action: .reduceBackgroundDistractions,
+                    semanticActionTypes: [move], mode: .live, snapshot: snapshot, semantics: semantics,
+                    overlappingInstancePairCount: 0, objectObservationCoverage: .complete,
+                    objectTrackingGeometryStatus: status), status == .unclipped)
+            }
+            XCTAssertTrue(LiveCoachQualityGate.allows(action: .moveFrameLeft,
+                semanticActionTypes: [.shiftFrameLeft], mode: .live, snapshot: snapshot, semantics: semantics,
+                overlappingInstancePairCount: 0, objectObservationCoverage: .complete,
+                objectTrackingGeometryStatus: status))
+        }
+        XCTAssertFalse(LiveCoachQualityGate.allows(action: .reduceBackgroundDistractions,
+            semanticActionTypes: [.moveObjectLeft], mode: .live, snapshot: snapshot, semantics: semantics,
+            overlappingInstancePairCount: 0, objectObservationCoverage: .complete),
+            "Omitted geometry metadata must not default to unclipped")
     }
 
     func testLiveCoachQualityGateKeepsSubjectMoveGroundedWithoutObjectPresenceRequirement() {

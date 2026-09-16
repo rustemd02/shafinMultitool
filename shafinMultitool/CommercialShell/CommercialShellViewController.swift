@@ -54,7 +54,7 @@ public final class CommercialShellViewController: UIViewController {
     /// The route currently retained by the shell, if one has been installed.
     /// M7-015: UIKit background task lease covering the background lifecycle
     /// dispatch. `.invalid` means no live lease.
-    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    private var backgroundTaskIDs: Set<UIBackgroundTaskIdentifier> = []
     var backgroundTaskCoordinator: SceneBackgroundTaskCoordinating = UIKitSceneBackgroundTaskCoordinator()
 
     public var activeRoute: (any CommercialRoute)? {
@@ -83,13 +83,15 @@ public final class CommercialShellViewController: UIViewController {
         // exactly once. The serialized owners make the flushed work itself
         // idempotent, so expiration mid-dispatch cannot double-finalize.
         let taskID = backgroundTaskCoordinator.begin(withName: "set-scene-background-flush")
-        backgroundTaskID = taskID
+        if taskID != .invalid { backgroundTaskIDs.insert(taskID) }
         let finish = { [weak self] in
             self?.endBackgroundTask(taskID)
         }
         if let cameraRoute = activeRouteStorage as? CommercialCameraCoachRoute {
-            cameraRoute.handleSceneDidEnterBackground()
-            finish()
+            Task { @MainActor in
+                await cameraRoute.handleSceneDidEnterBackground()
+                finish()
+            }
         } else if let scenesRoute = activeRouteStorage as? CommercialSceneLibraryRoute {
             Task { @MainActor in
                 _ = await scenesRoute.handleDidEnterBackground()
@@ -101,8 +103,7 @@ public final class CommercialShellViewController: UIViewController {
     }
 
     private func endBackgroundTask(_ taskID: UIBackgroundTaskIdentifier) {
-        guard backgroundTaskID == taskID, taskID != .invalid else { return }
-        backgroundTaskID = .invalid
+        guard taskID != .invalid, backgroundTaskIDs.remove(taskID) != nil else { return }
         backgroundTaskCoordinator.end(taskID)
     }
 

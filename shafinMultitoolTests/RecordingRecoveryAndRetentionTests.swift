@@ -96,7 +96,7 @@ final class RecordingRecoveryAndRetentionTests: XCTestCase {
             .appendingPathComponent(projectID.uuidString, isDirectory: true)
             .appendingPathComponent("\(recordingID.uuidString).mov")
         XCTAssertTrue(FileManager.default.fileExists(atPath: destination.path))
-        XCTAssertNil(try store.journal.entry(for: recordingID))
+        XCTAssertEqual(try store.journal.entry(for: recordingID)?.state, .promoted)
     }
 
     func testCrashAfterCommitConvergesToAlreadyPromotedWithoutTouchingDestination() throws {
@@ -109,7 +109,7 @@ final class RecordingRecoveryAndRetentionTests: XCTestCase {
 
         XCTAssertEqual(outcomes, [.alreadyPromoted(recordingID: recordingID)])
         XCTAssertEqual(try Data(contentsOf: destination), destinationBytes)
-        XCTAssertNil(try store.journal.entry(for: recordingID))
+        XCTAssertEqual(try store.journal.entry(for: recordingID)?.state, .promoted)
     }
 
     func testCorruptRecordIsReportedAndPreservedForHonestDiagnosis() throws {
@@ -331,7 +331,7 @@ final class RecordingRecoveryAndRetentionTests: XCTestCase {
             hasAudio: true
         )) })
         XCTAssertEqual(removedCount, 1)
-        XCTAssertNil(try store.journal.entry(for: resumableID))
+        XCTAssertEqual(try store.journal.entry(for: resumableID)?.state, .promoted)
         XCTAssertFalse(FileManager.default.fileExists(atPath: expiredURL.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: projectFile.path))
     }
@@ -378,6 +378,85 @@ final class RecordingRecoveryAndRetentionTests: XCTestCase {
         ))
         // Sibling project media of other projects stays untouched.
         XCTAssertTrue(FileManager.default.fileExists(atPath: promotedSibling.path))
+    }
+
+    func testLegacySourceIdentityProtectsLiveJournalAcrossAllPendingDeletionPaths() throws {
+        let pendingID = UUID()
+        let recordingID = UUID()
+        let pendingURL = makePendingFile(recordingID: pendingID)
+        let now = Date()
+        let age: TimeInterval = 7 * 24 * 3600
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-age - 60)],
+            ofItemAtPath: pendingURL.path
+        )
+        // Inventories made before the promotion intent became live are stale.
+        let staleRetention = try store.retentionInventory(now: now, pendingMaxAge: age)
+        let staleOrphans = try store.orphanInventory()
+        let entry = PendingRecordingJournalEntry(
+            recordingID: recordingID,
+            projectID: projectID,
+            sourceTempPath: "Recordings/Pending/\(pendingID.uuidString).mov",
+            destinationRelativePath: "Recordings/Projects/\(projectID.uuidString)/\(recordingID.uuidString).mov",
+            expectedFileSize: 128, expectedSHA256: nil, state: .promoting,
+            retryCount: 0, createdAt: now, updatedAt: now
+        )
+        try store.journal.record(entry)
+
+        XCTAssertTrue(try store.retentionInventory(now: now, pendingMaxAge: age).isEmpty)
+        XCTAssertEqual(try store.orphanInventory().first?.classification, .skipped(reason: "journalReference"))
+        XCTAssertTrue(try store.applyRetention(removing: staleRetention).isEmpty)
+        XCTAssertTrue(try store.removeOrphans(staleOrphans).isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: pendingURL.path))
+
+        try store.journal.record(entry.updating(state: .failed, at: now))
+        let expired = try store.retentionInventory(now: now, pendingMaxAge: age)
+        XCTAssertEqual(expired.first?.reason, .expiredFailedEntry)
+        XCTAssertEqual(try store.applyRetention(removing: expired), [pendingID])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: pendingURL.path))
+        XCTAssertNil(try store.journal.entry(for: recordingID), "remove the owning journal, not the filename UUID")
+    }
+
+    func testDestructivePendingOperationsFailClosedForUnreadableAndAmbiguousJournal() throws {
+        let pendingID = UUID()
+        let pendingURL = makePendingFile(recordingID: pendingID)
+        let now = Date()
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-8 * 24 * 3600)],
+            ofItemAtPath: pendingURL.path
+        )
+        let retention = try store.retentionInventory(now: now, pendingMaxAge: 7 * 24 * 3600)
+        let orphans = try store.orphanInventory()
+        let corruptID = UUID()
+        let corruptURL = store.journal.journalDirectoryURL.appendingPathComponent("\(corruptID.uuidString).json")
+        try Data("not-json".utf8).write(to: corruptURL)
+
+        func assertProtected(file: StaticString = #filePath, line: UInt = #line) {
+            XCTAssertThrowsError(try store.retentionInventory(now: now, pendingMaxAge: 7 * 24 * 3600), file: file, line: line)
+            XCTAssertThrowsError(try store.orphanInventory(), file: file, line: line)
+            XCTAssertThrowsError(try store.applyRetention(removing: retention), file: file, line: line)
+            XCTAssertThrowsError(try store.removeOrphans(orphans), file: file, line: line)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: pendingURL.path), file: file, line: line)
+        }
+        assertProtected()
+        try FileManager.default.removeItem(at: corruptURL)
+
+        for recordingID in [UUID(), UUID()] {
+            try store.journal.record(PendingRecordingJournalEntry(
+                recordingID: recordingID, projectID: projectID,
+                sourceTempPath: "Recordings/Pending/\(pendingID.uuidString).mov",
+                destinationRelativePath: "Recordings/Projects/\(projectID.uuidString)/\(recordingID.uuidString).mov",
+                expectedFileSize: 128, expectedSHA256: nil, state: .promoting,
+                retryCount: 0, createdAt: now, updatedAt: now
+            ))
+        }
+        assertProtected()
+
+        let journalRoot = store.journal.journalDirectoryURL
+        let parkedJournal = journalRoot.appendingPathExtension("parked")
+        try FileManager.default.moveItem(at: journalRoot, to: parkedJournal)
+        defer { try? FileManager.default.moveItem(at: parkedJournal, to: journalRoot) }
+        assertProtected()
     }
 
     // MARK: - M7-029 file protection / backup policy

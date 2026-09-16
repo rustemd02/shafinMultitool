@@ -92,6 +92,7 @@ enum CameraLensSwitchResult: Equatable, Sendable {
         case inputConstructionFailed
         case replacementRejected
         case rollbackFailed
+        case recordingInProgress
     }
 
     case success(activeLens: CameraLens)
@@ -325,10 +326,16 @@ final class AVCaptureSessionRunner: CameraSessionRunner {
 
 enum CameraManagerTestConfiguration {
     case ready
+#if DEBUG
+    case readyWithLens(CameraLens)
+#endif
     case failure(CameraManagerError)
 }
 
 final class CameraManager: NSObject, @unchecked Sendable {
+    let sourceOwnerID = UUID()
+    private let recordingBridge = CameraRecordingCaptureBridge()
+    private var recordingAudioRequested = false // sessionQueue
     private let session: AVCaptureSession
     private let videoOutput: AVCaptureVideoDataOutput
     /// M9-013: optional audio tap for the truthful meter. Attached only when
@@ -338,7 +345,10 @@ final class CameraManager: NSObject, @unchecked Sendable {
     private let audioMeterQueue = DispatchQueue(label: "CameraManager.AudioMeter")
     private let audioMeterLock = NSLock()
     private var storedAudioLevel: Float?
+    private var acceptsAudioMeterSamples = false // audioMeterLock
     private var audioMeterAttached = false
+    private var audioMeterInput: AVCaptureDeviceInput?
+    private var audioMeterRequested = false
     private let sessionQueue = DispatchQueue(label: "CameraManager.Session")
     private let videoOutputQueue = DispatchQueue(label: "CameraManager.VideoOutput")
     private let videoOutputQueueKey = DispatchSpecificKey<Void>()
@@ -351,6 +361,21 @@ final class CameraManager: NSObject, @unchecked Sendable {
     private let notificationCenter: NotificationCenter
     private var notificationTokens: [NSObjectProtocol] = []
     private let failureSubject = PassthroughSubject<CameraManagerError, Never>()
+    private let proControlsSubject = CurrentValueSubject<CameraProControlsSnapshot?, Never>(nil)
+    private var proControlDevice: CameraProControlDevice?
+    private var proControlTestDevice: CameraProControlDevice?
+    private struct PendingProControl {
+        let id: UUID
+        let deviceID: String
+        let sessionGeneration: UInt64
+        let captureGeneration: UInt64
+        let completion: (Result<CameraProControlsSnapshot, CameraProControlError>) -> Void
+    }
+    private var pendingProControl: PendingProControl?
+
+    var proControlsPublisher: AnyPublisher<CameraProControlsSnapshot?, Never> {
+        proControlsSubject.eraseToAnyPublisher()
+    }
 
     private var isConfigured = false
     private var currentInput: AVCaptureDeviceInput?
@@ -509,6 +534,7 @@ final class CameraManager: NSObject, @unchecked Sendable {
         self.sessionRunner = AVCaptureSessionRunner(session: session)
         self.testConfiguration = nil
         self.notificationCenter = notificationCenter
+        session.automaticallyConfiguresApplicationAudioSession = false
         super.init()
         videoOutputQueue.setSpecific(key: videoOutputQueueKey, value: ())
         installSessionObservers()
@@ -520,7 +546,8 @@ final class CameraManager: NSObject, @unchecked Sendable {
          sessionRunner: CameraSessionRunner,
          configuration: CameraManagerTestConfiguration,
          session: AVCaptureSession = AVCaptureSession(),
-         notificationCenter: NotificationCenter = .default) {
+         notificationCenter: NotificationCenter = .default,
+         proControlDevice: CameraProControlDevice? = nil) {
         self.session = session
         self.videoOutput = AVCaptureVideoDataOutput()
         self.scheduler = scheduler
@@ -528,7 +555,9 @@ final class CameraManager: NSObject, @unchecked Sendable {
         self.motionGate = motionGate
         self.sessionRunner = sessionRunner
         self.testConfiguration = configuration
+        self.proControlTestDevice = proControlDevice
         self.notificationCenter = notificationCenter
+        session.automaticallyConfiguresApplicationAudioSession = false
         super.init()
         videoOutputQueue.setSpecific(key: videoOutputQueueKey, value: ())
         installSessionObservers()
@@ -707,12 +736,16 @@ final class CameraManager: NSObject, @unchecked Sendable {
         }
 
         if sessionRunner.isRunning, isConfigured {
-            if !isFrameDeliveryEnabled() {
-                guard attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: generation) else { return }
+            if !isFrameDeliveryEnabled(), pendingProControl == nil {
+                guard attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: generation) else {
+                    try handleRejectedStartAttachment(generation: generation)
+                    return
+                }
             }
             if let failure = finishStartTransitionOnSessionQueue() {
                 try stopAndThrowStartFailure(failure)
             }
+            publishProControlsOnSessionQueue()
             return
         }
 
@@ -738,7 +771,10 @@ final class CameraManager: NSObject, @unchecked Sendable {
             }
         }
 
-        guard attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: generation) else { return }
+        guard attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: generation) else {
+            try handleRejectedStartAttachment(generation: generation)
+            return
+        }
         sessionRunner.startRunning()
 
         guard sessionRunner.isRunning else {
@@ -760,9 +796,12 @@ final class CameraManager: NSObject, @unchecked Sendable {
         if let failure = finishStartTransitionOnSessionQueue() {
             try stopAndThrowStartFailure(failure)
         }
+        publishProControlsOnSessionQueue()
     }
 
     private func stopOnSessionQueue() {
+        recordingAudioRequested = false
+        invalidateProControlsOnSessionQueue()
         let previousError = lifecycleError
         let hasWorkToFence = sessionRunner.isRunning || isConfigured || isFrameDeliveryEnabled()
 
@@ -792,6 +831,10 @@ final class CameraManager: NSObject, @unchecked Sendable {
     }
 
     private func releaseOnSessionQueue() {
+        invalidateProControlsOnSessionQueue()
+        proControlDevice = nil
+        audioMeterRequested = false
+        recordingAudioRequested = false
         let hasResources = sessionRunner.isRunning
             || isConfigured
             || isFrameDeliveryEnabled()
@@ -861,8 +904,13 @@ final class CameraManager: NSObject, @unchecked Sendable {
     }
 
     private func closeFrameDeliveryBoundary(advanceSessionGeneration: Bool) {
+        recordingBridge.closeAdmission()
         captureBoundaryLock.lock()
-        disableDeliveryAndDetachDelegate()
+        // This boundary is callable off sessionQueue. Capture graph mutations
+        // (including the microphone input) stay in queued stop/release work.
+        setFrameDeliveryEnabled(false)
+        videoOutput.setSampleBufferDelegate(nil, queue: videoOutputQueue)
+        clearAudioLevel()
         if advanceSessionGeneration {
             bumpSessionGeneration()
         }
@@ -901,6 +949,30 @@ final class CameraManager: NSObject, @unchecked Sendable {
         }
     }
 
+    private func handleRejectedStartAttachment(generation: UInt64) throws {
+        stateLock.lock()
+        // Stop/release may deliberately supersede an in-flight start before
+        // attachment. Keep that cancellation distinct from a failed current start.
+        guard storedSessionGeneration == generation else {
+            stateLock.unlock()
+            return
+        }
+
+        let failure: CameraManagerError
+        if case let .failed(error) = storedLifecycleState {
+            failure = storedLifecycleError ?? error
+        } else {
+            failure = storedLifecycleError ?? .startFailed
+            storedLifecycleState = .failed(failure)
+            storedLifecycleError = failure
+        }
+        stateLock.unlock()
+
+        // A runtime/interruption notification can win before the runner starts.
+        // Surface its typed failure instead of completing startAndWait successfully.
+        try stopAndThrowStartFailure(failure)
+    }
+
     private func stopAndThrowStartFailure(_ error: CameraManagerError) throws -> Never {
         disableDeliveryAndDetachDelegate()
         if sessionRunner.isRunning {
@@ -915,6 +987,10 @@ final class CameraManager: NSObject, @unchecked Sendable {
             switch testConfiguration {
             case .ready:
                 try configureReadyTestSession()
+#if DEBUG
+            case .readyWithLens(let lens):
+                try configureReadyTestSession(lens: lens)
+#endif
             case .failure(let error):
                 throw error
             }
@@ -975,20 +1051,19 @@ final class CameraManager: NSObject, @unchecked Sendable {
         }
     }
 
-    private func configureReadyTestSession() throws {
+    private func configureReadyTestSession(lens: CameraLens = .wide) throws {
         session.beginConfiguration()
         configureVideoOutput()
         if session.canAddOutput(videoOutput) {
             session.addOutput(videoOutput)
         }
         currentInput = nil
-        // The ready test session represents one installed capture input. Keep
-        // its active lens provenance identical to the production wide-camera
-        // configuration so downstream episode verification can compare lens
-        // identity without inventing it in a test or view model.
-        setCurrentLens(.wide)
-        setAvailableLenses([.wide])
-        setLensDescriptors([.wide: CameraLens.wide.descriptor])
+        // The fixture owns one installed capture input. Its readback and
+        // descriptors must name that same input; mutating only the view model
+        // does not represent a hardware lens selection.
+        setCurrentLens(lens)
+        setAvailableLenses([lens])
+        setLensDescriptors([lens: lens.descriptor])
         // Mirror production configuration: the ready fixture represents one
         // installed capture input, so its first delivered frames own epoch 1.
         advanceCaptureGeneration()
@@ -1037,25 +1112,58 @@ final class CameraManager: NSObject, @unchecked Sendable {
     /// Called on the session queue alongside the video delegate attach, so
     /// the meter lifecycle matches frame delivery exactly.
     private func attachAudioMeterIfPermitted() {
-        guard AVAudioApplication.shared.recordPermission == .granted else {
+        guard audioMeterRequested || recordingAudioRequested, testConfiguration == nil,
+              AVAudioApplication.shared.recordPermission == .granted else {
             detachAudioMeter()
             return
         }
-        guard !audioMeterAttached,
-              session.canAddOutput(audioMeterOutput) else {
+        if audioMeterAttached {
+            audioMeterLock.lock()
+            acceptsAudioMeterSamples = audioMeterRequested
+            if !audioMeterRequested { storedAudioLevel = nil }
+            audioMeterLock.unlock()
             return
         }
+        guard let microphone = AVCaptureDevice.default(for: .audio),
+              let input = try? AVCaptureDeviceInput(device: microphone) else { return }
+        session.beginConfiguration()
+        defer { session.commitConfiguration() }
+        guard session.canAddInput(input) else { return }
+        session.addInput(input)
+        guard session.canAddOutput(audioMeterOutput) else {
+            session.removeInput(input)
+            return
+        }
+        audioMeterInput = input
         session.addOutput(audioMeterOutput)
+        audioMeterLock.lock()
+        acceptsAudioMeterSamples = audioMeterRequested
+        audioMeterLock.unlock()
         audioMeterOutput.setSampleBufferDelegate(self, queue: audioMeterQueue)
         audioMeterAttached = true
     }
 
     private func detachAudioMeter() {
+        audioMeterLock.lock()
+        acceptsAudioMeterSamples = false
+        storedAudioLevel = nil
+        audioMeterLock.unlock()
+        let hasAudioGraph = audioMeterAttached || audioMeterInput != nil
+        if hasAudioGraph { session.beginConfiguration() }
+        defer { if hasAudioGraph { session.commitConfiguration() } }
         if audioMeterAttached {
             audioMeterOutput.setSampleBufferDelegate(nil, queue: nil)
             session.removeOutput(audioMeterOutput)
             audioMeterAttached = false
         }
+        if let input = audioMeterInput {
+            session.removeInput(input)
+            audioMeterInput = nil
+        }
+        clearAudioLevel()
+    }
+
+    private func clearAudioLevel() {
         audioMeterLock.lock()
         storedAudioLevel = nil
         audioMeterLock.unlock()
@@ -1178,26 +1286,155 @@ final class CameraManager: NSObject, @unchecked Sendable {
         return AVCaptureDevice.default(lens.deviceType, for: .video, position: .back)
     }
     
-    /// M9-005: torch truthfulness. Torch is available only when the active
-    /// video device reports `hasTorch`; the state resets to off on owner
-    /// release (stop/teardown/lens replacement detaches the device). Returns
-    /// the resulting torch state, or nil when unsupported.
+    func proControlsSnapshotAndWait() async -> CameraProControlsSnapshot? {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [weak self] in
+                continuation.resume(returning: self?.publishProControlsOnSessionQueue())
+            }
+        }
+    }
+
     @discardableResult
-    func setTorchActive(_ active: Bool) -> Bool? {
-        sessionQueue.sync { [weak self] in
-            guard let self,
-                  let device = self.currentInput?.device,
-                  device.hasTorch else {
-                return nil
+    private func publishProControlsOnSessionQueue() -> CameraProControlsSnapshot? {
+        // A native setter may expose its requested value before its completion
+        // timestamp. Retain the last acknowledged observation while applying.
+        if pendingProControl != nil { return proControlsSubject.value }
+        guard isConfigured, lifecycleState == .running else {
+            proControlsSubject.send(nil)
+            return nil
+        }
+        if proControlDevice == nil {
+            if let test = proControlTestDevice {
+                proControlDevice = test
+            } else if let device = currentInput?.device {
+                proControlDevice = AVCaptureProControlDevice(device: device, sessionQueue: sessionQueue)
             }
-            do {
-                try device.lockForConfiguration()
-                defer { device.unlockForConfiguration() }
-                device.torchMode = active ? .on : .off
-                return device.isTorchActive
-            } catch {
-                return nil
+        }
+        let snapshot = proControlDevice?.snapshot(generation: currentCaptureGeneration())
+        if proControlsSubject.value != snapshot { proControlsSubject.send(snapshot) }
+        return snapshot
+    }
+
+    func applyProControl(
+        _ command: CameraProControlCommand,
+        expectedDeviceID: String,
+        expectedCaptureGeneration: UInt64
+    ) async -> Result<CameraProControlsSnapshot, CameraProControlError> {
+        await applyProControl(command, expectedDeviceID: expectedDeviceID,
+                              expectedCaptureGeneration: expectedCaptureGeneration,
+                              recordingPreparationLease: nil)
+    }
+
+    private func applyProControl(
+        _ command: CameraProControlCommand,
+        expectedDeviceID: String,
+        expectedCaptureGeneration: UInt64,
+        recordingPreparationLease: CameraRecordingCaptureLease?
+    ) async -> Result<CameraProControlsSnapshot, CameraProControlError> {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [weak self] in
+                guard let self, self.isConfigured, self.lifecycleState == .running else {
+                    continuation.resume(returning: .failure(.unavailable))
+                    return
+                }
+                guard self.pendingProControl == nil else {
+                    continuation.resume(returning: .failure(.busy))
+                    return
+                }
+                if let recordingPreparationLease {
+                    guard self.recordingBridge.validates(recordingPreparationLease,
+                              sessionGeneration: self.currentSessionGeneration()) else {
+                        continuation.resume(returning: .failure(.stale))
+                        return
+                    }
+                } else if command.changesFormat, self.recordingBridge.isReserved {
+                    continuation.resume(returning: .failure(.busy))
+                    return
+                }
+                guard let state = self.publishProControlsOnSessionQueue(),
+                      state.deviceID == expectedDeviceID,
+                      state.captureGeneration == expectedCaptureGeneration,
+                      let device = self.proControlDevice else {
+                    continuation.resume(returning: .failure(.stale))
+                    return
+                }
+                if command.changesFormat && !self.session.canSetSessionPreset(.inputPriority) {
+                    continuation.resume(returning: .failure(.unsupported))
+                    return
+                }
+                let operation = UUID()
+                // Preview continues, but analysis must not compare frames
+                // across changing exposure/focus/format under one generation.
+                self.captureBoundaryLock.lock()
+                guard self.currentCaptureGeneration() == expectedCaptureGeneration,
+                      self.lifecycleState == .running else {
+                    self.captureBoundaryLock.unlock()
+                    continuation.resume(returning: .failure(.stale))
+                    return
+                }
+                self.setFrameDeliveryEnabled(false)
+                self.advanceCaptureGeneration()
+                self.pendingProControl = PendingProControl(
+                    id: operation, deviceID: device.deviceID,
+                    sessionGeneration: self.currentSessionGeneration(),
+                    captureGeneration: self.currentCaptureGeneration(),
+                    completion: { continuation.resume(returning: $0) }
+                )
+                self.captureBoundaryLock.unlock()
+                self.drainVideoOutputQueue()
+                if command.changesFormat {
+                    self.session.beginConfiguration()
+                    self.session.sessionPreset = .inputPriority
+                }
+                device.apply(command) { [weak self] result in
+                    self?.sessionQueue.async { [weak self] in
+                        self?.completeProControlOnSessionQueue(operation, result: result)
+                    }
+                }
+                if command.changesFormat { self.session.commitConfiguration() }
+                self.sessionQueue.asyncAfter(deadline: .now() + 5) { [weak self] in
+                    self?.completeProControlOnSessionQueue(operation, result: .failure(.applicationTimeout))
+                }
             }
+        }
+    }
+
+    private func completeProControlOnSessionQueue(
+        _ operation: UUID, result: Result<Void, CameraProControlError>
+    ) {
+        guard let pending = pendingProControl, pending.id == operation else { return }
+        pendingProControl = nil
+        proControlDevice?.cancelPending()
+        guard isSessionGenerationCurrent(pending.sessionGeneration),
+              currentCaptureGeneration() == pending.captureGeneration,
+              lifecycleState == .running,
+              proControlDevice?.deviceID == pending.deviceID else {
+            proControlsSubject.send(nil)
+            pending.completion(.failure(.stale))
+            return
+        }
+        let snapshot = publishProControlsOnSessionQueue()
+        drainVideoOutputQueue()
+        _ = attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: pending.sessionGeneration)
+        switch result {
+        case .success:
+            if let snapshot { pending.completion(.success(snapshot)) }
+            else { pending.completion(.failure(.unavailable)) }
+        case .failure(let error):
+            pending.completion(.failure(error))
+        }
+    }
+
+    private func invalidateProControlsOnSessionQueue() {
+        let pending = pendingProControl
+        pendingProControl = nil
+        proControlDevice?.cancelPending()
+        proControlsSubject.send(nil)
+        if let pending {
+            if isSessionGenerationCurrent(pending.sessionGeneration), lifecycleState == .running {
+                _ = attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: pending.sessionGeneration)
+            }
+            pending.completion(.failure(.stale))
         }
     }
 
@@ -1210,48 +1447,13 @@ final class CameraManager: NSObject, @unchecked Sendable {
         return storedAudioLevel
     }
 
-    /// M9-005: current torch truth for UI binding. Nil means unsupported.
-    var isTorchActive: Bool? {
-        sessionQueue.sync { [weak self] in
-            guard let device = self?.currentInput?.device,
-                  device.hasTorch else {
-                return nil
-            }
-            return device.isTorchActive
-        }
-    }
-
-    /// M9-013: RMS level from 16-bit PCM audio buffers, normalized to
-    /// 0...1. Non-PCM or unreadable buffers clear the level instead of
-    /// fabricating a value.
+    /// Meter helper validates actual PCM format and channel/buffer layout.
     private func updateAudioLevel(from sampleBuffer: CMSampleBuffer) {
-        var level: Float?
-        defer {
-            audioMeterLock.lock()
-            storedAudioLevel = level
-            audioMeterLock.unlock()
-        }
-        guard CMSampleBufferDataIsReady(sampleBuffer),
-              let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
-            return
-        }
-        var length = 0
-        var dataPointer: UnsafeMutablePointer<CChar>?
-        guard CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil,
-                                          totalLengthOut: &length, dataPointerOut: &dataPointer) == kCMBlockBufferNoErr,
-              length >= 2, let bytes = dataPointer else {
-            return
-        }
-        let sampleCount = length / MemoryLayout<Int16>.size
-        var sumSquares: Double = 0
-        bytes.withMemoryRebound(to: Int16.self, capacity: sampleCount) { samples in
-            for index in 0..<sampleCount {
-                let normalized = Double(samples[index]) / Double(Int16.max)
-                sumSquares += normalized * normalized
-            }
-        }
-        guard sampleCount > 0 else { return }
-        level = Float(min(1.0, sqrt(sumSquares / Double(sampleCount)) * 2.0))
+        let level = isFrameDeliveryEnabled()
+            ? CameraAudioMeterMeasurement.normalizedRMS(from: sampleBuffer) : nil
+        audioMeterLock.lock()
+        storedAudioLevel = acceptsAudioMeterSamples && isFrameDeliveryEnabled() ? level : nil
+        audioMeterLock.unlock()
     }
 
     func switchLens(to lens: CameraLens) {
@@ -1274,6 +1476,11 @@ final class CameraManager: NSObject, @unchecked Sendable {
     }
 
     private func switchLensOnSessionQueue(to lens: CameraLens) -> CameraLensSwitchResult {
+        guard !recordingBridge.isReserved else {
+            return .failure(requestedLens: lens, lastKnownActiveLens: activeLensSnapshot(),
+                            reason: .recordingInProgress)
+        }
+        invalidateProControlsOnSessionQueue()
         let operationGeneration = currentSessionGeneration()
         guard isConfigured,
               let oldInput = currentInput,
@@ -1321,17 +1528,20 @@ final class CameraManager: NSObject, @unchecked Sendable {
         switch outcome {
         case .replaced:
             currentInput = newInput
+            proControlDevice = nil
             setCurrentLens(lens)
             configureVideoConnection()
             advanceCaptureGeneration()
             if wasDeliveringFrames {
                 _ = attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: operationGeneration)
             }
+            publishProControlsOnSessionQueue()
             return .success(activeLens: lens)
         case .restored:
             if wasDeliveringFrames {
                 _ = attachVideoDelegateAndEnableDelivery(expectedSessionGeneration: operationGeneration)
             }
+            publishProControlsOnSessionQueue()
             return .failure(requestedLens: lens,
                             lastKnownActiveLens: oldLens,
                             reason: .replacementRejected)
@@ -1400,7 +1610,10 @@ final class CameraManager: NSObject, @unchecked Sendable {
         let operationGeneration = currentSessionGeneration()
         let wasDeliveringFrames = isFrameDeliveryEnabled()
         if wasDeliveringFrames {
-            disableDeliveryAndDetachDelegate()
+            // Recording pixels remain native and its track orientation is
+            // frozen. Only analysis is drained when the preview rotates.
+            if recordingBridge.isReserved { setFrameDeliveryEnabled(false) }
+            else { disableDeliveryAndDetachDelegate() }
             drainVideoOutputQueue()
         }
         guard isSessionGenerationCurrent(operationGeneration) else { return }
@@ -1419,13 +1632,231 @@ final class CameraManager: NSObject, @unchecked Sendable {
     }
 }
 
+extension CameraManager: CameraRecordingCaptureSource {
+    var isRecordingCaptureReserved: Bool { recordingBridge.isReserved }
+
+    func reserveRecordingCapture() async throws -> CameraRecordingCaptureLease {
+        try Task.checkCancellation()
+        return try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async { [weak self] in
+                guard let self, self.isConfigured, self.lifecycleState == .running else {
+                    continuation.resume(throwing: CameraRecordingCaptureError.cameraUnavailable)
+                    return
+                }
+                guard self.pendingProControl == nil else {
+                    continuation.resume(throwing: CameraRecordingCaptureError.proControlPending)
+                    return
+                }
+                do {
+                    continuation.resume(returning: try self.recordingBridge.reserve(
+                        ownerID: self.sourceOwnerID, sessionGeneration: self.currentSessionGeneration()
+                    ))
+                } catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
+    /// Permission and the single active AudioSessionCoordinator lease belong
+    /// to CameraCoachRecordingCoordinator. This method only prepares the
+    /// manager's existing capture graph and waits for a fresh matching buffer.
+    func prepareRecordingCapture(lease: CameraRecordingCaptureLease,
+                                 audioMode: RecordingAudioMode) async throws -> PreparedCameraRecordingCapture {
+        if audioMode == .required {
+            guard AVAudioApplication.shared.recordPermission == .granted else {
+                throw CameraRecordingCaptureError.microphoneDenied
+            }
+            try await requireOwnedRecordingAudioSession()
+        }
+        try Task.checkCancellation()
+        let before: CameraProControlsSnapshot = try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async { [weak self] in
+                guard let self, self.lifecycleState == .running,
+                      self.recordingBridge.validates(lease, sessionGeneration: self.currentSessionGeneration()) else {
+                    continuation.resume(throwing: CameraRecordingCaptureError.staleLease)
+                    return
+                }
+                guard self.pendingProControl == nil else {
+                    continuation.resume(throwing: CameraRecordingCaptureError.proControlPending)
+                    return
+                }
+                guard self.session.canSetSessionPreset(.inputPriority) else {
+                    continuation.resume(throwing: CameraRecordingCaptureError.formatUnavailable)
+                    return
+                }
+                // Audio admission cannot let a session preset silently choose
+                // a different video format after the take snapshot is frozen.
+                self.session.beginConfiguration()
+                self.session.sessionPreset = .inputPriority
+                self.session.commitConfiguration()
+                self.recordingAudioRequested = audioMode == .required
+                self.attachAudioMeterIfPermitted()
+                guard audioMode != .required || self.audioMeterAttached else {
+                    self.recordingAudioRequested = false
+                    self.attachAudioMeterIfPermitted()
+                    continuation.resume(throwing: CameraRecordingCaptureError.audioUnavailable)
+                    return
+                }
+                guard let snapshot = self.publishProControlsOnSessionQueue() else {
+                    continuation.resume(throwing: CameraRecordingCaptureError.formatUnavailable)
+                    return
+                }
+                continuation.resume(returning: snapshot)
+            }
+        }
+        let selection = try CameraRecordingCapturePolicy.formatToApply(before)
+        guard let formatID = selection?.id ?? before.readback.formatID else {
+            throw CameraRecordingCaptureError.formatUnavailable
+        }
+        try Task.checkCancellation()
+        // The existing serialized setter also disables automatic frame-rate
+        // changes on supported iOS versions. It acknowledges actual readback
+        // before any recording frame can be admitted.
+        let applied = await applyProControl(.format(formatID),
+            expectedDeviceID: before.deviceID,
+            expectedCaptureGeneration: before.captureGeneration,
+            recordingPreparationLease: lease)
+        guard case .success = applied else {
+            if case .failure(.stale) = applied { throw CameraRecordingCaptureError.staleLease }
+            if case .failure(.busy) = applied { throw CameraRecordingCaptureError.proControlPending }
+            throw CameraRecordingCaptureError.formatUnavailable
+        }
+        try Task.checkCancellation()
+        let context: CameraRecordingCaptureBridge.Context = try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async { [weak self] in
+                guard let self, self.lifecycleState == .running,
+                      self.recordingBridge.validates(lease, sessionGeneration: self.currentSessionGeneration()),
+                      self.pendingProControl == nil,
+                      let snapshot = self.publishProControlsOnSessionQueue(),
+                      snapshot.deviceID == before.deviceID,
+                      snapshot.readback.formatID == formatID,
+                      let fps = CameraRecordingCapturePolicy.fixedFramesPerSecond(snapshot.readback.fixedFPS),
+                      snapshot.readback.width == before.readback.width,
+                      snapshot.readback.height == before.readback.height else {
+                    continuation.resume(throwing: CameraRecordingCaptureError.sourceChanged)
+                    return
+                }
+                let orientation: RecordingCaptureOrientation
+                switch CameraCoachOrientation(captureOrientation: self.desiredVideoOrientationSnapshot()) {
+                case .portrait: orientation = .portrait
+                case .portraitUpsideDown: orientation = .portraitUpsideDown
+                case .landscapeLeft: orientation = .landscapeLeft
+                case .landscapeRight: orientation = .landscapeRight
+                }
+                let transform = RecordingTrackTransformMetadata(
+                    captureOrientation: orientation, isMirrored: false,
+                    strategy: .preferredTransformMetadata,
+                    pixelOrientationBaseline: .nativeLandscapeRight
+                )
+                continuation.resume(returning: CameraRecordingCaptureBridge.Context(
+                    lease: lease, sessionGeneration: self.currentSessionGeneration(),
+                    deviceID: snapshot.deviceID, formatID: formatID,
+                    width: snapshot.readback.width, height: snapshot.readback.height,
+                    fps: fps, pixelFormat: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+                    minimumHostTimestamp: CMClockGetTime(CMClockGetHostTimeClock()).seconds,
+                    trackTransform: transform, audioEnabled: audioMode == .required
+                ))
+            }
+        }
+        return try await recordingBridge.waitForFirstFrame(context: context)
+    }
+
+    func attachRecordingController(_ controller: SceneRecordingController,
+                                   lease: CameraRecordingCaptureLease) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            sessionQueue.async { [weak self] in
+                guard let self, self.lifecycleState == .running,
+                      self.recordingBridge.validates(lease, sessionGeneration: self.currentSessionGeneration()) else {
+                    continuation.resume(throwing: CameraRecordingCaptureError.staleLease)
+                    return
+                }
+                do {
+                    try self.recordingBridge.attach(controller, lease: lease)
+                    continuation.resume()
+                } catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
+    func closeRecordingFrameAdmission(_ lease: CameraRecordingCaptureLease) async {
+        recordingBridge.closeAdmission(lease)
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [weak self] in
+                self?.drainVideoOutputQueue()
+                self?.audioMeterQueue.sync { }
+                continuation.resume()
+            }
+        }
+    }
+
+    func releaseRecordingCapture(_ lease: CameraRecordingCaptureLease) async {
+        recordingBridge.closeAdmission(lease)
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [weak self] in
+                guard let self, self.recordingBridge.owns(lease) else {
+                    continuation.resume()
+                    return
+                }
+                self.drainVideoOutputQueue()
+                self.audioMeterQueue.sync { }
+                self.recordingBridge.release(lease)
+                self.recordingAudioRequested = false
+                if self.lifecycleState == .running { self.attachAudioMeterIfPermitted() }
+                else { self.detachAudioMeter() }
+                continuation.resume()
+            }
+        }
+    }
+
+    /// Called only after an explicit meter action has passed permission and
+    /// activated the coordinator lease. Meter changes are unavailable during
+    /// a take, so changing the microphone cannot reconfigure a live writer.
+    func setRecordingAudioMeterEnabled(_ enabled: Bool) async throws {
+        let generation = currentSessionGeneration()
+        if enabled {
+            guard AVAudioApplication.shared.recordPermission == .granted else {
+                throw CameraRecordingCaptureError.microphoneDenied
+            }
+            try await requireOwnedRecordingAudioSession()
+        }
+        try Task.checkCancellation()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            sessionQueue.async { [weak self] in
+                guard let self, self.isSessionGenerationCurrent(generation),
+                      !enabled || self.lifecycleState == .running else {
+                    continuation.resume(throwing: CameraRecordingCaptureError.cameraUnavailable)
+                    return
+                }
+                guard !self.recordingBridge.isReserved else {
+                    continuation.resume(throwing: CameraRecordingCaptureError.recordingInProgress)
+                    return
+                }
+                self.audioMeterRequested = enabled
+                self.attachAudioMeterIfPermitted()
+                if enabled && !self.audioMeterAttached {
+                    self.audioMeterRequested = false
+                    continuation.resume(throwing: CameraRecordingCaptureError.audioUnavailable)
+                } else { continuation.resume() }
+            }
+        }
+    }
+
+    private func requireOwnedRecordingAudioSession() async throws {
+        guard await AudioSessionCoordinator.shared.activeRecordingLease(ownerID: sourceOwnerID) != nil else {
+            throw CameraRecordingCaptureError.audioUnavailable
+        }
+    }
+}
+
 extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
-        // M9-013: audio buffers feed the truthful meter only; they never
-        // enter the video/analysis path.
+        // The one microphone output serves an explicitly requested meter and
+        // the current sound-required take. It never enters image analysis.
         if output === audioMeterOutput {
+            recordingBridge.forwardAudio(sampleBuffer,
+                synchronizationClock: session.synchronizationClock,
+                sessionGeneration: currentSessionGeneration())
             updateAudioLevel(from: sampleBuffer)
             return
         }
@@ -1436,6 +1867,17 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate, AVCapture
         // it cannot establish sample order. A real camera frame must carry a
         // numeric presentation timestamp through the analysis boundary.
         guard timestamp.isNumeric else { return }
+        // Recording admission precedes the analysis/thermal gates. Applying
+        // EV/focus/WB closes an analysis epoch while the native movie continues.
+        if recordingBridge.isReserved, let clock = session.synchronizationClock {
+            let hostTime = CMSyncConvertTime(timestamp, from: clock, to: CMClockGetHostTimeClock())
+            if hostTime.isNumeric, hostTime.seconds.isFinite,
+               recordingBridge.forwardVideo(pixelBuffer, hostTimestamp: hostTime.seconds,
+                    sessionGeneration: currentSessionGeneration()) == .sourceChanged {
+                handleSessionFailure(.runtimeError)
+                return
+            }
+        }
         guard let provenance = frameProvenanceSnapshot() else { return }
         let orientation = provenance.orientation
         let captureGeneration = provenance.captureGeneration

@@ -20,7 +20,7 @@ import re
 import sys
 from pathlib import Path
 
-from annotation_labels import ACTIONS, ISSUES, DELTAS, INTENT_STYLES, build_label, validate_label, sha256_file
+from annotation_labels import ACTIONS, ISSUES, DELTAS, INTENT_STYLES, build_label, validate_label, sha256_file, local_media_path
 
 REPO = Path(__file__).resolve().parents[2]
 BUCKETS = ("interior", "movable_objects", "people", "product_food", "outdoor", "difficult_light")
@@ -50,7 +50,7 @@ def fingerprint(value):
 
 
 def checked_image(row):
-    path = Path(row["image_path"])
+    path = local_media_path(row["image_path"])
     if not path.is_file() or sha256_file(path) != row["image_sha256"]:
         raise ValueError("Image missing or SHA changed: " + row["record_id"])
     return path
@@ -394,6 +394,12 @@ def report(args):
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
+def export_language(args):
+    from language_intake import export_language_review
+    receipt = export_language_review(args.folder, args.out)
+    print(json.dumps({key: receipt[key] for key in ("records", "active_targets", "splits", "training_ready")}, sort_keys=True))
+
+
 def launch(args):
     from annotation_labels import load_labels
     from annotate_gui import main as gui_main
@@ -462,12 +468,13 @@ def main():
     s.add_argument("--exclude-results",type=Path,action="append",default=[]); s.add_argument("--execute",action="store_true"); s.add_argument("--allow-public-image-egress",action="store_true")
     s=sub.add_parser("assemble"); s.add_argument("--pilot",type=Path,required=True); s.add_argument("--results",nargs="+",type=Path,required=True); s.add_argument("--out",type=Path,required=True)
     s=sub.add_parser("export"); s.add_argument("--pilot",type=Path,required=True); s.add_argument("--labels",nargs="+",type=Path,required=True); s.add_argument("--out",type=Path,required=True)
+    s=sub.add_parser("export-language"); s.add_argument("--folder",type=Path,required=True); s.add_argument("--out",type=Path,required=True)
     s=sub.add_parser("report"); s.add_argument("--pilot",type=Path,required=True); s.add_argument("--labels",nargs="*",type=Path,default=[]); s.add_argument("--out",type=Path)
     s=sub.add_parser("launch"); s.add_argument("--pilot",type=Path,required=True); s.add_argument("--annotator-id",default=getpass.getuser())
     sub.add_parser("self-check")
     args=p.parse_args()
     if args.command=="self-check": self_check()
-    else: globals()[args.command](args)
+    else: globals()[args.command.replace("-", "_")](args)
 
 
 if __name__=="__main__": main()

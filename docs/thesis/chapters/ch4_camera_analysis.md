@@ -5,6 +5,10 @@ last_synced: 2026-05-29
 last_updated: 2026-06-05
 chapter: 4_camera_analysis
 needs_update_reason: >-
+  2026-09-16 execution adds explicit calibration provenance and device-backed Pro
+  command wiring pending integrated/device qualification. EV-CA-PARTIAL-INTAKE-001
+  covers real sparse issue backward, not spatial training or model accuracy.
+  EV-CA-REVIEW-RECOVERY-001 covers reviewer recovery, not human-gold judgments.
   2026-09-13 Q05 sync added camera contract evidence that is not yet reflected in this
   chapter and must not be overstated in prose: EV-CA-V3-001/CL-CA-031 (fail-closed v3
   validator, 61-case behavioral parity), EV-CA-REGISTRY-001/CL-CA-030 (20-operation and

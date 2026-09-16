@@ -10,7 +10,15 @@
 //  invented probabilities.
 //
 
+import CryptoKit
 import Foundation
+
+/// Calibration is tied to the producer of the raw score. A curve fitted to
+/// one source cannot certify another source merely because both use 0...1.
+enum CameraCalibrationInputVersion: String, Codable, Sendable {
+    case boundedPlanConfidenceV1 = "bounded_plan_confidence.v1"
+    case technicalStabilityConfidenceV1 = "technical_stability_confidence.v1"
+}
 
 /// One knot of a piecewise-linear calibration curve. Knots must be sorted by
 /// ascending `raw` with non-decreasing `calibrated` (isotonic shape).
@@ -30,6 +38,23 @@ struct CameraCalibrationCurveV1: Codable, Equatable, Sendable {
     /// model is being asked about evidence it did not see — abstain.
     let domainLow: Double
     let domainHigh: Double
+    /// Absent in historical tables. Such tables remain usable for offline
+    /// interpolation, but cannot certify a production episode's evidence.
+    let inputVersion: CameraCalibrationInputVersion?
+
+    init(actionID: String,
+         version: Int,
+         knots: [CameraCalibrationKnotV1],
+         domainLow: Double,
+         domainHigh: Double,
+         inputVersion: CameraCalibrationInputVersion? = nil) {
+        self.actionID = actionID
+        self.version = version
+        self.knots = knots
+        self.domainLow = domainLow
+        self.domainHigh = domainHigh
+        self.inputVersion = inputVersion
+    }
 
     enum ValidationError: Error, Equatable, Sendable {
         case emptyCurve
@@ -132,9 +157,27 @@ enum CameraCalibratedOutcome: Equatable, Sendable {
     }
 }
 
+/// The probability and exact calibration rule travel together. Only the
+/// calibrator can construct this value; a planner threshold is not evidence.
+struct CameraCalibratedActionEvidence: Equatable, Sendable {
+    let probability: Double
+    let calibrationReference: String
+
+    fileprivate init(probability: Double, calibrationReference: String) {
+        self.probability = probability
+        self.calibrationReference = calibrationReference
+    }
+}
+
 /// The calibration layer used by the advice planner.
-struct CameraConfidenceCalibrator {
+struct CameraConfidenceCalibrator: Sendable {
     let schema: CameraActionCalibrationSchemaV1
+
+    /// No measured/approved episode calibration is bundled yet. Keep this
+    /// empty until its dataset, fit and admission evidence exist.
+    static let unavailable = CameraConfidenceCalibrator(
+        schema: CameraActionCalibrationSchemaV1(entries: [:])
+    )
 
     init(schema: CameraActionCalibrationSchemaV1) {
         self.schema = schema
@@ -142,11 +185,48 @@ struct CameraConfidenceCalibrator {
 
     /// Calibrated probability for one action/class, or an abstention outcome.
     func calibratedProbability(rawLogit: Double, actionID: String) -> CameraCalibratedOutcome {
-        guard let curve = schema.entries[actionID] else { return .unavailable }
+        guard let curve = validatedCurve(actionID: actionID) else { return .unavailable }
         guard let probability = curve.calibratedProbability(forRaw: rawLogit) else {
             return .outOfDomain
         }
         return .calibrated(probability)
+    }
+
+    /// Production handoff: a finite in-domain score, the matching producer
+    /// contract, and a valid action-specific curve are all required. No raw
+    /// score or guardrail threshold is substituted when any part is missing.
+    func calibratedEvidence(rawScore: Double,
+                            actionID: String,
+                            inputVersion: CameraCalibrationInputVersion) -> CameraCalibratedActionEvidence? {
+        guard let reference = calibrationReference(actionID: actionID, inputVersion: inputVersion),
+              let probability = calibratedProbability(rawLogit: rawScore, actionID: actionID).probability else {
+            return nil
+        }
+        return CameraCalibratedActionEvidence(probability: probability, calibrationReference: reference)
+    }
+
+    /// An after-frame may have no corrective candidate. Its measurements can
+    /// still carry the unchanged action calibration reference; this does not
+    /// invent an after-frame probability or reinterpret a missing score as 0.
+    func calibrationReference(actionID: String,
+                              inputVersion: CameraCalibrationInputVersion) -> String? {
+        guard let curve = validatedCurve(actionID: actionID),
+              curve.inputVersion == inputVersion else { return nil }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(curve) else { return nil }
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return "\(schema.schemaVersion):\(digest)"
+    }
+
+    private func validatedCurve(actionID: String) -> CameraCalibrationCurveV1? {
+        guard schema.schemaVersion == CameraActionCalibrationSchemaV1.schemaVersion,
+              !actionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let curve = schema.entries[actionID],
+              curve.actionID == actionID,
+              curve.version > 0,
+              (try? curve.validate()) != nil else { return nil }
+        return curve
     }
 
     /// Batch form used by the planner when several candidates are calibrated

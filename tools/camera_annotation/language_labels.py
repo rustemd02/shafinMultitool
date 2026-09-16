@@ -180,9 +180,10 @@ def summary(value, visual=False):
 def projection(value, kind):
     """Frozen-name partial labels; deliberately NOT a full-fit training record.
 
-    The current v2 JSON intake supports only all-or-none issue review. Preserve
-    per-issue knowledge here until a compatible partial-label adapter is admitted.
-    Never pass this artifact to parse_record or silently turn omissions negative.
+    This historical projection is not itself a training record. The explicit
+    v2.1 export-language adapter consumes nullable issues and retains all source
+    flags/requirements unchanged. Never pass this artifact directly to parse_record
+    or silently turn omissions negative; other heads still need separate admission.
     """
     issue_targets = [None] * len(ISSUES)
     action_targets = [None] * len(ACTIONS)

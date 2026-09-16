@@ -54,6 +54,7 @@ final class SceneRecordingController: @unchecked Sendable {
         qos: .userInitiated
     )
     private let artifactStore: RecordingArtifactStore
+    private let workspaceSource: RecordingWorkspaceSource
     private let makeRecorder: RecorderFactory
     /// M7-008: mandatory start preconditions are validated before any
     /// recorder is created or the lifecycle leaves idle.
@@ -80,10 +81,12 @@ final class SceneRecordingController: @unchecked Sendable {
 
     init(artifactStore: RecordingArtifactStore,
          sourceOwnerID: UUID = UUID(),
+         source: RecordingWorkspaceSource = .arWorkspace,
          preflight: (any RecordingStartPreflighting)? = nil,
          makeRecorder: @escaping RecorderFactory) {
         self.artifactStore = artifactStore
         self.sourceOwnerID = sourceOwnerID
+        self.workspaceSource = source
         // The unit-seam default is deliberately availability-neutral so
         // tests never depend on the host's real privacy/audio-session state;
         // production wiring (convenience init) supplies the real checkers.
@@ -129,9 +132,12 @@ final class SceneRecordingController: @unchecked Sendable {
     /// artifact-store operations so UI code never handles filesystem paths.
     func promoteFinalizedArtifact(
         _ artifact: RecordingArtifact,
-        projectID: UUID
+        projectID: UUID,
+        expectedProjectUpdatedAt: Date? = nil
     ) throws -> SceneRecordingReference {
-        try artifactStore.promoteFinalizedArtifact(artifact, projectID: projectID)
+        try artifactStore.promoteFinalizedArtifact(
+            artifact, projectID: projectID, expectedProjectUpdatedAt: expectedProjectUpdatedAt
+        )
     }
 
     func resolve(_ reference: SceneRecordingReference) -> RecordingArtifact? {
@@ -163,6 +169,14 @@ final class SceneRecordingController: @unchecked Sendable {
     /// M1-010 canonical lifecycle projection of the current controller state.
     var canonicalLifecycleState: RecordingLifecycleState {
         withState { lifecycle.canonical }
+    }
+
+    /// Native append failures may precede an operator STOP. The owning route
+    /// reads this bounded snapshot while recording and joins the same stop
+    /// operation; callers fence an awaited result by their take/controller ID.
+    func recorderStateSnapshot() async -> RecorderStateSnapshot? {
+        let currentRecorder = withState { recorder }
+        return await currentRecorder?.stateSnapshot()
     }
 
     var frameFence: RecordingFrameFence? {
@@ -453,12 +467,15 @@ final class SceneRecordingController: @unchecked Sendable {
                 throw preflightFailure
             }
 
-            let outputURL = try artifactStore.makePendingURL()
+            // One identity owns the writer, Pending path and promotion journal.
+            // Retention must be able to bind a live Pending movie to its intent.
+            let recordingID = RecordingID(rawValue: UUID())
+            let outputURL = try artifactStore.makePendingURL(recordingID: recordingID.rawValue)
             // M7-005: the writer is built from the active capture format —
             // dimensions come from the actual buffer and the pixel format from
             // that buffer's native FourCC, not from a requested preset.
             let configuration = RecordingConfiguration(
-                id: RecordingID(rawValue: UUID()),
+                id: recordingID,
                 outputURL: outputURL,
                 width: width,
                 height: height,
@@ -469,7 +486,7 @@ final class SceneRecordingController: @unchecked Sendable {
                 trackTransform: trackTransform
             )
             let sourceToken = RecordingOwnerToken(
-                source: .arWorkspace,
+                source: workspaceSource,
                 ownerID: sourceOwnerID,
                 recordingID: configuration.id,
                 generation: nextSourceGeneration()

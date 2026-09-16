@@ -17,6 +17,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     private let writerFactory: any RecordingWriterFactory
     private let audioDriverFactory: (any RecordingAudioDriverFactory)?
     private let outputChecker: any RecordingOutputChecking
+    private let frameAdmission: RecordingFrameAdmissionGate
     private let maxConsecutiveDroppedFrames: Int
     private let finalizationTimeout: TimeInterval
     /// M7-030: bounded redacted diagnostics sink. Called only from the
@@ -51,11 +52,16 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
          outputChecker: any RecordingOutputChecking = LocalRecordingOutputChecker(),
          queueLabel: String = "com.shafinMultitool.serializedMediaRecorder",
          maxConsecutiveDroppedFrames: Int = 900,
+         maxQueuedVideoFrames: Int = 4,
+         maxQueuedAudioFrames: Int = 16,
          finalizationTimeout: TimeInterval = 10,
          diagnostics: (any RecordingDiagnosticsEmitting)? = nil) {
         self.writerFactory = writerFactory
         self.audioDriverFactory = audioDriverFactory
         self.outputChecker = outputChecker
+        self.frameAdmission = RecordingFrameAdmissionGate(
+            videoCapacity: maxQueuedVideoFrames, audioCapacity: maxQueuedAudioFrames
+        )
         self.queue = DispatchQueue(label: queueLabel, qos: .userInitiated)
         self.queue.setSpecific(key: Self.queueSpecificKey, value: UUID())
         // M7-011: ≈15 s of continuous writer backpressure at 60 fps before
@@ -80,6 +86,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     func timebaseReport() async -> RecordingTimebaseReport {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
+                drainSubmissionStatisticsOnQueue()
                 continuation.resume(returning: timebase.report())
             }
         }
@@ -97,21 +104,25 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     func stateSnapshot() async -> RecorderStateSnapshot {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
+                drainSubmissionStatisticsOnQueue()
                 continuation.resume(returning: RecorderStateSnapshot(
                     state: stateStorage,
                     recordingID: currentConfiguration?.id,
                     generation: activeGeneration,
-                    ownerToken: activeSourceOwnerToken
+                    ownerToken: activeSourceOwnerToken,
+                    droppedVideoCount: timebase.droppedVideoCount,
+                    droppedAudioCount: timebase.droppedAudioCount
                 ))
             }
         }
     }
 
     func prepare(_ configuration: RecordingConfiguration) async throws {
+        let admissionGeneration = frameAdmission.preparationGeneration
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             queue.async { [self] in
                 do {
-                    try prepareOnQueue(configuration)
+                    try prepareOnQueue(configuration, admissionGeneration: admissionGeneration)
                     continuation.resume()
                 } catch {
                     continuation.resume(throwing: error)
@@ -134,7 +145,8 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     }
 
     func stop(reason: RecordingStopReason) async -> RecordingStopResult {
-        await withCheckedContinuation { continuation in
+        frameAdmission.close()
+        return await withCheckedContinuation { continuation in
             queue.async { [self] in
                 handleStopOnQueue(reason: reason, continuation: continuation)
             }
@@ -142,7 +154,8 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     }
 
     func releaseAndWait() async -> RecordingStopResult? {
-        await withCheckedContinuation { continuation in
+        frameAdmission.close()
+        return await withCheckedContinuation { continuation in
             queue.async { [self] in
                 handleReleaseOnQueue(continuation)
             }
@@ -166,14 +179,28 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     }
 
     func enqueueVideo(_ frame: RecordingVideoFrame) {
-        queue.async { [self] in
-            appendVideoOnQueue(frame)
+        _ = frameAdmission.reserveVideo(frame) {
+            queue.async { [self] in
+                defer {
+                    frameAdmission.release(.video)
+                    drainSubmissionStatisticsOnQueue()
+                }
+                drainSubmissionStatisticsOnQueue()
+                appendVideoOnQueue(frame)
+            }
         }
     }
 
     func enqueueAudio(_ frame: RecordingAudioFrame) {
-        queue.async { [self] in
-            appendAudioOnQueue(frame)
+        _ = frameAdmission.reserveAudio(frame) {
+            queue.async { [self] in
+                defer {
+                    frameAdmission.release(.audio)
+                    drainSubmissionStatisticsOnQueue()
+                }
+                drainSubmissionStatisticsOnQueue()
+                appendAudioOnQueue(frame)
+            }
         }
     }
 
@@ -223,7 +250,8 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
 
     // MARK: - Prepare/start
 
-    private func prepareOnQueue(_ configuration: RecordingConfiguration) throws {
+    private func prepareOnQueue(_ configuration: RecordingConfiguration,
+                                admissionGeneration: UInt64) throws {
         if stateStorage == .prepared,
            let currentConfiguration,
            currentConfiguration == configuration {
@@ -231,6 +259,9 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
         }
 
         guard stateStorage == .idle else {
+            throw RecorderFailure.invalidTransition
+        }
+        guard frameAdmission.prepare(expectedGeneration: admissionGeneration) else {
             throw RecorderFailure.invalidTransition
         }
 
@@ -317,6 +348,11 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
             ownerToken: activeSourceOwnerToken
         )
 
+        guard frameAdmission.open(fence: frameFence, audioEnabled: configuration.audioMode == .required) else {
+            failStartOnQueue(.invalidTransition, writer: preparedWriter, audioDriver: preparedAudioDriver)
+            throw RecorderFailure.invalidTransition
+        }
+
         if let preparedAudioDriver {
             let frameHandler: RecordingAudioFrameHandler = { [weak self] timestamp, payload in
                 self?.enqueueAudio(RecordingAudioFrame(
@@ -347,6 +383,8 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     }
 
 #if DEBUG
+    var frameSubmissionOpenForTesting: Bool { frameAdmission.isOpenForTesting }
+
     static func thermalStateNameForTesting(_ state: ProcessInfo.ThermalState) -> String {
         thermalStateName(state)
     }
@@ -365,6 +403,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     private func failStartOnQueue(_ failure: RecorderFailure,
                                   writer failedWriter: any RecordingWriter,
                                   audioDriver failedAudioDriver: (any RecordingAudioDriver)?) {
+        frameAdmission.close()
         failedAudioDriver?.stop()
         failedWriter.discard()
         writer = nil
@@ -377,6 +416,23 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     }
 
     // MARK: - Frame queue
+
+    /// Fold bounded, payload-free admission counters into the existing media
+    /// timeline. Overflow uses the same explicit loss policy as native writer
+    /// backpressure; accepted frames retain their real host-clock timestamps.
+    private func drainSubmissionStatisticsOnQueue() {
+        let counts = frameAdmission.drainStatistics()
+        timebase.recordAdmissionRejection(.inactive, stream: .video, count: counts.inactiveVideo)
+        timebase.recordAdmissionRejection(.inactive, stream: .audio, count: counts.inactiveAudio)
+        timebase.recordAdmissionRejection(.staleSource, stream: .video, count: counts.staleVideo)
+        timebase.recordAdmissionRejection(.staleSource, stream: .audio, count: counts.staleAudio)
+        _ = timebase.recordDroppedAudio(count: counts.droppedAudio)
+        let videoStreak = timebase.recordDroppedVideo(count: counts.droppedVideo)
+        if counts.droppedVideo > 0, videoStreak >= maxConsecutiveDroppedFrames, stateStorage == .recording {
+            diagnostics?.emit(.dropPolicyFired, recordingID: currentConfiguration?.id.rawValue)
+            markAppendFailureOnQueue(.videoAppendFailed)
+        }
+    }
 
     /// M7-010: sample admission reasons. Every rejected sample is counted by
     /// its reason and never reaches the writer.
@@ -508,6 +564,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     }
 
     private func markAppendFailureOnQueue(_ failure: RecorderFailure) {
+        frameAdmission.close()
         if pendingFailure == nil {
             pendingFailure = failure
         }
@@ -524,6 +581,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
 
     private func handleStopOnQueue(reason: RecordingStopReason,
                                    continuation: CheckedContinuation<RecordingStopResult, Never>) {
+        drainSubmissionStatisticsOnQueue()
         if let lastStopResult,
            stateStorage == .finished || stateStorage == .failed || stateStorage == .released {
             continuation.resume(returning: lastStopResult)
@@ -754,6 +812,7 @@ final class SerializedMediaRecorder: MediaRecording, @unchecked Sendable {
     // MARK: - Release
 
     private func handleReleaseOnQueue(_ continuation: CheckedContinuation<RecordingStopResult?, Never>) {
+        drainSubmissionStatisticsOnQueue()
         switch stateStorage {
         case .released:
             continuation.resume(returning: lastStopResult)
@@ -910,27 +969,35 @@ private struct RecordingMediaTimebase {
         case audio
     }
 
-    mutating func recordAdmissionRejection(_ reason: RejectionReason, stream: SampleStream) {
+    mutating func recordAdmissionRejection(_ reason: RejectionReason, stream: SampleStream, count: Int = 1) {
+        guard count > 0 else { return }
         switch (reason, stream) {
         case (.inactive, .video), (.inactive, .audio):
-            rejectedInactiveCount += 1
+            rejectedInactiveCount = Self.saturatingAdd(rejectedInactiveCount, count)
         case (.staleSource, .video), (.staleSource, .audio):
-            rejectedStaleSourceCount += 1
+            rejectedStaleSourceCount = Self.saturatingAdd(rejectedStaleSourceCount, count)
         }
     }
 
     /// M7-011: records one video backpressure drop and returns the current
     /// consecutive-drop streak for the policy decision.
-    mutating func recordDroppedVideo() -> Int {
-        droppedVideoCount += 1
-        consecutiveDroppedVideoCount += 1
+    mutating func recordDroppedVideo(count: Int = 1) -> Int {
+        guard count > 0 else { return consecutiveDroppedVideoCount }
+        droppedVideoCount = Self.saturatingAdd(droppedVideoCount, count)
+        consecutiveDroppedVideoCount = Self.saturatingAdd(consecutiveDroppedVideoCount, count)
         return consecutiveDroppedVideoCount
     }
 
-    mutating func recordDroppedAudio() -> Int {
-        droppedAudioCount += 1
-        consecutiveDroppedAudioCount += 1
+    mutating func recordDroppedAudio(count: Int = 1) -> Int {
+        guard count > 0 else { return consecutiveDroppedAudioCount }
+        droppedAudioCount = Self.saturatingAdd(droppedAudioCount, count)
+        consecutiveDroppedAudioCount = Self.saturatingAdd(consecutiveDroppedAudioCount, count)
         return consecutiveDroppedAudioCount
+    }
+
+    private static func saturatingAdd(_ value: Int, _ increment: Int) -> Int {
+        let (sum, overflow) = value.addingReportingOverflow(max(0, increment))
+        return overflow ? .max : sum
     }
 
     enum Admission {

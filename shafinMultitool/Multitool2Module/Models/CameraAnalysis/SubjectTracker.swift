@@ -98,6 +98,51 @@ struct ObjectTargetBinding: Equatable, Sendable {
     }
 }
 
+/// Immutable geometry from one accepted analysis frame. This is an overlay
+/// presentation context, not a claim about AVCaptureVideoPreviewLayer scanout.
+struct ObjectTrackFrame: Equatable, Sendable {
+    let frameID: String
+    let generation: UInt64
+    let sampleSequence: UInt64
+    let capturedAt: Date
+    let objects: [ObjectTrackState]
+
+    var currentObjects: [ObjectTrackState] {
+        objects.filter {
+            $0.phase == .active
+                && $0.identity.generation == generation
+                && $0.frameID == frameID
+                && $0.sampleSequence == sampleSequence
+                && $0.lastObservedFrameID == frameID
+                && $0.lastObservedSampleSequence == sampleSequence
+                && $0.region?.isDegenerate == false
+        }
+    }
+
+    /// Resolve once, at tap receipt. More than one hit is ambiguous; a class
+    /// label, nearest center or a later frame must not silently choose another.
+    func binding(atSceneX x: Double, y: Double, now: Date,
+                 freshnessMilliseconds: Int, touchSlop: Double = 0.04) -> ObjectTargetBinding? {
+        let age = now.timeIntervalSince(capturedAt) * 1000
+        guard !frameID.isEmpty, generation != 0,
+              age.isFinite, age >= 0, age <= Double(freshnessMilliseconds),
+              x.isFinite, y.isFinite, (0...1).contains(x), (0...1).contains(y),
+              touchSlop.isFinite, touchSlop >= 0 else { return nil }
+        let hits = currentObjects.filter {
+            guard let region = $0.region else { return false }
+            return x >= region.x - touchSlop && x <= region.x + region.width + touchSlop
+                && y >= region.y - touchSlop && y <= region.y + region.height + touchSlop
+        }
+        guard hits.count == 1, let hit = hits.first else { return nil }
+        return ObjectTargetBinding(
+            trackID: hit.identity.trackID,
+            displayLabel: SubjectEntityReference.safeDisplayLabel(hit.label),
+            generation: generation,
+            boundAtFrameID: frameID
+        )
+    }
+}
+
 final class SubjectTracker {
 
     /// Minimum IoU between the tracked region and a candidate to treat them
@@ -225,6 +270,32 @@ final class SubjectTracker {
         )
         state = current
         return current
+    }
+
+    /// Accepts one ordered object batch, including an empty batch. The frame
+    /// returned here freezes the existing tracker owner's result for UI/taps.
+    /// Duplicate/retired samples have no new presentation and no side effects.
+    func acceptObjectFrame(candidates: [SubjectCandidate],
+                           frameID: String,
+                           generation: UInt64,
+                           sampleSequence: UInt64,
+                           capturedAt: Date) -> ObjectTrackFrame? {
+        guard !frameID.isEmpty, generation != 0,
+              capturedAt.timeIntervalSinceReferenceDate.isFinite else { return nil }
+        if let currentGeneration = objectGeneration {
+            guard generation >= currentGeneration else { return nil }
+            if generation == currentGeneration, let previousSequence = objectSampleSequence {
+                guard sampleSequence > previousSequence else { return nil }
+            }
+        }
+        let objects = updateObjects(
+            candidates: candidates, frameID: frameID, generation: generation,
+            sampleSequence: sampleSequence
+        )
+        return ObjectTrackFrame(
+            frameID: frameID, generation: generation, sampleSequence: sampleSequence,
+            capturedAt: capturedAt, objects: objects
+        )
     }
 
     /// Updates the bounded local object set. Detector IDs are frame-local and
@@ -455,9 +526,15 @@ final class SubjectTracker {
 
     /// Clears tracking (new resolution begins a new identity).
     func reset() {
+        resetSubject()
+        resetObjects()
+    }
+
+    /// Primary-person/source changes do not erase the independently updated
+    /// object set. Capture/lifecycle invalidation still uses reset().
+    func resetSubject() {
         state = nil
         framesSinceLastRedetection = 0
-        resetObjects()
     }
 
     /// Clears only the independently tracked object set. The next accepted

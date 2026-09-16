@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import plistlib
 import re
 import sys
 from pathlib import Path, PurePosixPath
@@ -31,6 +32,10 @@ DEFAULT_RECORD_PATH = (
 )
 EXPECTED_SCHEMA = "set-os-release-component-status"
 EXPECTED_SCHEMA_VERSION = 1
+FONT_PROVENANCE_PATH = "docs/implementation/provenance/font-provenance.json"
+SNAPKIT_PROVENANCE_PATH = "docs/implementation/provenance/snapkit-provenance.json"
+SNAPKIT_ACKNOWLEDGEMENTS = "Pods/Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool-acknowledgements"
+SOURCE_TREE_HASH_METHOD = "SHA256 of concatenated UTF-8 lines <file SHA256><two spaces><POSIX relative path><LF>, sorted by relative path, covering all installed files."
 DISPOSITIONS = frozenset(
     {
         "KEEP",
@@ -147,6 +152,181 @@ def _file_digest(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def validate_snapkit_provenance(repo_root: Path, app_root: Path | None = None) -> dict[str, Any]:
+    """Bind the admitted source, CocoaPods locks and full shipped MIT notice."""
+    repo_root = repo_root.resolve()
+    proof = _load_json(repo_root / SNAPKIT_PROVENANCE_PATH, "SnapKit provenance")
+    _strict_keys(proof, {"schema", "schema_version", "verified_at", "id", "version", "upstream_repository",
+        "upstream_commit", "upstream_tag", "podspec_checksum_sha1", "lock_sha256", "source_path",
+        "source_tree_sha256", "source_tree_hash_method", "source_file_count", "source_swift_count", "license",
+        "license_path", "license_sha256", "notice_source_path", "notice_bundle_path", "evidence_receipt_path",
+        "evidence_receipt_sha256", "licensing_basis", "limitations"}, set(), "SnapKit provenance")
+    if proof["schema"] != "set-os-snapkit-provenance" or type(proof["schema_version"]) is not int or proof["schema_version"] != 1:
+        _fail("unsupported SnapKit provenance schema")
+    if (proof["id"] != "snapkit-dependency" or proof["license"] != "MIT" or
+            proof["upstream_repository"] != "https://github.com/SnapKit/SnapKit"):
+        _fail("SnapKit provenance does not identify the admitted MIT upstream")
+    for key in ("upstream_commit", "podspec_checksum_sha1"):
+        if not isinstance(proof[key], str) or not re.fullmatch(r"[0-9a-f]{40}", proof[key]):
+            _fail("SnapKit provenance needs an immutable upstream commit and spec checksum")
+    version = _nonempty_string(proof, "version", "SnapKit provenance")
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) or proof["upstream_tag"] != version:
+        _fail("SnapKit provenance version/tag mismatch")
+    for key in ("source_file_count", "source_swift_count"):
+        if type(proof[key]) is not int or proof[key] <= 0:
+            _fail("SnapKit provenance must cover a non-empty installed source tree")
+    for key in ("lock_sha256", "source_tree_sha256", "license_sha256", "evidence_receipt_sha256"):
+        _sha256(proof[key], "SnapKit " + key)
+    for key in ("source_path", "license_path", "notice_source_path", "notice_bundle_path"):
+        _safe_relative_path(proof[key], "SnapKit " + key)
+    if (proof["source_path"] != "Pods/SnapKit" or proof["license_path"] != "Pods/SnapKit/LICENSE" or
+            proof["notice_source_path"] != "third-party-notices/SnapKit-LICENSE.txt" or
+            proof["notice_bundle_path"] != "SnapKit-LICENSE.txt" or proof["source_tree_hash_method"] != SOURCE_TREE_HASH_METHOD):
+        _fail("SnapKit provenance source/notice path or hashing contract changed")
+
+    def read_file(root: Path, relative: str, label: str) -> bytes:
+        path = root / relative
+        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root.resolve()):
+            _fail(f"{label} is missing, outside its root, or a symlink: {relative}")
+        try:
+            return path.read_bytes()
+        except OSError as exc:
+            _fail(f"cannot read {label}: {exc}")
+
+    lock = read_file(repo_root, "Podfile.lock", "SnapKit Podfile.lock")
+    installed_lock = read_file(repo_root, "Pods/Manifest.lock", "SnapKit installed lock")
+    if lock != installed_lock or hashlib.sha256(lock).hexdigest() != proof["lock_sha256"]:
+        _fail("SnapKit lockfiles differ or changed since source verification")
+    try:
+        lock_text = lock.decode("utf-8")
+    except UnicodeError as exc:
+        _fail(f"SnapKit lock is not UTF-8: {exc}")
+    if (re.findall(r"(?m)^  - SnapKit \(([0-9.]+)\)$", lock_text) != [version] or
+            re.findall(r"(?m)^  SnapKit: ([0-9a-f]{40})$", lock_text) != [proof["podspec_checksum_sha1"]]):
+        _fail("SnapKit lock version/spec checksum does not match provenance")
+    podfile_sha1 = hashlib.sha1(read_file(repo_root, "Podfile", "SnapKit Podfile")).hexdigest()
+    if re.findall(r"(?m)^PODFILE CHECKSUM: ([0-9a-f]{40})$", lock_text) != [podfile_sha1]:
+        _fail("SnapKit Podfile changed after the installed lock")
+
+    source_root = repo_root / proof["source_path"]
+    if source_root.is_symlink() or not source_root.is_dir() or not source_root.resolve().is_relative_to(repo_root):
+        _fail("SnapKit installed source root is missing, outside repository, or a symlink")
+    source_files: list[str] = []
+    try:
+        for path in source_root.rglob("*"):
+            if path.is_symlink() or not (path.is_file() or path.is_dir()):
+                _fail("SnapKit source tree contains a symlink or nonregular entry")
+            if path.is_file():
+                source_files.append(path.relative_to(source_root).as_posix())
+    except OSError as exc:
+        _fail(f"cannot enumerate SnapKit source tree: {exc}")
+    source_files.sort()
+    if len(source_files) != proof["source_file_count"] or sum(name.endswith(".swift") for name in source_files) != proof["source_swift_count"]:
+        _fail("SnapKit source tree file coverage changed")
+    tree_lines = []
+    for relative in source_files:
+        digest = hashlib.sha256(read_file(source_root, relative, "SnapKit source file")).hexdigest()
+        tree_lines.append(f"{digest}  {relative}\n")
+    if hashlib.sha256("".join(tree_lines).encode("utf-8")).hexdigest() != proof["source_tree_sha256"]:
+        _fail("SnapKit source tree SHA mismatch")
+
+    license_bytes = read_file(repo_root, proof["license_path"], "SnapKit upstream license")
+    notice_bytes = read_file(repo_root, proof["notice_source_path"], "SnapKit preserved notice")
+    if hashlib.sha256(license_bytes).hexdigest() != proof["license_sha256"] or notice_bytes != license_bytes:
+        _fail("SnapKit preserved copyright/license notice SHA mismatch")
+    plist_bytes = read_file(repo_root, SNAPKIT_ACKNOWLEDGEMENTS + ".plist", "SnapKit CocoaPods acknowledgement plist")
+    markdown = read_file(repo_root, SNAPKIT_ACKNOWLEDGEMENTS + ".markdown", "SnapKit CocoaPods acknowledgement markdown")
+    try:
+        acknowledgements = plistlib.loads(plist_bytes)
+        entries = acknowledgements.get("PreferenceSpecifiers") if isinstance(acknowledgements, dict) else None
+        if not isinstance(entries, list) or not all(isinstance(row, dict) for row in entries):
+            _fail("SnapKit acknowledgement plist has no valid PreferenceSpecifiers")
+        snapkit_entries = [row for row in entries if row.get("Title") == "SnapKit"]
+        if len(snapkit_entries) != 1:
+            _fail("SnapKit acknowledgement entry must occur exactly once")
+        entry = snapkit_entries[0]
+        footer = entry.get("FooterText")
+        if (entry.get("License") != "MIT" or entry.get("Type") != "PSGroupSpecifier" or
+                not isinstance(footer, str) or footer.encode("utf-8") != license_bytes):
+            _fail("SnapKit acknowledgement does not contain the complete exact MIT notice")
+    except (ValueError, TypeError, OverflowError, UnicodeError) as exc:
+        _fail(f"cannot parse SnapKit acknowledgement plist: {exc}")
+    if license_bytes not in markdown or b"## SnapKit\n" not in markdown:
+        _fail("SnapKit acknowledgement markdown does not contain the exact MIT notice")
+    if b"arvideokit" in markdown.lower() or b"arvideokit" in plist_bytes.lower():
+        _fail("SnapKit acknowledgement contains forbidden ARVideoKit")
+    if app_root is not None:
+        if read_file(app_root, proof["notice_bundle_path"], "bundled SnapKit MIT notice") != license_bytes:
+            _fail("bundled SnapKit MIT notice SHA mismatch")
+    return proof
+
+
+def validate_font_provenance(repo_root: Path, app_root: Path | None = None) -> dict[str, dict[str, Any]]:
+    """Verify the exact admitted font/notice pairs, independently of filenames."""
+    repo_root = repo_root.resolve()
+    proof = _load_json(repo_root / FONT_PROVENANCE_PATH, "font provenance")
+    _strict_keys(proof, {"schema", "schema_version", "verified_at", "upstream_repository", "upstream_commit",
+        "evidence_receipt_path", "evidence_receipt_sha256", "license", "licensing_basis", "limitations", "fonts"}, set(), "font provenance")
+    if proof["schema"] != "set-os-font-provenance" or type(proof["schema_version"]) is not int or proof["schema_version"] != 1:
+        _fail("unsupported font provenance schema")
+    if proof["license"] != "OFL-1.1" or proof["upstream_repository"] != "https://github.com/google/fonts":
+        _fail("font provenance license/upstream is not the admitted OFL source")
+    if not isinstance(proof["upstream_commit"], str) or not re.fullmatch(r"[0-9a-f]{40}", proof["upstream_commit"]):
+        _fail("font provenance needs an immutable upstream commit")
+    _sha256(proof["evidence_receipt_sha256"], "font evidence receipt SHA")
+    rows = _list(proof["fonts"], "font provenance fonts")
+    if not rows:
+        _fail("font provenance is empty")
+    verified: dict[str, dict[str, Any]] = {}
+    bundle_names: set[str] = set()
+    notice_names: set[str] = set()
+
+    def checked_file(root: Path, relative: str, digest: str, label: str) -> None:
+        path = root / relative
+        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root.resolve()):
+            _fail(f"{label} is missing, outside its root, or a symlink: {relative}")
+        try:
+            actual = _file_digest(path)
+        except OSError as exc:
+            _fail(f"cannot read {label}: {exc}")
+        if actual != digest:
+            _fail(f"{label} SHA mismatch: {relative}")
+
+    for raw in rows:
+        row = _mapping(raw, "font provenance row")
+        _strict_keys(row, {"id", "source_path", "bundle_path", "sha256", "notice_path", "notice_bundle_path",
+            "notice_sha256", "upstream_font_path", "upstream_notice_path", "family", "embedded_version"}, set(), "font provenance row")
+        component_id = _nonempty_string(row, "id", "font provenance row")
+        if component_id in verified:
+            _fail("duplicate font provenance component")
+        for key in ("source_path", "bundle_path", "notice_path", "notice_bundle_path", "upstream_font_path", "upstream_notice_path"):
+            _safe_relative_path(row[key], "font provenance " + key)
+        if row["bundle_path"] != Path(row["source_path"]).name or row["notice_bundle_path"] != Path(row["notice_path"]).name:
+            _fail("font provenance bundle paths must preserve source filenames at app root")
+        if row["bundle_path"] in bundle_names or row["notice_bundle_path"] in notice_names:
+            _fail("duplicate font or notice bundle filename")
+        bundle_names.add(row["bundle_path"]); notice_names.add(row["notice_bundle_path"])
+        font_sha = _sha256(row["sha256"], "font SHA")
+        notice_sha = _sha256(row["notice_sha256"], "font notice SHA")
+        checked_file(repo_root, row["source_path"], font_sha, "font source")
+        checked_file(repo_root, row["notice_path"], notice_sha, "font notice source")
+        if app_root is not None:
+            checked_file(app_root, row["bundle_path"], font_sha, "bundled font")
+            checked_file(app_root, row["notice_bundle_path"], notice_sha, "bundled font notice")
+        verified[component_id] = dict(row)
+    info_path = (app_root / "Info.plist") if app_root is not None else (repo_root / "shafinMultitool/Info.plist")
+    try:
+        with info_path.open("rb") as stream:
+            info = plistlib.load(stream)
+            declared = info.get("UIAppFonts") if isinstance(info, dict) else None
+    except (OSError, ValueError, TypeError, plistlib.InvalidFileException) as exc:
+        _fail(f"font provenance cannot read UIAppFonts: {exc}")
+    if (not isinstance(declared, list) or not all(isinstance(name, str) for name in declared) or
+            len(declared) != len(set(declared)) or set(declared) != bundle_names):
+        _fail("font provenance does not cover exactly UIAppFonts")
+    return verified
 
 
 def _load_inventory_rows(path: Path) -> list[dict[str, Any]]:
@@ -568,6 +748,20 @@ def validate_record(
             _fail(f"app root is missing or is a symlink: {app_root}")
     record = _load_json(record_path, "status record")
     results = _validate_record_shape(record, repo_root, app_root)
+    approved_fonts = [component for component, _ in results if component["kind"] == "font" and
+                      component["legal_state"] == "APPROVED" and component["release_config_membership"]["Release"] == "bundled"]
+    if approved_fonts:
+        font_proof = validate_font_provenance(repo_root, app_root)
+        for component in approved_fonts:
+            proved = font_proof.get(component["id"])
+            if proved is None or proved["source_path"] != component["expected"]["source_path"]:
+                _fail("approved font lacks matching hash-bound provenance: " + component["id"])
+    approved_snapkit = [component for component, _ in results if component["id"] == "snapkit-dependency" and
+                        component["legal_state"] == "APPROVED" and component["release_config_membership"]["Release"] == "bundled"]
+    if approved_snapkit:
+        snapkit_proof = validate_snapkit_provenance(repo_root, app_root)
+        if approved_snapkit[0]["expected"]["source_path"] != snapkit_proof["source_path"]:
+            _fail("approved SnapKit lacks matching hash-bound source provenance")
     blockers: list[dict[str, Any]] = []
     for component, blocker in results:
         if blocker is None:
@@ -607,8 +801,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", required=True, type=Path)
     parser.add_argument("--record", type=Path, default=DEFAULT_RECORD_PATH)
     parser.add_argument("--app", type=Path, help="optional exact built Release app to inspect")
+    scope_options = parser.add_mutually_exclusive_group()
+    scope_options.add_argument("--fonts-only", action="store_true", help="verify admitted font/notice hashes only; not a full release decision")
+    scope_options.add_argument("--snapkit-only", action="store_true", help="verify SnapKit source and full MIT notice only; not a full release decision")
     args = parser.parse_args(argv)
     try:
+        if args.fonts_only:
+            fonts = validate_font_provenance(args.repo_root, args.app)
+            scope = "bundle" if args.app is not None else "source"
+            print(f"PASS FONT PROVENANCE: scope={scope} fonts={len(fonts)} notices={len(fonts)}; other release gates remain separate")
+            return 0
+        if args.snapkit_only:
+            proof = validate_snapkit_provenance(args.repo_root, args.app)
+            scope = "bundle" if args.app is not None else "source"
+            print(f"PASS SNAPKIT PROVENANCE: scope={scope} version={proof['version']} files={proof['source_file_count']} license=MIT; other release gates remain separate")
+            return 0
         blockers = validate_record(args.repo_root, args.record, args.app)
     except ComponentStatusValidationError as exc:
         print(f"FAIL COMPONENT STATUS: {exc}", file=sys.stderr)

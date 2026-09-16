@@ -179,6 +179,13 @@ final class CameraViewModel: ObservableObject {
     @Published var availableLenses: [CameraLens] = []
     @Published private(set) var lensSwitchPresentationState: CameraLensSwitchPresentationState = .idle
     @Published private(set) var lensSwitchRequestedLens: CameraLens?
+    @Published private(set) var proControlsSnapshot: CameraProControlsSnapshot?
+    @Published private(set) var proControlError: CameraProControlError?
+    @Published private(set) var isApplyingProControl = false
+    @Published private(set) var isFocusingProControl = false
+    @Published private(set) var isFocusPointSelectionActive = false
+    @Published private(set) var proAudioLevel: Float?
+    @Published private(set) var proAudioMeterEnabled = false
     /// Legacy read access remains available to callers/tests, but this value is
     /// intentionally not published. The HUD observes `nominalTimecodePublisher`
     /// so clock ticks do not rebuild the capture owner.
@@ -264,6 +271,12 @@ final class CameraViewModel: ObservableObject {
 
     private let cameraManager: CameraManager
     private let analysisPipeline: AnalysisPipeline
+    /// The shared recording owner uses CameraManager's raw capture feed. Tests
+    /// that exercise analysis alone do not create persistence or microphone work.
+    @Published private(set) var recordingCoordinator: CameraCoachRecordingCoordinator?
+    @Published private(set) var recordingInitializationFailed = false
+    private let recordingCoordinatorFactory: (@MainActor () throws -> CameraCoachRecordingCoordinator)?
+    private var recordingStopTask: Task<Void, Never>?
     private let lensSwitchOperation: @Sendable (CameraLens) async -> CameraLensSwitchResult
     private let lensSelectionHaptic: SETHapticPerforming
     private var cancellables = Set<AnyCancellable>()
@@ -274,6 +287,8 @@ final class CameraViewModel: ObservableObject {
     private var lifecycleIntent = UUID()
     private var lensSwitchTask: Task<Void, Never>?
     private var lensSwitchIntent = UUID()
+    private var proControlTask: Task<Void, Never>?
+    private var proControlIntent = UUID()
     /// A route exit is terminal for this Camera Coach instance. The shell owns
     /// the replacement route, so a late view/presentation callback must not
     /// restart capture after this owner has begun releasing its session.
@@ -289,9 +304,13 @@ final class CameraViewModel: ObservableObject {
          analysisPipeline: AnalysisPipeline,
          lensSwitchOperation: (@Sendable (CameraLens) async -> CameraLensSwitchResult)? = nil,
          lensSelectionHaptic: SETHapticPerforming? = nil,
-         performanceStore: CameraRuntimePerformanceStore = .shared) {
+         performanceStore: CameraRuntimePerformanceStore = .shared,
+         recordingCoordinator: CameraCoachRecordingCoordinator? = nil,
+         recordingCoordinatorFactory: (@MainActor () throws -> CameraCoachRecordingCoordinator)? = nil) {
         self.cameraManager = cameraManager
         self.analysisPipeline = analysisPipeline
+        self.recordingCoordinator = recordingCoordinator
+        self.recordingCoordinatorFactory = recordingCoordinatorFactory
         self.pauseCutMarkController = SETPauseCutMarkController(eventLedger: motionEventLedger)
         self.lensSelectionHaptic = lensSelectionHaptic ?? SETHapticFeedback()
         self.effectivePerformance = performanceStore.currentSnapshot
@@ -350,6 +369,14 @@ final class CameraViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        cameraManager.proControlsPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] snapshot in
+                guard let self, !self.routeExitRequested else { return }
+                self.proControlsSnapshot = snapshot
+            }
+            .store(in: &cancellables)
+
         NotificationCenter.default.publisher(for: CameraRuntimePerformanceStore.notification)
             .compactMap { notification in
                 notification.userInfo?[CameraRuntimePerformanceStore.snapshotUserInfoKey]
@@ -375,6 +402,29 @@ final class CameraViewModel: ObservableObject {
                 self?.reportAnalysisFailure(event.failure, generation: event.generation)
             }
             .store(in: &cancellables)
+
+        if recordingCoordinator != nil { observeRecordingCoordinator() }
+        else { retryRecordingPreparation() }
+    }
+
+    func retryRecordingPreparation() {
+        guard !routeExitRequested, recordingCoordinator == nil,
+              let recordingCoordinatorFactory else { return }
+        do {
+            recordingCoordinator = try recordingCoordinatorFactory()
+            recordingInitializationFailed = false
+            observeRecordingCoordinator()
+        } catch {
+            recordingInitializationFailed = true
+        }
+    }
+
+    private func observeRecordingCoordinator() {
+        guard let recordingCoordinator else { return }
+        recordingCoordinator.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        recordingCoordinator.$meterEnabled.assign(to: &$proAudioMeterEnabled)
     }
 
     func start() {
@@ -458,6 +508,7 @@ final class CameraViewModel: ObservableObject {
     func beginRouteExit() {
         guard !routeExitRequested else { return }
         routeExitRequested = true
+        invalidateProControlPresentation()
 
         lifecycleTask?.cancel()
         lifecycleTask = nil
@@ -491,6 +542,14 @@ final class CameraViewModel: ObservableObject {
         handleCameraFailure(.sessionInterrupted)
     }
 
+    /// The UIKit scene adapter awaits writer finalization and persistence under
+    /// its existing background task before releasing the capture graph.
+    func handleSceneDidEnterBackground() async {
+        await recordingCoordinator?.handleBackground()
+        reportSceneInactive()
+        if let releaseOperation { await awaitReleaseOperation(releaseOperation) }
+    }
+
     func releaseAndWait() async {
         cancelCoachingEpisode(reason: .routeExit)
         let intent = beginLifecycleRequest(.stopping)
@@ -519,8 +578,12 @@ final class CameraViewModel: ObservableObject {
                 await self.awaitFailedStartRollback(pendingRollback)
             }
 
-            // Full release order: stop frame production, fence pipeline work and
-            // registrations, then release the camera configuration.
+            // Close recording admission and await finalize/save before capture
+            // teardown. A camera failure remains retryable; route exit is terminal.
+            await self.finishRecordingBeforeCaptureStop()
+            if self.routeExitRequested {
+                _ = await self.recordingCoordinator?.releaseAndWait(reason: .routeExit)
+            }
             await self.cameraManager.stopAndWait()
             await self.analysisPipeline.releaseAndWait()
             await self.cameraManager.releaseAndWait()
@@ -536,6 +599,12 @@ final class CameraViewModel: ObservableObject {
     }
 
     private func beginLifecycleRequest(_ requestedState: CameraLifecycleState) -> UUID {
+        // An idempotent start keeps the same physical session and pending
+        // device operation. Preserve its waiter/progress, including another
+        // start arriving while the first start waiter is being scheduled.
+        if requestedState != .starting || cameraManager.lifecycleState != .running {
+            invalidateProControlPresentation()
+        }
         lifecycleTask?.cancel()
         lensSwitchTask?.cancel()
         lensSwitchTask = nil
@@ -604,6 +673,9 @@ final class CameraViewModel: ObservableObject {
     }
 
     private func clearPresentationProjection() {
+        invalidateProControlPresentation()
+        proControlsSnapshot = nil
+        proAudioMeterEnabled = false
         pauseRequestToken = nil
         acceptedPauseRequestToken = nil
         pauseDisplayRenderTask?.cancel()
@@ -653,6 +725,8 @@ final class CameraViewModel: ObservableObject {
     }
 
     private func performStart(intent: UUID) async {
+        if let recordingStopTask { await recordingStopTask.value }
+        guard !Task.isCancelled, lifecycleIntent == intent else { return }
         do {
             try await cameraManager.startAndWait()
             guard !Task.isCancelled, lifecycleIntent == intent else { return }
@@ -743,10 +817,35 @@ final class CameraViewModel: ObservableObject {
     private func performStop(intent: UUID) async {
         timecodeSession.pause()
         publishNominalTimecode()
+        await finishRecordingBeforeCaptureStop()
+        guard !Task.isCancelled, lifecycleIntent == intent else { return }
         await cameraManager.stopAndWait()
         guard !Task.isCancelled, lifecycleIntent == intent else { return }
         lifecycleState = cameraManager.lifecycleState
         lifecycleError = cameraManager.lifecycleError
+    }
+
+    private func finishRecordingBeforeCaptureStop() async {
+        if let recordingStopTask { await recordingStopTask.value; return }
+        guard let recordingCoordinator else { return }
+        let task = Task { @MainActor in
+            await recordingCoordinator.suspendAndWait(reason: .interruption)
+        }
+        recordingStopTask = task
+        await task.value
+        recordingStopTask = nil
+    }
+
+    var hasActiveRecording: Bool {
+        guard let phase = recordingCoordinator?.phase else { return false }
+        return phase == .preparing || phase == .recording || phase == .finalizing || phase == .saving
+    }
+
+    var canStartRecording: Bool {
+        lifecycleState == .running && !routeExitRequested && !isPaused
+            && !isPauseCapturePending && !lensSwitchPresentationState.isSwitching
+            && !isApplyingProControl && !hasActiveRecording && recordingStopTask == nil
+            && proControlsSnapshot != nil
     }
 
     private func startCaptureRegistrationIfNeeded(for intent: UUID) -> Bool {
@@ -868,7 +967,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     func togglePause() {
-        guard !routeExitRequested else { return }
+        guard !routeExitRequested, !hasActiveRecording else { return }
         analysisPipeline.clearLivePresentationState()
         if isPaused {
             pauseDisplayRenderTask?.cancel()
@@ -1006,6 +1105,11 @@ final class CameraViewModel: ObservableObject {
     
     func switchLens(to lens: CameraLens) {
         guard !routeExitRequested else { return }
+        guard !hasActiveRecording else {
+            lensSwitchPresentationState = .failed(.recordingInProgress)
+            return
+        }
+        invalidateProControlPresentation()
         // Invalidate the current episode before the asynchronous lens switch
         // starts. A delayed result from the old lens must not remain eligible
         // while CameraManager is changing the capture input.
@@ -1060,6 +1164,113 @@ final class CameraViewModel: ObservableObject {
                 lifecycleError = cameraManager.lifecycleError
             }
         }
+    }
+
+    var canApplyProControl: Bool {
+        lifecycleState == .running && !routeExitRequested && !isPaused
+            && !isPauseCapturePending && !lensSwitchPresentationState.isSwitching
+            && !isApplyingProControl && !hasActiveRecording && proControlsSnapshot != nil
+    }
+
+    /// Called by the panel's SwiftUI task; closing it cancels this bounded
+    /// readback loop. The device is sampled on its existing session queue.
+    func observeProControlsWhilePresented() async {
+        while !Task.isCancelled, !routeExitRequested, lifecycleState == .running {
+            let snapshot = await cameraManager.proControlsSnapshotAndWait()
+            guard !Task.isCancelled, !routeExitRequested else { return }
+            proControlsSnapshot = snapshot
+            proAudioLevel = cameraManager.audioLevel
+            do { try await Task.sleep(for: .milliseconds(500)) }
+            catch { return }
+        }
+    }
+
+    func applyProControl(_ command: CameraProControlCommand) {
+        guard canApplyProControl, let snapshot = proControlsSnapshot else {
+            proControlError = .unavailable
+            return
+        }
+        isFocusPointSelectionActive = false
+        proControlError = nil
+        isApplyingProControl = true
+        if case .focusPoint = command { isFocusingProControl = true }
+        let intent = UUID()
+        proControlIntent = intent
+        // Controls alter the evidence used by the current coaching episode.
+        // CameraManager advances the capture generation before native apply.
+        cancelCoachingEpisode(reason: .cameraGenerationChange)
+        clearLiveAdviceForAnalysisBoundary()
+        proControlTask = Task { [weak self, cameraManager] in
+            let result = await cameraManager.applyProControl(
+                command, expectedDeviceID: snapshot.deviceID,
+                expectedCaptureGeneration: snapshot.captureGeneration
+            )
+            let observed = await cameraManager.proControlsSnapshotAndWait()
+            guard let self, !Task.isCancelled, self.proControlIntent == intent,
+                  !self.routeExitRequested else { return }
+            self.proControlsSnapshot = observed
+            self.isApplyingProControl = false
+            self.isFocusingProControl = false
+            self.proControlTask = nil
+            if case .failure(let error) = result { self.proControlError = error }
+        }
+    }
+
+    func beginProFocusPointSelection() {
+        guard canApplyProControl, proControlsSnapshot?.capabilities.tapFocusLock == true else { return }
+        proControlError = nil
+        isFocusPointSelectionActive = true
+    }
+
+    func cancelProFocusPointSelection() { isFocusPointSelectionActive = false }
+
+    func handleProFocusPoint(_ devicePoint: CGPoint) {
+        guard isFocusPointSelectionActive else { return }
+        isFocusPointSelectionActive = false
+        applyProControl(.focusPoint(devicePoint))
+    }
+
+    func enableProAudioMeter() {
+        setProAudioMeterEnabled(true)
+    }
+
+    private func setProAudioMeterEnabled(_ enabled: Bool) {
+        guard canApplyProControl else { return }
+        guard let recordingCoordinator else { proControlError = .unavailable; return }
+        proControlError = nil
+        isApplyingProControl = true
+        let intent = UUID()
+        proControlIntent = intent
+        proControlTask = Task { [weak self, recordingCoordinator] in
+            await recordingCoordinator.setMeterEnabled(enabled)
+            guard let self, !Task.isCancelled, self.proControlIntent == intent,
+                  !self.routeExitRequested else { return }
+            self.isApplyingProControl = false
+            self.proControlTask = nil
+            self.proAudioMeterEnabled = recordingCoordinator.meterEnabled
+            if recordingCoordinator.meterEnabled != enabled {
+                switch recordingCoordinator.issue {
+                case .permission: self.proControlError = .microphoneDenied
+                case .busy: self.proControlError = .busy
+                default: self.proControlError = .unavailable
+                }
+            }
+        }
+    }
+
+    private func invalidateProControlPresentation() {
+        proControlIntent = UUID()
+        proControlTask?.cancel()
+        proControlTask = nil
+        isApplyingProControl = false
+        isFocusingProControl = false
+        isFocusPointSelectionActive = false
+        proControlError = nil
+        proAudioLevel = nil
+    }
+
+    func disableProAudioMeter() {
+        setProAudioMeterEnabled(false)
     }
 
     private func startFeaturePolling() {

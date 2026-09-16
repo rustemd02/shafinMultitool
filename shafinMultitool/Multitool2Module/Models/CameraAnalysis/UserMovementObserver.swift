@@ -45,14 +45,26 @@ struct UserMovementEntityObservation: Equatable, Sendable {
     let trackID: String?
     let visibility: UserMovementEntityVisibility
     let region: NormalizedRect?
+    /// Present only for a measurement linked to the accepted production pixels.
+    /// Legacy fixtures may omit it; the production frame adapter may not.
+    let provenance: UserMovementEntityProvenance?
 
     init?(entityRef: String,
           trackID: String? = nil,
           visibility: UserMovementEntityVisibility,
-          region: NormalizedRect? = nil) {
+          region: NormalizedRect? = nil,
+          provenance: UserMovementEntityProvenance? = nil) {
         let trimmedRef = entityRef.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedRef.isEmpty else { return nil }
         let trimmedTrack = trackID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let provenance {
+            guard provenance.isStructurallyValid,
+                  trimmedRef == provenance.observationRef,
+                  trimmedTrack == provenance.identity.trackID,
+                  visibility == (provenance.clippedEdges == 0 ? .visible : .partial),
+                  let measuredRegion = provenance.measuredRegion,
+                  region == measuredRegion else { return nil }
+        }
         if visibility == .absent {
             guard region == nil else { return nil }
         } else {
@@ -73,10 +85,150 @@ struct UserMovementEntityObservation: Equatable, Sendable {
         self.trackID = (trimmedTrack?.isEmpty == false) ? trimmedTrack : nil
         self.visibility = visibility
         self.region = region
+        self.provenance = provenance
     }
 
     var isObserved: Bool {
         visibility != .absent && region != nil
+    }
+
+    /// Clipped rectangle centres can move when the visible intersection changes.
+    /// They remain observations, but cannot establish an entity displacement.
+    var hasComparableGeometry: Bool { visibility == .visible && region != nil }
+}
+
+/// The detector's semantic clock and Vision's current geometry clock remain
+/// separate. Rectangle visibility is not physical full visibility or motion.
+struct UserMovementEntityProvenance: Equatable, Sendable {
+    let identity: SubjectTrackIdentity
+    let frameID: String
+    let sampleSequence: UInt64
+    let sessionGeneration: UInt64
+    let pipelineGeneration: UInt64
+    let orientationRawValue: UInt32
+    let samplePresentationTimestamp: CMTime
+    let capturedAt: Date
+    let semanticSourceFrameID: String
+    let semanticSamplePresentationTimestamp: CMTime
+    let semanticMeasuredAt: Date
+    let geometryMeasuredAt: Date
+    let semanticSupport: Double
+    let trackingQuality: Float
+    /// Internal request association within semanticSourceFrameID, never identity.
+    let sourceRequestSlot: Int
+    let rawBoundingBox: CGRect
+    let visibleImageIntersection: CGRect
+    let rectangleClippedFraction: Double
+    let clippedEdges: UInt8
+
+    /// A stable observation reference that an accepted action may explicitly
+    /// freeze later. Producing the reference does not create a target or scope.
+    var observationRef: String { "object:\(identity.generation):\(identity.trackID)" }
+
+    var isStructurallyValid: Bool {
+        let captureAge = capturedAt.timeIntervalSince(semanticMeasuredAt)
+        let measuredAge = geometryMeasuredAt.timeIntervalSince(semanticMeasuredAt)
+        let ptsAge = CMTimeGetSeconds(CMTimeSubtract(samplePresentationTimestamp,
+                                                   semanticSamplePresentationTimestamp))
+        return identity.isValid && identity.generation != 0 && sampleSequence > 0
+            && !frameID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !semanticSourceFrameID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && frameID != semanticSourceFrameID
+            && (1...8).contains(orientationRawValue)
+            && samplePresentationTimestamp.isNumeric && semanticSamplePresentationTimestamp.isNumeric
+            && ptsAge.isFinite && ptsAge > 0 && ptsAge <= VisionTracking.maximumObjectSeedAge
+            && capturedAt.timeIntervalSinceReferenceDate.isFinite
+            && semanticMeasuredAt.timeIntervalSinceReferenceDate.isFinite
+            && geometryMeasuredAt.timeIntervalSinceReferenceDate.isFinite
+            && captureAge >= 0 && measuredAge >= captureAge
+            && measuredAge <= VisionTracking.maximumObjectSeedAge
+            && semanticSupport.isFinite && (0...1).contains(semanticSupport)
+            && trackingQuality.isFinite && trackingQuality >= VisionTracking.minimumObjectTrackingQuality
+            && trackingQuality <= 1 && measuredRegion != nil
+    }
+
+    var measuredRegion: NormalizedRect? {
+        guard let geometry = VisionObjectGeometry(seedSlot: sourceRequestSlot, rawBoundingBox: rawBoundingBox),
+              geometry.meetsPublicationArea,
+              geometry.visibleImageIntersection == visibleImageIntersection,
+              geometry.rectangleClippedFraction == rectangleClippedFraction,
+              geometry.clippedEdges.rawValue == clippedEdges else { return nil }
+        let box = geometry.visibleImageIntersection
+        return NormalizedRect(x: Double(box.origin.x), y: Double(box.origin.y),
+                              width: Double(box.size.width), height: Double(box.size.height))
+            .converted(from: .vision, to: .subjectTarget)
+    }
+
+    func matches(envelope: AcceptedFrameEnvelope, pipelineGeneration: UInt64?, asOf: Date) -> Bool {
+        let age = asOf.timeIntervalSince(capturedAt)
+        let semanticAge = asOf.timeIntervalSince(semanticMeasuredAt)
+        return isStructurallyValid && identity.generation == envelope.lensGeneration
+            && frameID == envelope.frameID && capturedAt == envelope.capturedAt
+            && sessionGeneration == envelope.sessionGeneration
+            && self.pipelineGeneration == pipelineGeneration
+            && orientationRawValue == envelope.orientation.rawValue
+            && envelope.samplePresentationTimestamp.isNumeric
+            && CMTimeCompare(samplePresentationTimestamp, envelope.samplePresentationTimestamp) == 0
+            && semanticMeasuredAt == envelope.featureSourceTimestamps[.detr]
+            && age.isFinite && age >= 0
+            && age * 1000 <= Double(LiveCoachQualityGate.maxVisionFreshnessMilliseconds)
+            && geometryMeasuredAt >= capturedAt && geometryMeasuredAt <= asOf
+            && semanticAge.isFinite && semanticAge >= 0
+            && semanticAge <= min(VisionTracking.maximumObjectSeedAge,
+                                  FeatureSourceFreshnessWindows.window(for: .detr))
+    }
+
+    /// Only current identities with exactly one corresponding current rectangle
+    /// can produce an observation. Missing/lost/ambiguous objects produce none;
+    /// an empty list never means that an entity is explicitly absent.
+    static func observations(frame: ObjectTrackFrame,
+                             sample: FeatureSample<FeatureSnapshotDetrPayload>,
+                             pipelineGeneration: UInt64) -> [UserMovementEntityObservation] {
+        guard sample.hasValidTrackingLinkage, let tracking = sample.value.tracking,
+              tracking.current.lifecycleGeneration == pipelineGeneration,
+              frame.frameID == tracking.current.frameID,
+              frame.generation == tracking.current.captureGeneration,
+              frame.capturedAt == tracking.current.capturedAt,
+              let sessionGeneration = tracking.current.sessionGeneration else { return [] }
+        let objects = frame.currentObjects
+        let detections = sample.value.detections
+        func matches(_ object: ObjectTrackState, _ detection: FeatureSnapshotDetectedObject) -> Bool {
+            // These labels/rectangles were copied unchanged through the existing
+            // candidate owner. A label alone, overlap or nearest centre is not a join.
+            guard let region = object.region, object.label == detection.label else { return false }
+            let box = detection.boundingBox
+            return region == NormalizedRect(x: Double(box.origin.x), y: Double(box.origin.y),
+                                            width: Double(box.size.width), height: Double(box.size.height))
+        }
+        return objects.compactMap { object in
+            let indices = detections.indices.filter { matches(object, detections[$0]) }
+            guard object.identity.isValid, indices.count == 1, let index = indices.first,
+                  objects.filter({ matches($0, detections[index]) }).count == 1,
+                  objects.filter({ $0.identity.trackID == object.identity.trackID }).count == 1,
+                  let region = object.region?.converted(from: .vision, to: .subjectTarget) else { return nil }
+            let geometry = tracking.geometries[index]
+            let provenance = Self(
+                identity: object.identity, frameID: frame.frameID, sampleSequence: frame.sampleSequence,
+                sessionGeneration: sessionGeneration, pipelineGeneration: pipelineGeneration,
+                orientationRawValue: tracking.current.orientation.rawValue,
+                samplePresentationTimestamp: tracking.current.samplePTS, capturedAt: frame.capturedAt,
+                semanticSourceFrameID: tracking.source.frameID,
+                semanticSamplePresentationTimestamp: tracking.source.samplePTS,
+                semanticMeasuredAt: tracking.source.capturedAt, geometryMeasuredAt: tracking.geometryMeasuredAt,
+                semanticSupport: detections[index].confidence, trackingQuality: tracking.qualities[index],
+                sourceRequestSlot: geometry.seedSlot, rawBoundingBox: geometry.rawBoundingBox,
+                visibleImageIntersection: geometry.visibleImageIntersection,
+                rectangleClippedFraction: geometry.rectangleClippedFraction,
+                clippedEdges: geometry.clippedEdges.rawValue
+            )
+            return UserMovementEntityObservation(
+                entityRef: provenance.observationRef, trackID: object.identity.trackID,
+                // `visible` means a current rectangle is observed. It does not
+                // certify that the whole physical object is unoccluded.
+                visibility: geometry.hasClippedTrackingGeometry ? .partial : .visible,
+                region: region, provenance: provenance
+            )
+        }
     }
 }
 
@@ -331,6 +483,8 @@ struct UserMovementFrame: Equatable, Sendable {
     init?(snapshot: FrameFeatureSnapshot,
           envelope: AcceptedFrameEnvelope,
           subjectBinding: UserMovementSubjectBinding?,
+          entityObservations: [UserMovementEntityObservation] = [],
+          pipelineGeneration: UInt64? = nil,
           evaluatedAt: Date? = nil,
           isCalibrated: Bool,
           calibrationVersion: String? = nil,
@@ -345,6 +499,16 @@ struct UserMovementFrame: Equatable, Sendable {
 
         let asOf = evaluatedAt ?? envelope.capturedAt
         guard envelope.capturedAt <= asOf else { return nil }
+        guard Set(entityObservations.map(\.entityRef)).count == entityObservations.count,
+              entityObservations.allSatisfy({ observation in
+                  guard let provenance = observation.provenance,
+                        observation.entityRef == provenance.observationRef,
+                        observation.trackID == provenance.identity.trackID,
+                        observation.isObserved,
+                        provenance.matches(envelope: envelope, pipelineGeneration: pipelineGeneration, asOf: asOf)
+                  else { return false }
+                  return snapshot.sources.detr.available
+              }) else { return nil }
         let envelopeAvailability = envelope.sourceAvailability(asOf: asOf)
         let subjectRegion: NormalizedRect?
         let subjectMeasuredAt: Date?
@@ -455,7 +619,8 @@ struct UserMovementFrame: Equatable, Sendable {
                 featureMeasuredAt: measuredAt,
                 featureConfidence: confidence,
                 sourceAvailability: sourceAvailability
-            )
+            ),
+            entityObservations: entityObservations
         )
     }
 }
@@ -927,6 +1092,13 @@ enum UserMovementObserver {
                                  current: UserMovementFrame,
                                  intent: ActionIntent,
                                  targetRefs: [String] = []) -> UserMovementComparison {
+        // Only a single entity displacement currently reads its declared
+        // target's geometry. Scalar metrics still belong to the primary subject,
+        // and cannot establish a different object's area/light/focus change.
+        if !targetRefs.isEmpty && (targetRefs.count != 1 || intent.displacement == nil) {
+            return .uncertain(reason: "unsupported_action", family: intent.family,
+                              metric: metricID(for: intent.metric, displacement: intent.displacement))
+        }
         if intent.family != .stability, !current.motionIsStill {
             return .uncertain(
                 reason: "camera_motion",
@@ -943,10 +1115,10 @@ enum UserMovementObserver {
             let after: NormalizedRect?
             if let targetRef = targetRefs.first {
                 guard let beforeObservation = previous.entityObservation(for: targetRef),
-                      beforeObservation.isObserved,
+                      beforeObservation.hasComparableGeometry,
                       let beforeRegion = beforeObservation.region,
                       let afterObservation = current.entityObservation(for: targetRef),
-                      afterObservation.isObserved,
+                      afterObservation.hasComparableGeometry,
                       let afterRegion = afterObservation.region else {
                     return .uncertain(
                         reason: "target_missing",

@@ -13,6 +13,7 @@ private final class CompositionFakePerformer: AppAttestDevicePerforming, @unchec
     var isSupported = true
     func generateKey() async throws -> String { Data(repeating: 1, count: 32).base64EncodedString() }
     func attestKey(_ keyID: String, clientDataHash: Data) async throws -> Data { Data(repeating: 2, count: 64) }
+    func generateAssertion(_ keyID: String, clientDataHash: Data) async throws -> Data { Data(repeating: 3, count: 64) }
 }
 
 private struct CompositionFakeTokenProvider: SceneServiceTokenProviding {
@@ -33,6 +34,7 @@ final class SceneRemoteServiceCompositionTests: XCTestCase {
     func testNoConfigurationMeansNoRemoteProvider() {
         let provider = SceneRemoteServiceComposition.makeRemoteProvider(
             environment: [:],
+            bundleInfo: [:],
             performer: CompositionFakePerformer(),
             tokenProviderOverride: CompositionFakeTokenProvider(token: "t")
         )
@@ -97,7 +99,7 @@ final class SceneRemoteServiceCompositionTests: XCTestCase {
 
     func testBootstrapStaysOffWithoutConfigurationAndOnUnsupportedDevices() {
         // empty environment: nothing configured, the service is left untouched
-        XCTAssertFalse(SceneRemoteServiceBootstrap.configureIfEnabled(environment: [:]))
+        XCTAssertFalse(SceneRemoteServiceBootstrap.configureIfEnabled(environment: [:], bundleInfo: [:]))
         XCTAssertFalse(SceneParserService.shared.isRemoteOffloadConfigured)
 
         // configured endpoint but a device that cannot attest: still local-only
@@ -135,5 +137,86 @@ final class SceneRemoteServiceCompositionTests: XCTestCase {
             [SceneRemoteServiceComposition.baseURLEnvironmentKey: " https://scene.example.com "]
         )
         XCTAssertEqual(parsed?.baseURL.absoluteString, liveURL)
+    }
+
+    func testJobsAndEnrollmentUseSameVersionedAPIRoot() {
+        for (input, expected) in [
+            ("https://scene.example.com", "https://scene.example.com/v1"),
+            ("https://scene.example.com/v1", "https://scene.example.com/v1"),
+            ("https://scene.example.com/proxy/v1", "https://scene.example.com/proxy/v1")
+        ] {
+            var enrollmentBaseURL: URL?
+            let provider = SceneRemoteServiceComposition.makeRemoteProvider(
+                environment: [:],
+                configuration: configuration(baseURL: input),
+                performer: CompositionFakePerformer(),
+                transportFactory: { baseURL in
+                    enrollmentBaseURL = baseURL
+                    return URLSessionAppAttestEnrollmentTransport(baseURL: baseURL)
+                }
+            )
+            XCTAssertNotNil(provider)
+            XCTAssertEqual(enrollmentBaseURL?.absoluteString, expected)
+        }
+    }
+
+    func testCredentialsAreScopedToAPIOriginAndProxyPrefix() {
+        let namespace = SceneRemoteServiceComposition.credentialNamespace
+        XCTAssertNotEqual(namespace(URL(string: "https://one.example/v1")!),
+                          namespace(URL(string: "https://two.example/v1")!))
+        XCTAssertNotEqual(namespace(URL(string: "https://one.example/v1")!),
+                          namespace(URL(string: "https://one.example/other/v1")!))
+        XCTAssertEqual(namespace(URL(string: "https://one.example/v1")!),
+                       namespace(URL(string: "https://ONE.example:443/v1/")!))
+    }
+
+    func testBundledReleaseConfigurationCarriesEndpointAndVersionContract() throws {
+        let info: [String: Any] = [
+            "SETOSSceneBaseURL": " https://scene.example.com/api/v1 ",
+            "SETOSSceneModelVersion": "deployed-model-4",
+            "SETOSScenePromptVersion": "deployed-prompt-3",
+            "SETOSSceneProviderName": "deployment-provider",
+            "SETOSSceneProviderVersion": "release-2"
+        ]
+        let parsed = try XCTUnwrap(SceneRemoteServiceComposition.configurationFromBundle(info))
+        XCTAssertEqual(parsed.baseURL.absoluteString, "https://scene.example.com/api/v1")
+        XCTAssertEqual(parsed.modelVersion, "deployed-model-4")
+        XCTAssertEqual(parsed.promptVersion, "deployed-prompt-3")
+        XCTAssertEqual(parsed.providerName, "deployment-provider")
+        XCTAssertEqual(parsed.providerVersion, "release-2")
+        var authenticatedBaseURL: URL?
+        XCTAssertNotNil(SceneRemoteServiceComposition.makeRemoteProvider(
+            environment: [:], bundleInfo: info, performer: CompositionFakePerformer(),
+            transportFactory: {
+                authenticatedBaseURL = $0
+                return URLSessionAppAttestEnrollmentTransport(baseURL: $0)
+            }
+        ))
+        XCTAssertEqual(authenticatedBaseURL, parsed.baseURL)
+    }
+
+    func testBundleRejectsMissingUnexpandedAndInvalidDeploymentValues() {
+        XCTAssertNil(SceneRemoteServiceComposition.configurationFromBundle([:]))
+        for rawURL in ["", "$(SETOS_SCENE_BASE_URL)", "http://scene.example.com", "https://user:pass@scene.example.com"] {
+            XCTAssertNil(SceneRemoteServiceComposition.configurationFromBundle(["SETOSSceneBaseURL": rawURL]))
+        }
+        for invalidVersion in ["", "  ", "$(SETOS_SCENE_MODEL_VERSION)"] {
+            XCTAssertNil(SceneRemoteServiceComposition.configurationFromBundle([
+                "SETOSSceneBaseURL": liveURL, "SETOSSceneModelVersion": invalidVersion
+            ]))
+        }
+    }
+
+    func testEnvironmentEndpointOverridesBundledDeployment() {
+        var authenticatedBaseURL: URL?
+        XCTAssertNotNil(SceneRemoteServiceComposition.makeRemoteProvider(
+            environment: [SceneRemoteServiceComposition.baseURLEnvironmentKey: "https://override.example.com"],
+            bundleInfo: ["SETOSSceneBaseURL": liveURL], performer: CompositionFakePerformer(),
+            transportFactory: {
+                authenticatedBaseURL = $0
+                return URLSessionAppAttestEnrollmentTransport(baseURL: $0)
+            }
+        ))
+        XCTAssertEqual(authenticatedBaseURL?.absoluteString, "https://override.example.com/v1")
     }
 }

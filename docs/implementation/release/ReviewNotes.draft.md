@@ -1,18 +1,18 @@
 # Review notes (draft, not submitted)
 
-Status: draft for the owner to edit and paste into App Store Connect. Nothing here
-has been submitted, and no App Store Connect access was used.
+Status, 2026-09-16: technical draft; not ready to paste into App Store Connect.
+The final signed archive, configured service and physical acceptance are still
+open. Nothing here has been submitted and no App Store Connect access was used.
 
 ## What the app does
 
 Shafin Multitool is a camera coach. In Camera mode it analyses the live frame on
-device and shows at most one actionable suggestion ("what is hurting this frame,
-and what to do about it"). In Scene mode it turns a written scene description into
-a staged shot list and keeps the material locally. There is no account and no login.
-The app has no server dependency for camera or scene processing, except that spoken
-scene input uses Apple's Speech service, which may process the microphone audio on
-Apple's servers; nothing is sent to a developer-operated server in this
-configuration.
+device and presents a coaching suggestion when the available evidence supports it.
+The intended Scene flow turns a written description into a staged shot list that
+the user can save and work with locally. Configured cloud Scene generation uses
+the app's backend and provider; local fallback is a separate capability and does
+not establish equivalent generation quality. There is no user-account sign-in;
+backend access uses installation authentication through App Attest.
 
 ## What the reviewer needs
 
@@ -22,18 +22,31 @@ configuration.
    (recording with sound, spoken scene input, saving a finished video).
 2. **No account.** Every feature is reachable without sign-in. Nothing needs to be
    purchased to reach the coaching surface.
-3. **On-device processing.** Frames are analysed locally (Apple Vision, bundled
-   Core ML models, a deterministic critique engine). Spoken scene input is the one
-   exception: it is processed by Apple's Speech service, which may receive the audio
-   on Apple's servers (the app's own Speech usage string says so). The remote Scene
-   provider is fail-closed off in this build: without an explicitly configured HTTPS
-   endpoint and App Attest, the app makes no request to it, and the remote
-   visual-evidence provider cannot be constructed in a Release build at all.
+3. **Processing and network use.** Camera frames are analysed locally through
+   Vision, the bundled Core ML baselines and the existing planner. The current
+   Release excludes the research Camera cloud-evidence path. Spoken scene input
+   can use Apple's Speech service. Configured cloud Scene generation sends the
+   scene request to the authenticated HTTPS backend; its actual provider and
+   qualified retention policy must match the final privacy disclosures.
 4. **Silence is a designed state.** When the engine is not confident it shows no
    advice instead of guessing. A missing suggestion is the intended behaviour on
    ambiguous frames, not a failure.
 
-## Known limitation to declare honestly
+## Archive configuration that must be replaced before submission
+
+The unsigned engineering archive produced at `20260916T152044616359Z` has an empty
+`SETOSSceneBaseURL`; its remote Scene route is unavailable. It contains DETR and
+NIMA baselines and excludes the research composition checkpoint and GGUF payloads.
+This archive predates the full Camera recording/current-pixel tracking package.
+It is useful build evidence, not the final working generation or distribution
+artifact. Do not present an unavailable cloud route as a completed offline flow.
+
+Evidence: `../setos-backend/local-data/SETOS/verification/release-execution-20260916/`
+`20260916T152044616359Z-release-archive/` and the subsequent
+`20260916T152455588085Z-archive-validator-repair/` receipt. The repaired bundle gate
+reports ten unresolved component provenance rows; it does not approve distribution.
+
+## Known limitation to verify before writing final notes
 
 The simulator has no camera feed, so the full camera flow cannot be exercised
 there. The owner still has to run the physical-device pass (first launch,

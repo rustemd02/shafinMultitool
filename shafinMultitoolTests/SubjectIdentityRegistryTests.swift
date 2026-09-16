@@ -291,4 +291,44 @@ final class SubjectIdentityRegistryTests: XCTestCase {
             64
         )
     }
+    func testEmptyObservationMakesGraceWindowIdentityUntappableImmediately() {
+        var registry = SubjectIdentityRegistry(generation: 7)
+        registry.observe(detections: [observation(x: 0.1, y: 0.2, w: 0.2, h: 0.3)],
+                         frameId: "f1", sampleSequence: 1)
+        XCTAssertNotNil(registry.instance(atSceneX: 0.2, y: 0.3, frameId: "f1", generation: 7))
+        registry.observe(detections: [], frameId: "f2", sampleSequence: 2)
+        XCTAssertEqual(registry.identities.count, 1, "association grace can retain history")
+        XCTAssertEqual(registry.identities[0].consecutiveMisses, 1)
+        XCTAssertNil(registry.instance(atSceneX: 0.2, y: 0.3, frameId: "f2", generation: 7))
+        XCTAssertNil(registry.instance(atSceneX: 0.2, y: 0.3, frameId: "f1", generation: 7))
+        XCTAssertEqual(registry.multiObjectSummary(frameId: "f2", generation: 7).identityCount, 0)
+    }
+
+    func testDuplicateAndOlderBatchCannotAgeOrReviveIdentity() {
+        var registry = SubjectIdentityRegistry(generation: 7)
+        let detection = observation(x: 0.1, y: 0.2, w: 0.2, h: 0.3)
+        registry.observe(detections: [detection], frameId: "f1", sampleSequence: 1)
+        registry.observe(detections: [], frameId: "f2", sampleSequence: 2)
+        registry.observe(detections: [], frameId: "f2", sampleSequence: 2)
+        registry.observe(detections: [detection], frameId: "f1", sampleSequence: 1)
+        XCTAssertEqual(registry.identities[0].consecutiveMisses, 1)
+        XCTAssertEqual(registry.lastObservedFrameID, "f2")
+        XCTAssertNil(registry.instance(atSceneX: 0.2, y: 0.3, frameId: "f2", generation: 7))
+        registry.observe(detections: [detection], frameId: "f3", sampleSequence: 3)
+        XCTAssertNotNil(registry.instance(atSceneX: 0.2, y: 0.3, frameId: "f3", generation: 7))
+        XCTAssertNil(registry.instance(atSceneX: 0.2, y: 0.3, frameId: "f3", generation: 8))
+    }
+
+    func testOverlapSummaryExcludesObjectsMissingFromCurrentFrame() {
+        var registry = SubjectIdentityRegistry(generation: 7)
+        let left = observation(x: 0.1, y: 0.2, w: 0.3, h: 0.3)
+        let right = observation(x: 0.25, y: 0.2, w: 0.3, h: 0.3)
+        registry.observe(detections: [left, right], frameId: "f1", sampleSequence: 1)
+        XCTAssertEqual(registry.multiObjectSummary().overlappingTrackIDPairs.count, 1)
+        registry.observe(detections: [left], frameId: "f2", sampleSequence: 2)
+        XCTAssertEqual(registry.identities.count, 2)
+        XCTAssertEqual(registry.multiObjectSummary(frameId: "f2", generation: 7).identityCount, 1)
+        XCTAssertTrue(registry.multiObjectSummary().overlappingTrackIDPairs.isEmpty)
+    }
+
 }

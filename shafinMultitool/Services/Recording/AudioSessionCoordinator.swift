@@ -183,6 +183,17 @@ actor AudioSessionCoordinator {
 
     var state: AudioSessionState { stateStorage }
     var currentLease: AudioSessionLease? { leaseStorage }
+    /// One actor turn observes both identity and activation. Separate awaited
+    /// getters could otherwise combine facts from two different leases.
+    func ownsActiveLease(_ lease: AudioSessionLease) -> Bool {
+        leaseStorage == lease && stateStorage == .active
+    }
+
+    func activeRecordingLease(ownerID: UUID) -> AudioSessionLease? {
+        guard let leaseStorage, leaseStorage.ownerID == ownerID,
+              leaseStorage.purpose == .recording, stateStorage == .active else { return nil }
+        return leaseStorage
+    }
     var generation: UInt64 { generationStorage }
 
     func startObservingNotifications() {

@@ -33,10 +33,12 @@ final class CameraTorchTests: XCTestCase {
                       session: AVCaptureSession())
     }
 
-    func testTorchUnsupportedWithoutConfiguredInput() {
+    func testTorchUnsupportedWithoutConfiguredInput() async {
         let manager = makeManager()
-        XCTAssertNil(manager.isTorchActive, "no input means unsupported, not off")
-        XCTAssertNil(manager.setTorchActive(true), "setting torch without a device must fail closed")
+        let snapshot = await manager.proControlsSnapshotAndWait()
+        XCTAssertNil(snapshot, "no input means unsupported, not off")
+        let result = await manager.applyProControl(.torch(true), expectedDeviceID: "missing", expectedCaptureGeneration: 0)
+        XCTAssertEqual(result, .failure(.unavailable), "setting torch without a device must fail closed")
     }
 
     func testTorchStateResetsOnRelease() async throws {
@@ -44,8 +46,10 @@ final class CameraTorchTests: XCTestCase {
         try await manager.startAndWait()
         // The simulator has no torch hardware; the contract under test is
         // that whatever state existed cannot survive release.
-        _ = manager.setTorchActive(false)
+        let result = await manager.applyProControl(.torch(false), expectedDeviceID: "missing", expectedCaptureGeneration: 0)
+        XCTAssertEqual(result, .failure(.stale))
         await manager.releaseAndWait()
-        XCTAssertNil(manager.isTorchActive, "release detaches the device: no stale torch state may survive")
+        let snapshot = await manager.proControlsSnapshotAndWait()
+        XCTAssertNil(snapshot, "release detaches the device: no stale torch state may survive")
     }
 }

@@ -4,6 +4,16 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Shafin Multitool</string>
+	<key>SETOSSceneBaseURL</key>
+	<string>$(SETOS_SCENE_BASE_URL)</string>
+	<key>SETOSSceneModelVersion</key>
+	<string>$(SETOS_SCENE_MODEL_VERSION)</string>
+	<key>SETOSScenePromptVersion</key>
+	<string>$(SETOS_SCENE_PROMPT_VERSION)</string>
+	<key>SETOSSceneProviderName</key>
+	<string>$(SETOS_SCENE_PROVIDER_NAME)</string>
+	<key>SETOSSceneProviderVersion</key>
+	<string>$(SETOS_SCENE_PROVIDER_VERSION)</string>
 	<!-- The app implements no cryptography of its own: it uses Apple's standard
 	     CryptoKit SHA-256 for request digests and App Attest, and talks over
 	     HTTPS. Export compliance is therefore answered in the built product

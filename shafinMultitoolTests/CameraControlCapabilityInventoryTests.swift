@@ -5,43 +5,59 @@ import XCTest
 /// C06 slice A (runbook 2026-09-13): factual capability state for the
 /// focus/exposure/hold/obstruction control families.
 ///
-/// These tests pin only what the current code can guarantee without a
-/// physical device: the Coach path owns no focus/exposure/WB actuator, the
-/// legacy tap-to-focus performs one-shot automatic focus/exposure and is NOT
-/// a focus lock, control entry points never mutate the recorder lifecycle,
-/// and unsupported effect families stay explicitly unsupported.
+/// Production implementation ownership and actual hardware capabilities are
+/// separate. These tests check conditional admission; native application
+/// and the Coach/recorder combination still require a physical-device gate.
 ///
 /// Hardware ranges, device-availability and confirmed on-device application
 /// remain a Q04 device gate. Nothing here claims that gate is passed; the
 /// code fails closed instead.
 final class CameraControlCapabilityInventoryTests: XCTestCase {
 
-    // MARK: Focus / exposure / white balance are not production controls
-
-    func testFocusExposureAndWhiteBalanceControlsRemainLegacyOnly() {
-        let legacyControls: [ProCameraControl] = [
+    func testProductionActuatorsStillRequireReportedHardwareCapabilities() {
+        let controls: [ProCameraControl] = [
             .exposureAuto, .exposureEV, .exposureManualShutterAngleISO,
             .focusAuto, .focusTapLock, .focusManual,
             .whiteBalanceAuto, .whiteBalancePreset, .whiteBalanceLock,
             .whiteBalanceTemperature,
         ]
-        for control in legacyControls {
+        let unavailable = CameraProControlsSnapshot(deviceID: "fixed", captureGeneration: 1,
+                                                   capabilities: .init(), readback: .init())
+        for control in controls {
             let entry = ProCameraControlContracts.production.first { $0.control == control }
-            XCTAssertEqual(entry?.availability, .legacyOnly,
-                           "\(control) has no Coach-path owner and must stay legacyOnly")
+            XCTAssertEqual(entry?.availability, .available)
+            XCTAssertTrue(entry?.owner.contains("CameraManager.applyProControl") == true)
+            XCTAssertFalse(ProCameraControlContracts.isSupported(control, by: unavailable),
+                           "Implementation ownership does not establish support for \(control)")
         }
     }
 
-    func testFocusLockContractNamesNoLockOwner() {
-        // C06: `autoFocus` + `autoExpose` is not a focus lock. The lock row
-        // must not attribute a lock to the non-locking tap path.
-        let lockRow = ProCameraControlContracts.production.first { $0.control == .focusTapLock }
-        XCTAssertEqual(lockRow?.availability, .legacyOnly)
-        let owner = (lockRow?.owner ?? "").lowercased()
-        XCTAssertTrue(owner.contains("no focus-lock owner"),
-                      "focusTapLock must declare that no lock owner exists")
-        XCTAssertFalse(owner.contains("cameraService.focusOnTap"),
-                       "the non-locking tap path must not be named as a lock owner")
+    func testEVRequiresAutomaticExposureAndManualAngleRequiresFixedFPS() {
+        var capabilities = CameraProControlCapabilities()
+        capabilities.exposureBiasRange = -3...3
+        capabilities.isoRange = 50...1600
+        capabilities.exposureDurationRange = 0.0001...1
+        var readback = CameraProControlReadback()
+        func state() -> CameraProControlsSnapshot {
+            .init(deviceID: "back", captureGeneration: 2, capabilities: capabilities, readback: readback)
+        }
+        XCTAssertFalse(ProCameraControlContracts.isSupported(.exposureEV, by: state()))
+        XCTAssertFalse(ProCameraControlContracts.isSupported(.exposureManualShutterAngleISO, by: state()))
+        readback.exposureIsAuto = true
+        XCTAssertTrue(ProCameraControlContracts.isSupported(.exposureEV, by: state()))
+        readback.fixedFPS = 60
+        XCTAssertTrue(ProCameraControlContracts.isSupported(.exposureManualShutterAngleISO, by: state()))
+        readback.exposureIsAuto = false
+        XCTAssertFalse(ProCameraControlContracts.isSupported(.exposureEV, by: state()))
+    }
+
+    func testTapFocusCapabilityDoesNotEnableManualLensMovement() {
+        var capabilities = CameraProControlCapabilities()
+        capabilities.tapFocusLock = true
+        let state = CameraProControlsSnapshot(deviceID: "back", captureGeneration: 3,
+                                             capabilities: capabilities, readback: .init())
+        XCTAssertTrue(ProCameraControlContracts.isSupported(.focusTapLock, by: state))
+        XCTAssertFalse(ProCameraControlContracts.isSupported(.focusManual, by: state))
     }
 
     // MARK: Tap focus is auto, never a lock

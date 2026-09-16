@@ -333,6 +333,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// Structured question for the active request.  The payload is immutable
     /// and carries the same request identity as `generationRequestState`.
     @Published private(set) var clarificationRequest: SceneClarificationPayload?
+    @Published private(set) var remoteTransferRequest: SceneRemoteTransferRequest?
 
     /// Bounded answer feedback stays local to the current clarification and
     /// never becomes a parser or project error.
@@ -399,6 +400,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// Newest persisted take whose file still resolves inside the recording
     /// store. Failed/recoverable pending artifacts are never published here.
     @Published private(set) var latestAvailableRecordingArtifact: RecordingArtifact?
+    @Published private(set) var hasPendingRecordingSave = false
+    @Published private(set) var isRecordingSaveRetryInFlight = false
+    @Published private(set) var recordingSaveFailure: SceneWorkspaceTeardownFailure?
 
     var latestRecordingArtifact: RecordingArtifact? {
         latestAvailableRecordingArtifact
@@ -489,6 +493,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// The storyboard editor is busy with one owner-side mutation. Views only
     /// render this state and disable their controls from it.
     @Published private(set) var isStoryboardMutationInFlight = false
+    private var storyboardEditorRevision: UInt = 0
 
     /// Короткая подсказка/ошибка ручного перемещения актёра для открытого такта.
     @Published var storyboardDragFeedback: String?
@@ -547,6 +552,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// only that fixture-owned projection out of the error band while leaving
     /// production and Package 5 AR failure behavior unchanged.
     var isGeneratorErrorBandVisible: Bool {
+        if hasPendingRecordingSave, recordingSaveFailure != nil { return true }
 #if DEBUG
         if debugFixtureID != nil,
            let errorMessage,
@@ -634,7 +640,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     
     // MARK: - Services
     
-    private let parserService = SceneParserService.shared
+    private let parserService: SceneParserService
     private let objectBindingExtractor = SceneAnchorExtractor()
     private let plannerService = SpatialPlannerService.shared
     private let projectStore: DBService
@@ -691,6 +697,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// Test-only callback seam for exercising ARKit completion races without a
     /// physical camera or a simulator AR session.
     var testingWorldMapCaptureOverride: (@MainActor () async -> Result<ARWorldMap?, SceneWorkspaceTeardownFailure>)?
+    var testingProjectSnapshotWaiterReturnOverride: (@MainActor () async -> Void)?
     private(set) var testingProjectSnapshotSaveCount = 0
     /// Counts committed generation model/AR replacements. This DEBUG-only
     /// receipt seam proves that a clarification continuation commits once;
@@ -794,7 +801,18 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private var recordingStartTask: Task<Void, Never>?
     private var recordingStopTask: Task<RecordingStopResult?, Never>?
     private var promotedRecordingIDs = Set<UUID>()
-    private var pendingRecordingArtifacts: [RecordingArtifact] = []
+    private var pendingRecordingArtifacts: [RecordingArtifact] = [] {
+        didSet { refreshPendingRecordingSaveState() }
+    }
+    private struct PendingRecordingPublication {
+        let reference: SceneRecordingReference
+        let artifact: RecordingArtifact
+    }
+    /// Promoted files are durable but are not project media until the project
+    /// reference has been saved. Failed saves retain these exact candidates.
+    private var pendingRecordingPublications: [PendingRecordingPublication] = [] {
+        didSet { refreshPendingRecordingSaveState() }
+    }
     private var projectSnapshotTask: Task<Result<Void, SceneWorkspaceTeardownFailure>, Never>?
     private var generationTask: Task<Void, Never>?
     private var generationReduceMotion = false
@@ -804,6 +822,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         let requestID: UUID
         let generationToken: UInt
         let submittedDescription: String
+        let previousScript: SceneScript?
+        let previousPlan: PlannedScene?
         let cameraTransform: simd_float4x4
         let markedObjects: [MarkedObject]
         let detectedObjects: [DetectedObject]
@@ -816,6 +836,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 requestID: requestID,
                 generationToken: generationToken,
                 submittedDescription: submittedDescription,
+                previousScript: previousScript,
+                previousPlan: previousPlan,
                 cameraTransform: cameraTransform,
                 markedObjects: markedObjects,
                 detectedObjects: detectedObjects,
@@ -826,6 +848,28 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     private var pendingClarificationGeneration: PendingClarificationGeneration?
+    private struct PendingRemoteClarification {
+        let payload: SceneClarificationPayload
+        let continuation: CheckedContinuation<SceneClarificationAnswer?, Never>
+        let consumesClarificationAttempt: Bool
+    }
+    private var pendingRemoteClarification: PendingRemoteClarification?
+    private struct PreparedGenerationCommit {
+        let generationID: String
+        let requestID: UUID
+        let epoch: UInt
+        let submittedDescription: String
+        let submittedMarkedObjects: [MarkedObject]
+        let previousScript: SceneScript?
+        let previousPlan: PlannedScene?
+        let script: SceneScript
+        let parsingResult: ParsingResult
+        let chunkState: SceneChunkState?
+        let visualOverlays: [SceneVisualOverlay]
+        let plan: PlannedScene
+        let bindings: SceneObjectBindingResult
+    }
+    private var pendingGenerationPersistence: PreparedGenerationCommit?
     private var clarificationAnswerKeys = Set<String>()
     private var clarificationAttemptCount = 0
     private static let maximumClarificationAttempts = 3
@@ -854,6 +898,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private let storyboardMotionEventLedger = SETMotionEventLedger()
     private var storyboardSelectionSequence = 0
     private var storyboardSelectionTask: Task<Void, Never>?
+    private var storyboardActorDragCommitTask: Task<Void, Never>?
     private static let generationLeaderFixtureArgument = "-SHAFIN_GENERATOR_LEADER_FIXTURE"
 
     /// M5-018 UI fixture hold: when the app is launched with the leader
@@ -897,7 +942,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
          persistedProject: UnifiedSceneProject? = nil,
          persistedWorldMap: ARWorldMap? = nil,
          projectLeaseToken: UUID? = nil,
-         projectLeaseRegistry: ProjectLifecycleRegistry = .shared) {
+         projectLeaseRegistry: ProjectLifecycleRegistry = .shared,
+         parserService: SceneParserService = .shared) {
+        self.parserService = parserService
         self.projectStore = projectStore
         self.projectLeaseRegistry = projectLeaseRegistry
         self.permissionClient = permissionClient
@@ -987,9 +1034,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private func setupBindings() {
         $markedObjects
             .dropFirst()
-            .sink { [weak self] _ in
+            .sink { [weak self] markers in
+                self?.pendingGenerationPersistence = nil
+                if let self, self.remoteTransferRequest != nil {
+                    self.clearClarificationProjection()
+                    self.updateGenerationInputState(for: self.sceneDescription)
+                }
                 self?.refreshIdleStatusMessage()
-                self?.persistProjectMetadata()
+                self?.persistProjectMetadata(submittedMarkedObjects: markers)
             }
             .store(in: &cancellables)
 
@@ -997,6 +1049,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             .dropFirst()
             .sink { [weak self] description in
                 guard let self else { return }
+                pendingGenerationPersistence = nil
                 if clarificationRequest != nil {
                     clearClarificationProjection()
                     objectBindingResult = nil
@@ -1004,7 +1057,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 updateGenerationInputState(for: description)
                 sceneChunkState = nil
                 refreshIdleStatusMessage()
-                persistProjectMetadata()
+                persistProjectMetadata(submittedDescription: description)
             }
             .store(in: &cancellables)
 
@@ -1348,6 +1401,18 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         Task { _ = await persistProjectSnapshot() }
     }
 
+    /// Retries the existing promoted take; never starts another recorder.
+    func retryPendingRecordingSave() async {
+        guard hasPendingRecordingSave, !isRecordingSaveRetryInFlight,
+              !isWorkspaceReleased, teardownTask == nil else { return }
+        isRecordingSaveRetryInFlight = true
+        defer { isRecordingSaveRetryInFlight = false }
+        let result = await persistProjectSnapshot()
+        if hasPendingRecordingSave, case .failure(let failure) = result {
+            recordingSaveFailure = failure
+        }
+    }
+
 #if DEBUG
     func testingPersistProjectSnapshot() async -> Result<Void, SceneWorkspaceTeardownFailure> {
         await persistProjectSnapshot()
@@ -1379,6 +1444,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     private func performTeardown() async -> SceneWorkspaceTeardownResult {
         clearHintPresentation()
+        storyboardActorDragCommitTask?.cancel()
+        if let storyboardActorDragCommitTask {
+            await storyboardActorDragCommitTask.value
+        }
+        pendingGenerationPersistence = nil
         clearClarificationProjection()
         suppressAutomaticPersistence = true
         objectBindingResult = nil
@@ -1549,6 +1619,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             || isRecordingFinalizing
             || isPlaying
             || isGenerating
+            || isStoryboardMutationInFlight
             || isARSessionInterrupted
             || isARSessionRecovering
     }
@@ -1571,6 +1642,17 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             && !isSceneMutationBlocked
             && !isMarkingMode
             && generationRequestState.phase != .clarification
+    }
+
+    var canRetryGenerationPersistence: Bool {
+        guard generationRequestState.phase == .retryableFailure,
+              generationRequestState.failure == .persistence,
+              let prepared = pendingGenerationPersistence else { return false }
+        return generationIsCurrent(prepared.epoch, requestID: prepared.requestID)
+            && sceneDescription == prepared.submittedDescription
+            && markedObjects == prepared.submittedMarkedObjects
+            && parsedScript == prepared.previousScript
+            && plannedScene == prepared.previousPlan
     }
 
     var clarificationAttemptsRemaining: Int {
@@ -1609,6 +1691,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             && !isRecordingFinalizing
             && !isMarkingMode
             && recordingPlaybackLease == nil
+            && !hasPendingRecordingSave
+            && !isRecordingSaveRetryInFlight
     }
 
     var canToggleRecordingSound: Bool {
@@ -1879,6 +1963,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     private func clearClarificationProjection() {
+        let pendingRemote = pendingRemoteClarification
+        pendingRemoteClarification = nil
+        pendingRemote?.continuation.resume(returning: nil)
+        remoteTransferRequest = nil
         clarificationRequest = nil
         clarificationFeedback = nil
         pendingClarificationGeneration = nil
@@ -1983,6 +2071,145 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             generationLeaderPhase = nil
             generationLeaderPresentationRevision &+= 1
         }
+    }
+
+    /// Suspends the existing generation task while the same sheet collects
+    /// an answer. The server's UUID/epoch remain in the client's immutable
+    /// payload; the presented question belongs to this local request/epoch.
+    private func requestRemoteClarification(
+        _ serverPayload: SceneClarificationPayload,
+        requestID: UUID,
+        generationToken: UInt,
+        transferRequest: SceneRemoteTransferRequest? = nil
+    ) async -> SceneClarificationAnswer? {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard generationIsCurrent(generationToken, requestID: requestID),
+                      !Task.isCancelled,
+                      pendingRemoteClarification == nil,
+                      transferRequest != nil || clarificationAttemptCount < Self.maximumClarificationAttempts else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let payload = serverPayload.presented(requestID: requestID, epoch: generationToken)
+                guard publishGenerationState(
+                    .clarification(requestID: requestID, epoch: generationToken, message: payload.prompt),
+                    expectedRequestID: requestID,
+                    expectedEpoch: generationToken,
+                    status: localizedCopy(.generatorClarification),
+                    clearError: true,
+                    clearValidation: true
+                ) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                clearGenerationLeaderPresentation()
+                pendingRemoteClarification = PendingRemoteClarification(
+                    payload: payload, continuation: continuation,
+                    consumesClarificationAttempt: transferRequest == nil
+                )
+                remoteTransferRequest = transferRequest
+                clarificationRequest = payload
+                clarificationFeedback = nil
+                showInputSheet = true
+            }
+        } onCancel: { [weak self] in
+            Task { @MainActor in
+                guard let self,
+                      let pending = self.pendingRemoteClarification,
+                      pending.payload.requestID == requestID,
+                      pending.payload.epoch == generationToken else { return }
+                self.pendingRemoteClarification = nil
+                self.remoteTransferRequest = nil
+                pending.continuation.resume(returning: nil)
+            }
+        }
+    }
+
+    /// Uses the existing question continuation but never interprets consent
+    /// as a semantic answer or consumes the scene clarification budget.
+    private func requestRemoteTransferConsent(
+        _ transfer: SceneRemoteTransferRequest,
+        requestID: UUID, generationToken: UInt,
+        inputDescription: String, inputMarkerIDs: [String]
+    ) async -> SceneRemoteTransferApproval? {
+        guard generationIsCurrent(generationToken, requestID: requestID),
+              sceneDescription == inputDescription,
+              self.markedObjects.map(\.canonicalMarkedObjectID) == inputMarkerIDs else { return nil }
+        let prompt = SceneClarificationPayload(
+            id: transfer.id, requestID: requestID, epoch: generationToken,
+            prompt: localizedCopy(.generatorTransferQuestion), targetReference: nil,
+            options: [
+                .init(id: "send", label: localizedCopy(.generatorTransferSend)),
+                .init(id: "decline", label: localizedCopy(.generatorTransferDecline))
+            ],
+            allowsFreeText: false, maximumFreeTextCharacters: 0,
+            observedDiagnostics: [], attempt: 0
+        )
+        let answer = await requestRemoteClarification(
+            prompt, requestID: requestID, generationToken: generationToken,
+            transferRequest: transfer
+        )
+        guard !Task.isCancelled, answer == .choice("send"),
+              generationIsCurrent(generationToken, requestID: requestID),
+              sceneDescription == inputDescription,
+              self.markedObjects.map(\.canonicalMarkedObjectID) == inputMarkerIDs else { return nil }
+        return transfer.approval
+    }
+
+    private func submitRemoteClarificationAnswer(
+        _ answer: SceneClarificationAnswer,
+        requestID: UUID,
+        epoch: UInt,
+        clarificationID: String
+    ) -> SceneClarificationSubmissionResult {
+        guard !isWorkspaceReleased else { return .rejected(.workspaceUnavailable) }
+        guard let pending = pendingRemoteClarification,
+              generationRequestState.phase == .clarification else { return .rejected(.noActiveRequest) }
+        let payload = pending.payload
+        guard generationIsCurrent(epoch, requestID: requestID),
+              payload.requestID == requestID,
+              payload.epoch == epoch,
+              payload.id == clarificationID,
+              clarificationRequest?.id == clarificationID else { return .rejected(.staleRequest) }
+        guard !pending.consumesClarificationAttempt || clarificationAttemptCount < Self.maximumClarificationAttempts else {
+            return .rejected(.retryLimitReached)
+        }
+        let text = answer.rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isValid = answer.isFreeText
+            ? payload.allowsFreeText && !text.isEmpty && text.count <= payload.maximumFreeTextCharacters
+            : payload.options.contains { $0.id == answer.rawValue }
+        guard isValid else {
+            if pending.consumesClarificationAttempt { clarificationAttemptCount += 1 }
+            // An invalid UI entry does not mutate the server clarification ID
+            // or epoch, and never posts an inferred replacement answer.
+            clarificationFeedback = localizedCopy(.generatorInputInvalid)
+            return .rejected(.invalidAnswer)
+        }
+        guard publishGenerationState(
+            .validating(requestID: requestID, epoch: epoch),
+            expectedRequestID: requestID,
+            expectedEpoch: epoch,
+            clearError: true,
+            clearValidation: true
+        ), publishAcceptedGenerationAttempt(requestID: requestID, generationToken: epoch),
+           publishGenerationStage(
+            .reading,
+            status: localizedCopy(.generatorStatusReading),
+            requestID: requestID,
+            generationToken: epoch
+           ) else {
+            pendingRemoteClarification = nil
+            pending.continuation.resume(returning: nil)
+            return .rejected(.requestFailed)
+        }
+        if pending.consumesClarificationAttempt { clarificationAttemptCount += 1 }
+        pendingRemoteClarification = nil
+        remoteTransferRequest = nil
+        clarificationRequest = nil
+        clarificationFeedback = nil
+        pending.continuation.resume(returning: answer.isFreeText ? .freeText(text) : answer)
+        return .accepted
     }
 
     /// Publishes a structured question only from parser/binding observations.
@@ -2166,6 +2393,16 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         epoch: UInt,
         clarificationID: String
     ) async -> SceneClarificationSubmissionResult {
+        // The remote task is suspended waiting for this answer. Joining it
+        // before resuming the continuation would deadlock the sheet.
+        if pendingRemoteClarification != nil {
+            return submitRemoteClarificationAnswer(
+                answer,
+                requestID: requestID,
+                epoch: epoch,
+                clarificationID: clarificationID
+            )
+        }
         if let generationTask {
             await generationTask.value
             if generationEpoch == epoch {
@@ -2277,6 +2514,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             )
         }
         generationEpoch &+= 1
+        pendingGenerationPersistence = nil
         generationTask?.cancel()
         if let generationTask {
             await generationTask.value
@@ -2311,6 +2549,25 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             diagnosticsLog("[GENERATION] ignored while workspace is busy")
             return
         }
+
+        if canRetryGenerationPersistence, let prepared = pendingGenerationPersistence {
+            guard publishGenerationState(
+                .validating(requestID: prepared.requestID, epoch: prepared.epoch),
+                expectedRequestID: prepared.requestID,
+                expectedEpoch: prepared.epoch,
+                clearError: true,
+                clearValidation: true
+            ), publishAcceptedGenerationAttempt(requestID: prepared.requestID, generationToken: prepared.epoch) else { return }
+            let task = Task<Void, Never> { @MainActor [weak self] in
+                guard let self else { return }
+                await self.commitPreparedGeneration(prepared)
+            }
+            generationTask = task
+            await task.value
+            if generationEpoch == prepared.epoch { generationTask = nil }
+            return
+        }
+        pendingGenerationPersistence = nil
 
         // A submit always starts from the editable draft, including after a
         // terminal/retryable result. This clears the previous request identity
@@ -2392,6 +2649,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             requestID: requestID,
             generationToken: generationToken,
             submittedDescription: submittedDescription,
+            previousScript: parsedScript,
+            previousPlan: plannedScene,
             cameraTransform: cameraTransform,
             markedObjects: submittedMarkedObjects,
             detectedObjects: submittedDetectedObjects,
@@ -2448,6 +2707,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 requestID: context.requestID,
                 generationToken: context.generationToken,
                 submittedDescription: context.submittedDescription,
+                previousScript: context.previousScript,
+                previousPlan: context.previousPlan,
                 cameraTransform: context.cameraTransform,
                 markedObjects: parserMarkedObjects,
                 detectedObjects: context.detectedObjects,
@@ -2467,6 +2728,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         requestID: UUID,
         generationToken: UInt,
         submittedDescription: String,
+        previousScript: SceneScript?,
+        previousPlan: PlannedScene?,
         cameraTransform: simd_float4x4,
         markedObjects: [MarkedObject],
         detectedObjects: [DetectedObject],
@@ -2508,6 +2771,21 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             chunkState: SceneChunkState?,
             visualOverlays: [SceneVisualOverlay]
         )
+        let inputDescriptionSnapshot = sceneDescription
+        let inputMarkerIDsSnapshot = self.markedObjects.map(\.canonicalMarkedObjectID)
+        let transferConsentHandler: SceneRemoteTransferConsentHandler = { [weak self] transfer in
+            await self?.requestRemoteTransferConsent(
+                transfer, requestID: requestID, generationToken: generationToken,
+                inputDescription: inputDescriptionSnapshot, inputMarkerIDs: inputMarkerIDsSnapshot
+            )
+        }
+        let clarificationHandler: SceneRemoteClarificationHandler = { [weak self] payload in
+            await self?.requestRemoteClarification(
+                payload,
+                requestID: requestID,
+                generationToken: generationToken
+            )
+        }
 #if DEBUG
         if let testingParserResultOverride {
             parserOutput = (
@@ -2519,13 +2797,17 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         } else {
             parserOutput = await parserService.parseAsyncForGeneration(
                 submittedDescription,
-                markedObjects: markedObjects
+                markedObjects: markedObjects,
+                clarificationHandler: clarificationHandler,
+                transferConsentHandler: transferConsentHandler
             )
         }
 #else
         parserOutput = await parserService.parseAsyncForGeneration(
             submittedDescription,
-            markedObjects: markedObjects
+            markedObjects: markedObjects,
+            clarificationHandler: clarificationHandler,
+            transferConsentHandler: transferConsentHandler
         )
 #endif
         guard generationIsCurrent(generationToken, requestID: requestID),
@@ -2533,6 +2815,40 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         parserService.releaseLocalModelResources(reason: "scene_generation_parse_complete")
         SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] parser finished and LLM resources requested for release")
         let result = parserOutput.result
+        if let failure = result.remoteFailure {
+            let copyKey: SETCopyKey
+            let failureKind: SceneGenerationFailureKind
+            switch failure {
+            case .transferDeclined:
+                // Remain editable, preserving the previous saved scene. Do
+                // not join this generationTask from inside its own execution.
+                clearClarificationProjection()
+                _ = publishGenerationState(
+                    .cancelling(requestID: requestID, epoch: generationToken),
+                    expectedRequestID: requestID, expectedEpoch: generationToken
+                )
+                _ = publishGenerationState(.input(), clearError: true, clearValidation: true)
+                showInputSheet = true
+                return
+            case .transferPolicyUnavailable:
+                copyKey = .generatorTransferUnavailable
+                failureKind = .remoteDisabled
+            case .contentExpired:
+                copyKey = .generatorErrorRemoteExpired
+                failureKind = .remoteExpired
+            case .serviceDisabled:
+                copyKey = .generatorErrorRemoteDisabled
+                failureKind = .remoteDisabled
+            case .invalidServiceResponse:
+                copyKey = .generatorErrorRemoteResponse
+                failureKind = .malformed
+            }
+            _ = publishGenerationFailure(
+                failureKind, retryable: false, message: localizedCopy(copyKey),
+                expectedRequestID: requestID, expectedEpoch: generationToken
+            )
+            return
+        }
         let script = result.script
         let runtimeTrace = parserOutput.runtimeTrace
 
@@ -2697,9 +3013,9 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             to: planned,
             bindingResult: resolvedObjectBindings
         )
-        // M5-030: the atomic commit stamps generator/model/schema provenance
-        // onto the plan; persistence and the success edge below observe it.
-        plannedWithBindingSources.provenance = .current
+        // The immutable parser result owns origin. A disk retry reuses this
+        // exact candidate; neither the planner nor the UI invents a model.
+        plannedWithBindingSources.provenance = result.generationProvenance
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
         print("🔍 [VIEWMODEL] Результат планирования:")
@@ -2713,6 +3029,31 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         }
         logPlannedSceneDetails(plannedWithBindingSources, script: updatedScript, generationID: generationID)
 
+        await commitPreparedGeneration(PreparedGenerationCommit(
+            generationID: generationID,
+            requestID: requestID,
+            epoch: generationToken,
+            submittedDescription: submittedDescription,
+            submittedMarkedObjects: pendingClarificationGeneration?.markedObjects ?? markedObjects,
+            previousScript: previousScript,
+            previousPlan: previousPlan,
+            script: updatedScript,
+            parsingResult: result,
+            chunkState: parserOutput.chunkState,
+            visualOverlays: parserOutput.visualOverlays,
+            plan: plannedWithBindingSources,
+            bindings: resolvedObjectBindings
+        ))
+    }
+
+    /// The same owner commits both the first generated result and a save-only
+    /// retry. No parser, VLM, request UUID or second scene pipeline is created.
+    private func commitPreparedGeneration(_ prepared: PreparedGenerationCommit) async {
+        let requestID = prepared.requestID
+        let generationToken = prepared.epoch
+        let generationID = prepared.generationID
+        let updatedScript = prepared.script
+        let plannedWithBindingSources = prepared.plan
         guard publishGenerationStage(
             .placing,
             status: localizedCopy(.generatorStatusPlacing),
@@ -2721,16 +3062,70 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         ) else { return }
         await Task.yield()
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
+        if let projectSnapshotTask {
+            _ = await projectSnapshotTask.value
+        }
+        guard generationIsCurrent(generationToken, requestID: requestID), teardownTask == nil else { return }
+        guard sceneDescription == prepared.submittedDescription,
+              markedObjects == prepared.submittedMarkedObjects,
+              parsedScript == prepared.previousScript,
+              plannedScene == prepared.previousPlan else {
+            pendingGenerationPersistence = nil
+            objectBindingResult = nil
+            _ = publishGenerationFailure(
+                .cancelled, retryable: false, message: localizedCopy(.generatorCancelled),
+                expectedRequestID: requestID, expectedEpoch: generationToken
+            )
+            return
+        }
+        var candidateProject = buildCurrentProject()
+        candidateProject.parsedScript = updatedScript
+        candidateProject.plannedScene = plannedWithBindingSources
+        candidateProject.sceneChunkState = prepared.chunkState
+        candidateProject.visualOverlays = prepared.visualOverlays
+#if DEBUG
+        let shouldPersistGeneration = debugFixtureID == nil
+#else
+        let shouldPersistGeneration = true
+#endif
+        if shouldPersistGeneration {
+            do {
+                try projectStore.saveUnifiedSceneProject(
+                    candidateProject, worldMap: initialWorldMap,
+                    expectedUpdatedAt: currentProject.updatedAt
+                )
+            } catch {
+                pendingGenerationPersistence = prepared
+                objectBindingResult = nil
+                let copyKey: SETCopyKey
+                if let databaseError = error as? DBServiceError, case .staleSnapshot = databaseError {
+                    copyKey = .generatorErrorSaveConflict
+                } else {
+                    copyKey = .generatorErrorSave
+                }
+                _ = publishGenerationFailure(
+                    .persistence, retryable: true, message: localizedCopy(copyKey),
+                    expectedRequestID: requestID, expectedEpoch: generationToken
+                )
+                showInputSheet = true
+                diagnosticsLog("[GENERATION][\(generationID)] persistence failed; prepared result retained for save retry")
+                return
+            }
+            acceptPersistedProject(candidateProject)
+        }
+        pendingGenerationPersistence = nil
 
-        // The model and AR replacement stay in one MainActor commit block.
+        // Durable save and the model/AR replacement stay in one MainActor
+        // block with no suspension or cancellation window between them.
         cancelAllAnimations()
         resetPlaybackUIState(clearTimeline: true)
         removePlacedSceneEntities(reason: "generation_commit \(generationID)")
         parsedScript = updatedScript
-        parsingResult = result
-        sceneChunkState = parserOutput.chunkState
-        visualOverlays = parserOutput.visualOverlays
+        parsingResult = prepared.parsingResult
+        sceneChunkState = prepared.chunkState
+        visualOverlays = prepared.visualOverlays
         plannedScene = plannedWithBindingSources
+        objectBindingResult = prepared.bindings
 #if DEBUG
         testingGenerationCommitCount += 1
 #endif
@@ -2743,9 +3138,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         placeObjectsInAR(plannedWithBindingSources)
 
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
-        // The success edge is published only after the existing atomic
-        // model/AR commit and persistence handoff have both been reached.
-        persistProjectMetadata()
+        // Success means that this exact candidate is saved and rendered.
         guard generationIsCurrent(generationToken, requestID: requestID),
               publishGenerationState(
                   .success(requestID: requestID, epoch: generationToken),
@@ -4453,12 +4846,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             errorMessage = localizedCopy(.storyboardErrorOpen)
             return
         }
+        storyboardEditorRevision &+= 1
         activeStoryboardEditDraft = draft
         storyboardDragFeedback = nil
         diagnosticsLog("[STORYBOARD_EDIT] open beat=\(beatID), actions=\(draft.actions.count)")
     }
 
     func cancelStoryboardEditor() {
+        storyboardEditorRevision &+= 1
         cancelPendingStoryboardSelection()
         cancelActiveStoryboardActorDrag()
         activeStoryboardEditDraft = nil
@@ -4470,6 +4865,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     func applyStoryboardBeatEdit(_ draft: StoryboardBeatEditDraft) async -> Bool {
         guard !isStoryboardMutationInFlight else { return false }
+        let editorRevision = storyboardEditorRevision
         isStoryboardMutationInFlight = true
         defer { isStoryboardMutationInFlight = false }
         errorMessage = nil
@@ -4484,6 +4880,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             try? await Task.sleep(nanoseconds: UInt64(debugMutationDelay * 1_000_000_000))
         }
 #endif
+        guard !Task.isCancelled, !isWorkspaceReleased,
+              teardownTask == nil, storyboardEditorRevision == editorRevision else { return false }
         guard let script = parsedScript,
               let beatIndex = script.beats.firstIndex(where: { $0.id == draft.beatID })
         else {
@@ -4509,11 +4907,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             minDuration: originalBeat.minDuration
         )
         diagnosticsLog("[STORYBOARD_EDIT] save beat=\(draft.beatID), actions=\(updatedActions.count)")
-        return await applyManualStoryboardScriptEdit(beats: beats, reason: "save_beat")
+        return await applyManualStoryboardScriptEdit(beats: beats, reason: "save_beat", editorRevision: editorRevision)
     }
 
     func deleteStoryboardBeat(beatID: String) async -> Bool {
         guard !isStoryboardMutationInFlight else { return false }
+        let editorRevision = storyboardEditorRevision
         isStoryboardMutationInFlight = true
         defer { isStoryboardMutationInFlight = false }
         errorMessage = nil
@@ -4528,6 +4927,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             try? await Task.sleep(nanoseconds: UInt64(debugMutationDelay * 1_000_000_000))
         }
 #endif
+        guard !Task.isCancelled, !isWorkspaceReleased,
+              teardownTask == nil, storyboardEditorRevision == editorRevision else { return false }
         guard let script = parsedScript,
               let index = script.beats.firstIndex(where: { $0.id == beatID })
         else {
@@ -4542,11 +4943,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         var beats = script.beats
         beats.remove(at: index)
         diagnosticsLog("[STORYBOARD_EDIT] delete beat=\(beatID)")
-        return await applyManualStoryboardScriptEdit(beats: beats, reason: "delete_beat")
+        return await applyManualStoryboardScriptEdit(beats: beats, reason: "delete_beat", editorRevision: editorRevision)
     }
 
     func moveStoryboardBeat(beatID: String, offset: Int) async -> Bool {
         guard !isStoryboardMutationInFlight else { return false }
+        let editorRevision = storyboardEditorRevision
         isStoryboardMutationInFlight = true
         defer { isStoryboardMutationInFlight = false }
         errorMessage = nil
@@ -4561,6 +4963,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             try? await Task.sleep(nanoseconds: UInt64(debugMutationDelay * 1_000_000_000))
         }
 #endif
+        guard !Task.isCancelled, !isWorkspaceReleased,
+              teardownTask == nil, storyboardEditorRevision == editorRevision else { return false }
         guard offset != 0,
               let script = parsedScript,
               let index = script.beats.firstIndex(where: { $0.id == beatID })
@@ -4572,7 +4976,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         var beats = script.beats
         beats.swapAt(index, destination)
         diagnosticsLog("[STORYBOARD_EDIT] move beat=\(beatID), from=\(index), to=\(destination)")
-        return await applyManualStoryboardScriptEdit(beats: beats, reason: "move_beat")
+        return await applyManualStoryboardScriptEdit(beats: beats, reason: "move_beat", editorRevision: editorRevision)
     }
 
     private func makeStoryboardEditDraft(for beatID: String) -> StoryboardBeatEditDraft? {
@@ -4705,8 +5109,27 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         return result
     }
 
-    private func applyManualStoryboardScriptEdit(beats: [SceneBeat], reason: String) async -> Bool {
+    private func applyManualStoryboardScriptEdit(beats: [SceneBeat], reason: String, editorRevision: UInt) async -> Bool {
         guard let script = parsedScript else { return false }
+        let originalPlan = plannedScene
+        let originalDescription = sceneDescription
+        let originalMarkers = markedObjects
+        let originalGenerationEpoch = generationEpoch
+        // A world-map snapshot may be awaiting ARKit. Let its existing writer
+        // finish before reading the stored version used by this edit.
+        if let projectSnapshotTask {
+            _ = await projectSnapshotTask.value
+        }
+        guard !Task.isCancelled, !isWorkspaceReleased, teardownTask == nil,
+              storyboardEditorRevision == editorRevision else { return false }
+        guard parsedScript == script, plannedScene == originalPlan,
+              sceneDescription == originalDescription, markedObjects == originalMarkers,
+              generationEpoch == originalGenerationEpoch else {
+            let message = localizedCopy(.storyboardErrorSaveConflict)
+            errorMessage = message
+            storyboardValidationMessage = message
+            return false
+        }
         guard let cameraTransform = currentCameraTransform ?? arView?.session.currentFrame?.camera.transform else {
             errorMessage = localizedCopy(.generatorErrorCameraPosition)
             return false
@@ -4773,15 +5196,15 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             availablePlanes: detectedPlanes,
             markedObjects: []
         )
-        // M5-030: provenance survives the beat-edit path — a preserved
-        // plan keeps its stamped provenance, a fresh plan is stamped now.
+        // A user edit retains its original source and becomes visible only
+        // after the candidate is saved. Legacy unknown origins stay unknown.
         let plannedWithBindingSources: PlannedScene
         if let acceptedBindingResult {
             var stamped = applyBindingSources(
                 to: planned,
                 bindingResult: acceptedBindingResult
             )
-            stamped.provenance = .current
+            stamped.provenance = existingPlannedScene?.provenance?.recordingUserModification(.scriptEdit)
             plannedWithBindingSources = stamped
         } else if let existingPlannedScene {
             // Beat edits do not own object identity. Preserve the accepted
@@ -4790,17 +5213,48 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 placedActors: planned.placedActors,
                 placedObjects: existingPlannedScene.placedObjects
             )
-            preserved.provenance = existingPlannedScene.provenance ?? .current
+            preserved.provenance = existingPlannedScene.provenance?.recordingUserModification(.scriptEdit)
             plannedWithBindingSources = preserved
         } else {
             var stamped = planned
-            stamped.provenance = .current
+            stamped.provenance = nil
             plannedWithBindingSources = stamped
         }
 
-        // Validation and pure replanning complete before playback/model state
-        // is touched. A rejected binding therefore leaves the current scene
-        // and animations unchanged.
+        // Persist the candidate before publishing any scene/AR/editor change.
+        // An I/O or optimistic-version failure leaves both the previous scene
+        // and the user's open edit available for recovery.
+        var candidateProject = buildCurrentProject()
+        candidateProject.parsedScript = editedScript
+        candidateProject.plannedScene = plannedWithBindingSources
+#if DEBUG
+        let shouldPersistEdit = debugFixtureID == nil
+#else
+        let shouldPersistEdit = true
+#endif
+        if shouldPersistEdit {
+            do {
+                try projectStore.saveUnifiedSceneProject(
+                    candidateProject,
+                    worldMap: initialWorldMap,
+                    expectedUpdatedAt: currentProject.updatedAt
+                )
+            } catch {
+                let copyKey: SETCopyKey
+                if let databaseError = error as? DBServiceError, case .staleSnapshot = databaseError {
+                    copyKey = .storyboardErrorSaveConflict
+                } else {
+                    copyKey = .storyboardErrorSave
+                }
+                let message = localizedCopy(copyKey)
+                errorMessage = message
+                storyboardValidationMessage = message
+                diagnosticsLog("[STORYBOARD_EDIT] persistence failed reason=\(reason); edit retained")
+                return false
+            }
+            acceptPersistedProject(candidateProject)
+        }
+
         if isPlaying {
             stopScene()
         } else {
@@ -4821,7 +5275,6 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         storyboardValidationField = nil
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
-        persistProjectMetadata()
         diagnosticsLog("[STORYBOARD_EDIT] replan complete reason=\(reason), beats=\(editedScript.beats.count), visible=\(storyboardBeatItems.count), actors=\(plannedWithBindingSources.placedActors.count), objects=\(plannedWithBindingSources.placedObjects.count)")
         SceneGeneratorDiagnosticsLogger.shared.flush()
         return true
@@ -4876,7 +5329,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     @discardableResult
-    func commitStoryboardActorDrag(actorID: String, beatID: String, to position: Position3D) -> Bool {
+    func commitStoryboardActorDrag(actorID: String, beatID: String, to position: Position3D) async -> Bool {
+        guard !isStoryboardMutationInFlight else { return false }
+        isStoryboardMutationInFlight = true
+        defer { isStoryboardMutationInFlight = false }
         guard activeStoryboardEditDraft?.beatID == beatID else {
             storyboardDragFeedback = localizedCopy(.storyboardDragBeatClosed)
             diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: beat not active actor=\(actorID), beat=\(beatID)")
@@ -4895,6 +5351,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             return false
         }
 
+        guard await prepareStoryboardPlanMutation(sourcePlan: plannedScene) else { return false }
         let actor = plannedScene.placedActors[actorIndex]
         var changedPoints = 0
         let updatedPath = actor.path.enumerated().map { index, point -> Position3D in
@@ -4935,12 +5392,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             placedActors: actors,
             placedObjects: plannedScene.placedObjects
         )
-        updatedScene.provenance = plannedScene.provenance ?? .current
+        updatedScene.provenance = plannedScene.provenance?.recordingUserModification(.actorBeatPosition)
+        guard persistStoryboardPlanCandidate(updatedScene) else { return false }
         self.plannedScene = updatedScene
         beatTimelineItems = buildBeatTimelineItems(for: updatedScene, script: parsedScript)
         refreshStoryboardBeatItems()
         refreshPathGuides(for: updatedScene)
-        persistProjectMetadata()
         storyboardDragFeedback = localizedCopy(
             .storyboardDragCommittedInBeat,
             arguments: [
@@ -4954,7 +5411,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     @discardableResult
-    func commitStoryboardActorTrackDrag(actorID: String, from originalPosition: SIMD3<Float>, to position: Position3D) -> Bool {
+    func commitStoryboardActorTrackDrag(actorID: String, from originalPosition: SIMD3<Float>, to position: Position3D) async -> Bool {
+        guard !isStoryboardMutationInFlight else { return false }
+        isStoryboardMutationInFlight = true
+        defer { isStoryboardMutationInFlight = false }
         guard !isPlaying, !isGenerating, !isRecording else {
             storyboardDragFeedback = localizedCopy(.storyboardDragBusy)
             diagnosticsLog("[STORYBOARD_EDIT] actor track drag rejected: busy actor=\(actorID)")
@@ -4968,6 +5428,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             return false
         }
 
+        guard await prepareStoryboardPlanMutation(sourcePlan: plannedScene) else { return false }
         let actor = plannedScene.placedActors[actorIndex]
         let deltaX = position.x - originalPosition.x
         let deltaZ = position.z - originalPosition.z
@@ -5001,12 +5462,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             placedActors: actors,
             placedObjects: plannedScene.placedObjects
         )
-        updatedScene.provenance = plannedScene.provenance ?? .current
+        updatedScene.provenance = plannedScene.provenance?.recordingUserModification(.actorTrackPosition)
+        guard persistStoryboardPlanCandidate(updatedScene) else { return false }
         self.plannedScene = updatedScene
         beatTimelineItems = buildBeatTimelineItems(for: updatedScene, script: parsedScript)
         refreshStoryboardBeatItems()
         refreshPathGuides(for: updatedScene)
-        persistProjectMetadata()
         storyboardDragFeedback = localizedCopy(
             .storyboardDragCommitted,
             arguments: [displayName(for: actor)]
@@ -5016,9 +5477,62 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         return true
     }
 
+    private func prepareStoryboardPlanMutation(sourcePlan: PlannedScene) async -> Bool {
+        let sourceScript = parsedScript
+        let sourceDescription = sceneDescription
+        let sourceMarkers = markedObjects
+        let sourceEpoch = generationEpoch
+        let editorRevision = storyboardEditorRevision
+        if let projectSnapshotTask { _ = await projectSnapshotTask.value }
+        guard !Task.isCancelled, !isWorkspaceReleased, teardownTask == nil,
+              storyboardEditorRevision == editorRevision else { return false }
+        guard plannedScene == sourcePlan, parsedScript == sourceScript,
+              sceneDescription == sourceDescription, markedObjects == sourceMarkers,
+              generationEpoch == sourceEpoch else {
+            let message = localizedCopy(.storyboardErrorSaveConflict)
+            storyboardDragFeedback = message
+            errorMessage = message
+            return false
+        }
+        guard !isPlaying, !isGenerating, !isRecording else {
+            storyboardDragFeedback = localizedCopy(.storyboardDragBusy)
+            return false
+        }
+        return true
+    }
+
+    private func persistStoryboardPlanCandidate(_ plan: PlannedScene) -> Bool {
+#if DEBUG
+        guard debugFixtureID == nil else { return true }
+#endif
+        var candidateProject = buildCurrentProject()
+        candidateProject.plannedScene = plan
+        do {
+            try projectStore.saveUnifiedSceneProject(
+                candidateProject, worldMap: initialWorldMap, expectedUpdatedAt: currentProject.updatedAt
+            )
+            acceptPersistedProject(candidateProject)
+            errorMessage = nil
+            return true
+        } catch {
+            let copyKey: SETCopyKey
+            if let databaseError = error as? DBServiceError, case .staleSnapshot = databaseError {
+                copyKey = .storyboardErrorSaveConflict
+            } else {
+                copyKey = .storyboardErrorSave
+            }
+            let message = localizedCopy(copyKey)
+            storyboardDragFeedback = message
+            errorMessage = message
+            diagnosticsLog("[STORYBOARD_EDIT] actor position persistence failed; saved plan retained")
+            return false
+        }
+    }
+
     private func beginStoryboardActorDrag(at screenPoint: CGPoint) {
         diagnosticsLog("[STORYBOARD_EDIT] actor drag begin requested point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y))))")
-        guard !isPlaying, !isGenerating, !isRecording else {
+        guard !isPlaying, !isGenerating, !isRecording,
+              !isStoryboardMutationInFlight, storyboardActorDragCommitTask == nil else {
             storyboardDragFeedback = localizedCopy(.storyboardDragBusy)
             diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: busy")
             return
@@ -5090,10 +5604,20 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         actorFocusEntities[drag.actorPlacedID]?.isEnabled = false
 
         if commit {
-            if let beatID = drag.beatID {
-                _ = commitStoryboardActorDrag(actorID: drag.actorID, beatID: beatID, to: drag.latestPosition)
-            } else {
-                _ = commitStoryboardActorTrackDrag(actorID: drag.actorID, from: drag.originalPosition, to: drag.latestPosition)
+            let originalPlan = plannedScene
+            storyboardActorDragCommitTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                let committed: Bool
+                if let beatID = drag.beatID {
+                    committed = await commitStoryboardActorDrag(actorID: drag.actorID, beatID: beatID, to: drag.latestPosition)
+                } else {
+                    committed = await commitStoryboardActorTrackDrag(actorID: drag.actorID, from: drag.originalPosition, to: drag.latestPosition)
+                }
+                if !committed, plannedScene == originalPlan, activeStoryboardActorDrag == nil,
+                   let entity = placedEntities[drag.actorPlacedID] {
+                    entity.position = drag.originalPosition
+                }
+                storyboardActorDragCommitTask = nil
             }
         } else {
             if let entity = placedEntities[drag.actorPlacedID] {
@@ -5105,6 +5629,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     }
 
     private func cancelActiveStoryboardActorDrag() {
+        storyboardActorDragCommitTask?.cancel()
         finishStoryboardActorDrag(commit: false)
     }
 
@@ -5662,7 +6187,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             placedActors: plannedScene.placedActors,
             placedObjects: placedObjects
         )
-        merged.provenance = plannedScene.provenance ?? .current
+        merged.provenance = plannedScene.provenance
         return merged
     }
     
@@ -5842,6 +6367,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     /// the only start identity and microphone request is reached only here.
     func startRecording() {
         guard !isRecordingStarting else { return }
+        guard !hasPendingRecordingSave else {
+            recordingSaveFailure = .persistenceFailed
+            return
+        }
         recordingPermissionRecovery = nil
         guard plannedScene != nil else {
             errorMessage = localizedCopy(.generatorErrorNoScene)
@@ -5872,6 +6401,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
               plannedScene != nil,
               !isRecording,
               !isRecordingFinalizing,
+              !hasPendingRecordingSave,
               !isPlaying,
               !isARSessionInterrupted,
               !isARSessionRecovering else { return }
@@ -6106,8 +6636,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         recordingStopTask = task
     }
 
-    /// Teardown and user stop share one awaited finalization identity. User
-    /// stop persists only after the recorder has returned its terminal result;
+    /// Teardown and user stop share one awaited finalization identity. Stops
+    /// outside teardown persist after the recorder returns its terminal result;
     /// route exit leaves persistence to SceneWorkspaceTeardownCoordinator.
     private func stopRecordingAndWait(reason: RecordingStopReason) async -> RecordingStopResult? {
         if let recordingStopTask {
@@ -6161,16 +6691,19 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             refreshIdleStatusMessage()
         }
 
-        if reason == .user, !suppressAutomaticPersistence {
-            _ = await persistProjectSnapshot()
+        if reason != .routeExit, !suppressAutomaticPersistence {
+            let persistenceResult = await persistProjectSnapshot()
+            if hasPendingRecordingSave, case .failure(let failure) = persistenceResult {
+                recordingSaveFailure = failure
+            }
         }
         recordingStopTask = nil
         return result
     }
 
     /// Consumes only a recorder-attested finalized result. Promotion happens
-    /// before the caller's persistence step, and the ID ledger prevents a
-    /// coalesced/retried stop from publishing the same take twice.
+    /// before the caller's persistence step. Publication waits for the durable
+    /// project save; retries retain one promoted reference for this take.
     private func acceptFinalizedRecording(from result: RecordingStopResult?) {
         guard case let .finalized(artifact) = result else { return }
         queuePendingFinalizedRecording(artifact)
@@ -6184,6 +6717,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             removePendingFinalizedRecording(recordingID)
             return true
         }
+        guard !pendingRecordingPublications.contains(where: { $0.reference.recordingID == recordingID }) else {
+            removePendingFinalizedRecording(recordingID)
+            return true
+        }
         guard let recordingController else {
             queuePendingFinalizedRecording(artifact)
             errorMessage = localizedCopy(.generatorErrorRecorder)
@@ -6194,7 +6731,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         do {
             let reference = try recordingController.promoteFinalizedArtifact(
                 artifact,
-                projectID: currentProject.id
+                projectID: currentProject.id,
+                expectedProjectUpdatedAt: currentProject.updatedAt
             )
             guard let resolvedArtifact = recordingController.resolve(reference) else {
                 queuePendingFinalizedRecording(artifact)
@@ -6202,12 +6740,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 recordingPermissionRecovery = nil
                 return false
             }
-            promotedRecordingIDs.insert(recordingID)
+            pendingRecordingPublications.append(PendingRecordingPublication(
+                reference: reference, artifact: resolvedArtifact
+            ))
             removePendingFinalizedRecording(recordingID)
-            if !recordingReferences.contains(where: { $0.recordingID == recordingID }) {
-                recordingReferences.append(reference)
-            }
-            latestAvailableRecordingArtifact = resolvedArtifact
             return true
         } catch {
             // Promotion never deletes a pending source on failure; keeping the
@@ -6507,7 +7043,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         hintPauseCritique = nil
     }
 
-    private func persistProjectMetadata() {
+    private func persistProjectMetadata(
+        submittedDescription: String? = nil,
+        submittedMarkedObjects: [MarkedObject]? = nil
+    ) {
 #if DEBUG
         guard debugFixtureID == nil else { return }
 #endif
@@ -6521,13 +7060,18 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         // write is based on; a conflict means another writer moved the file and
         // the newer stored write must not be clobbered by this autosave.
         let expectedUpdatedAt = currentProject.updatedAt
-        currentProject = buildCurrentProject()
+        var candidateProject = buildCurrentProject()
+        // Published sinks receive the new value before the stored property is
+        // updated. Use that value so autosave never trails the user's edit.
+        if let submittedDescription { candidateProject.sceneDescription = submittedDescription }
+        if let submittedMarkedObjects { candidateProject.markedObjects = submittedMarkedObjects }
         do {
             try projectStore.saveUnifiedSceneProject(
-                currentProject,
+                candidateProject,
                 worldMap: initialWorldMap,
                 expectedUpdatedAt: expectedUpdatedAt
             )
+            acceptPersistedProject(candidateProject)
         } catch DBServiceError.staleSnapshot(let storedUpdatedAt) {
             print("Unified scene metadata save conflicted with stored updatedAt \(storedUpdatedAt); kept stored version")
         } catch {
@@ -6547,11 +7091,19 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             guard let self else {
                 return .failure(.workspaceOwnerUnavailable)
             }
-            return await self.performProjectSnapshotPersistence()
+            let result = await self.performProjectSnapshotPersistence()
+            // Retire the writer before returning to any outer waiter. A
+            // metadata edit arriving after this save must be able to write.
+            self.projectSnapshotTask = nil
+            return result
         }
         projectSnapshotTask = task
         let result = await task.value
-        projectSnapshotTask = nil
+#if DEBUG
+        if let testingProjectSnapshotWaiterReturnOverride {
+            await testingProjectSnapshotWaiterReturnOverride()
+        }
+#endif
         return result
     }
 
@@ -6569,11 +7121,13 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             }
             let worldMap = capturedWorldMap ?? initialWorldMap
             let expectedUpdatedAt = currentProject.updatedAt
-            currentProject = buildCurrentProject()
-            if let worldMap {
+            let candidateProject = buildCurrentProject()
+            let result = saveProjectSnapshot(candidateProject, worldMap: worldMap, expectedUpdatedAt: expectedUpdatedAt)
+            if case .success = result {
+                acceptPersistedProject(candidateProject)
                 initialWorldMap = worldMap
             }
-            return saveProjectSnapshot(currentProject, worldMap: worldMap, expectedUpdatedAt: expectedUpdatedAt)
+            return result
         case .failure(let failure):
             // A timed-out/cancelled/failed AR snapshot still writes the latest
             // project metadata with an explicit nil map. The typed failure
@@ -6583,10 +7137,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 return .failure(.persistenceFailed)
             }
             let expectedUpdatedAt = currentProject.updatedAt
-            currentProject = buildCurrentProject()
-            let saveResult = saveProjectSnapshot(currentProject, worldMap: nil, expectedUpdatedAt: expectedUpdatedAt)
+            let candidateProject = buildCurrentProject()
+            let saveResult = saveProjectSnapshot(candidateProject, worldMap: nil, expectedUpdatedAt: expectedUpdatedAt)
             switch saveResult {
             case .success:
+                acceptPersistedProject(candidateProject)
                 // The nil-map write is the durable source of truth. Clear the
                 // in-memory fallback only after it succeeds, otherwise a
                 // retry with no fresh map can resurrect the stale map.
@@ -6654,6 +7209,27 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         )
     }
 
+    /// Every successful project writer shares this publication boundary.
+    /// A generated scene or metadata autosave can also commit pending media.
+    private func refreshPendingRecordingSaveState() {
+        let pending = !pendingRecordingArtifacts.isEmpty || !pendingRecordingPublications.isEmpty
+        if hasPendingRecordingSave != pending { hasPendingRecordingSave = pending }
+        if !pending { recordingSaveFailure = nil }
+    }
+
+    private func acceptPersistedProject(_ project: UnifiedSceneProject) {
+        currentProject = project
+        let committed = pendingRecordingPublications.filter {
+            project.recordingReferences.contains($0.reference)
+        }
+        guard !committed.isEmpty else { return }
+        let committedIDs = Set(committed.map { $0.reference.recordingID })
+        promotedRecordingIDs.formUnion(committedIDs)
+        pendingRecordingPublications.removeAll { committedIDs.contains($0.reference.recordingID) }
+        recordingReferences = project.recordingReferences
+        refreshLatestAvailableRecordingArtifact()
+    }
+
     private func buildCurrentProject() -> UnifiedSceneProject {
         var project = currentProject
         project.name = sceneTitle
@@ -6665,6 +7241,10 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         project.sceneChunkState = sceneChunkState
         project.visualOverlays = visualOverlays
         project.recordingReferences = recordingReferences
+        for pending in pendingRecordingPublications where
+            !project.recordingReferences.contains(where: { $0.recordingID == pending.reference.recordingID }) {
+            project.recordingReferences.append(pending.reference)
+        }
         return project
     }
 

@@ -53,7 +53,7 @@ paths:
         '429':
           $ref: '#/components/responses/QuotaExceeded'
         '410':
-          $ref: '#/components/responses/KillSwitch'
+          $ref: '#/components/responses/ContentGone'
   /jobs/{jobId}:
     get:
       operationId: pollJob
@@ -74,23 +74,25 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '410':
-          $ref: '#/components/responses/KillSwitch'
+          $ref: '#/components/responses/ContentGone'
     delete:
       operationId: cancelJob
-      summary: Cancel a pending job. Cancellation is terminal and idempotent.
+      summary: Cancel an active job or delete the content of an owned completed job.
       description: >-
-        Remove the remaining raw script and marked-object content as part of
-        cancellation, including when the job is already terminal. Preserve the
-        terminal response envelope, ownership, create-key binding and quota
-        metadata for at most 30 days from creation. A cancelled job does not
-        refund accepted-job quota. After metadata expiry the job is not found.
+        Remove raw input, clarification and result content immediately. Active
+        jobs become cancelled and return 200. Completed jobs retain their
+        completed tombstone and return 410 content_expired, including repeated
+        deletion. Preserve ownership, create-key binding, fixed version and
+        quota metadata for at most 30 days from creation. Deletion does not
+        refund quota. Same-key replay never creates new work after deletion.
+        After metadata expiry the job is not found.
       security:
         - ServiceToken: []
       parameters:
         - $ref: '#/components/parameters/JobId'
       responses:
         '200':
-          description: Cancelled (or already terminal) job state.
+          description: Cancelled, failed or already cancelled job state.
           content:
             application/json:
               schema:
@@ -99,6 +101,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/ContentGone'
   /jobs/{jobId}/clarification-answer:
     post:
       operationId: answerClarification
@@ -136,8 +140,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
-        '410':
-          $ref: '#/components/responses/KillSwitch'
 components:
   securitySchemes:
     ServiceToken:
@@ -391,8 +393,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
-    KillSwitch:
-      description: Server-driven kill-switch engaged (410).
+    ContentGone:
+      description: >-
+        content_expired means the owned completed job content was deleted by
+        retention or explicit deletion. The idempotency binding remains and
+        replay does not start a new job. An explicit kill_switch code denotes
+        service disablement for deployments using the legacy 410 contract;
+        the current service reports kill_switch in a failed JobStatus instead.
+        Clients must inspect code and must not retry generation automatically.
       content:
         application/json:
           schema:

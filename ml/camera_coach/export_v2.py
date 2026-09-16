@@ -6,12 +6,11 @@ This module builds and validates the *export machinery* for a v2 Core ML
 ``ml/camera_coach/contracts/set_composition_net_v2.json``.  It is deliberately
 not a release path:
 
-* M03 (controlled fit) and M04 (calibration/policy) are blocked on admitted
-  data.  No v2 checkpoint exists, so this tool exports a deterministically
-  seeded, **untrained** v2 candidate only to prove and validate the export path.
-* Every produced package and sidecar carries explicit provenance saying it is a
-  tooling artifact on untrained weights, is not release admissible and makes no
-  quality claim.  It must never be confused with a calibrated candidate.
+* Without a checkpoint, exports a deterministically seeded untrained candidate.
+  An explicit records checkpoint plus its exact training config can instead
+  exercise the same export/parity path with actual research weights.
+* Every package stays research/tooling-only and not release admissible. Legacy
+  component supervision remains unknown, regardless of aggregate head flags.
 * The output path is forced outside the iOS app target tree so the package can
   never be picked up by the application bundle.
 
@@ -32,7 +31,7 @@ Outputs are the nine manifest heads in ``outputs.head_order``.
 
 Run from the repository root::
 
-    python3 ml/camera_coach/export_v2.py --output ml/camera_coach/artifacts/SETCompositionNet-v2-tooling-untrained.mlpackage
+    python3 -m ml.camera_coach.export_v2
 """
 
 from __future__ import annotations
@@ -57,6 +56,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from ml.camera_coach.models.set_composition_net import ContractError  # noqa: E402
+from ml.camera_coach.component_supervision import (  # noqa: E402
+    CHECKPOINT_VERSION, LEGACY_CHECKPOINT_VERSION, canonical_hash, checkpoint_supervision,
+    export_metadata, new_supervision,
+)
 from ml.camera_coach.models.set_composition_net_v2 import (  # noqa: E402
     SETCompositionNetV2CandidateA,
     SETCompositionNetV2CandidateB,
@@ -65,7 +68,7 @@ from ml.camera_coach.models.set_composition_net_v2 import (  # noqa: E402
 
 V2_MANIFEST_PATH = REPO_ROOT / "ml/camera_coach/contracts/set_composition_net_v2.json"
 APP_TARGET_ROOT = REPO_ROOT / "shafinMultitool"
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "ml/camera_coach/artifacts"
+DEFAULT_OUTPUT_DIR = REPO_ROOT.parent / "setos-backend/local-data/SETOS/Models/camera-coach/exports"
 DEFAULT_OUTPUT_NAME = "SETCompositionNet-v2-tooling-untrained.mlpackage"
 MISSING_FEATURE_MASK_NAME = "missing_feature_mask"
 
@@ -90,6 +93,8 @@ PROVENANCE_FLAGS = {
     "blocked_on": "M03,M04 admitted data (0 admitted)",
 }
 ARTIFACT_PROVENANCE = {f"com.setos.{key}": value for key, value in PROVENANCE_FLAGS.items()}
+PARITY_ATOL = 0.005
+PARITY_RTOL = 0.01
 
 
 def sha256_file(path: Path) -> str:
@@ -313,6 +318,73 @@ def build_untrained_model(candidate_id: str, manifest: SETCompositionNetV2Manife
     return model, weight_sha, parameter_count
 
 
+def load_checkpoint_model(checkpoint_path: Path, config_path: Path, manifest, *, required_components=None):
+    """Load the selected state with explicit config/contract and component binding.
+
+    This is a research export boundary, not a runtime or release admission.
+    ``required_components`` can tighten it; it cannot authorize release use.
+    """
+    from ml.camera_coach.trainer_records import RecordsTrainingConfig, resume_semantic_sha256
+    from ml.camera_coach.losses import LossConfig
+
+    config = RecordsTrainingConfig.from_file(config_path)
+    manifest_hash = sha256_file(V2_MANIFEST_PATH)
+    if config.model.manifest_sha256 != manifest_hash or manifest.raw != SETCompositionNetV2Manifest.load().raw:
+        raise ContractError("checkpoint export model contract does not match the frozen manifest/config")
+    configured_manifest = Path(config.model.manifest_path)
+    if not configured_manifest.is_absolute():
+        configured_manifest = REPO_ROOT / configured_manifest
+    if configured_manifest.resolve() != V2_MANIFEST_PATH.resolve():
+        raise ContractError("checkpoint config points outside the frozen model contract")
+    payload = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    if not isinstance(payload, dict) or payload.get("checkpoint_version") not in (CHECKPOINT_VERSION, LEGACY_CHECKPOINT_VERSION):
+        raise ContractError("unsupported records checkpoint format")
+    if payload.get("resume_semantic_sha256", payload.get("config_sha256")) != resume_semantic_sha256(config):
+        raise ContractError("checkpoint/config training semantics mismatch")
+    if payload.get("seed") not in config.seeds or type(payload.get("epoch")) is not int or payload["epoch"] < 1:
+        raise ContractError("checkpoint seed/epoch does not match its training config")
+    selected = payload.get("best", payload)
+    if not isinstance(selected, dict):
+        raise ContractError("selected checkpoint state must be an object")
+    selected_epoch = selected.get("epoch")
+    if type(selected_epoch) is not int or not 1 <= selected_epoch <= payload["epoch"]:
+        raise ContractError("selected checkpoint epoch is invalid")
+    state = selected.get("state", selected.get("model_state"))
+    if not isinstance(state, dict) or not state or any(not isinstance(v, Tensor) or not torch.isfinite(v).all() for v in state.values()):
+        raise ContractError("checkpoint model state is empty, malformed or nonfinite")
+    if config.candidate not in CANDIDATE_TYPES:
+        raise ContractError("checkpoint candidate is not a supported v2 architecture")
+    model = CANDIDATE_TYPES[config.candidate](manifest).eval()
+    expected_state = model.state_dict()
+    if set(state) != set(expected_state) or any(state[k].shape != v.shape or state[k].dtype != v.dtype
+            for k,v in expected_state.items() if k in state):
+        raise ContractError("checkpoint state keys/shapes/dtypes do not match its v2 candidate")
+    model.load_state_dict(state, strict=True)
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+    supervision = checkpoint_supervision(payload, manifest, selected_best=True)
+    if payload["checkpoint_version"] == CHECKPOINT_VERSION:
+        source = supervision["source"]
+        loss_path = Path(config.loss.path)
+        if not loss_path.is_absolute():
+            loss_path = REPO_ROOT / loss_path
+        if sha256_file(loss_path) != config.loss.sha256:
+            raise ContractError("checkpoint loss config hash differs from its declared source")
+        expected = dict(model_contract_sha256=config.model.manifest_sha256,
+            declared_dataset_sha256=config.dataset.sha256, resume_semantic_sha256=resume_semantic_sha256(config),
+            effective_loss_sha256=canonical_hash(LossConfig.from_file(loss_path).as_mapping()))
+        if any(source.get(k) != v for k,v in expected.items()):
+            raise ContractError("selected-state component evidence/config binding mismatch")
+    evidence = export_metadata(supervision, manifest, required_components=required_components)
+    origin = dict(checkpoint_path=str(checkpoint_path.resolve()), checkpoint_sha256=sha256_file(checkpoint_path),
+        training_config_sha256=sha256_file(config_path), config_sha256=config.config_sha256,
+        checkpoint_config_sha256=payload.get("config_sha256"), training_seed=payload["seed"],
+        resume_semantic_sha256=resume_semantic_sha256(config), candidate_id=config.candidate,
+        selected_epoch=selected_epoch, checkpoint_epoch=payload["epoch"], data_admission=config.dataset.admission,
+        component_evidence=evidence, research_only=True, release_admissible=False)
+    return model, sha256_state_dict(model.state_dict()), sum(p.numel() for p in model.parameters()), origin
+
+
 class _V2ExportWrapper(nn.Module):
     """Traced view: seven tensors in, nine heads out in manifest head_order."""
 
@@ -405,11 +477,12 @@ def _torch_inputs(case: dict, manifest: SETCompositionNetV2Manifest) -> tuple[Te
 def parity_report(wrapper: nn.Module, coreml_model, manifest: SETCompositionNetV2Manifest, cases: list[dict]) -> dict:
     """Compare PyTorch and Core ML outputs per head on the provided cases.
 
-    No tolerance is used to declare success: the actual maximum absolute error
-    is recorded as-is for every head.  ``within_fp16_expectation`` is purely
-    informational (FP16 quantization on the order of 1e-2..1e-3).
+    Actual errors are recorded; fixed atol=0.005/rtol=0.01 must hold for every
+    head/case. Empty cases, shape drift and nonfinite values cannot pass.
     """
 
+    if not cases:
+        raise ContractError("parity requires nonempty cases")
     order = [entry["name"] for entry in expected_coreml_io(manifest)["inputs"]]
     per_head: dict[str, dict] = {
         name: {"max_abs_error": 0.0, "mean_abs_error": None, "cases": {}} for name in manifest.output_head_names
@@ -442,6 +515,8 @@ def parity_report(wrapper: nn.Module, coreml_model, manifest: SETCompositionNetV
                 "worst_pytorch": float(expected_array.reshape(-1)[int(difference.argmax())]),
                 "worst_coreml": float(actual_array.reshape(-1)[int(difference.argmax())]),
                 "finite": bool(np.isfinite(actual_array).all() and np.isfinite(expected_array).all()),
+                "passed": bool(np.isfinite(actual_array).all() and np.isfinite(expected_array).all()
+                    and np.allclose(actual_array, expected_array, atol=PARITY_ATOL, rtol=PARITY_RTOL)),
             }
             if name in classification_heads:
                 entry["argmax_match"] = bool(int(expected_array.argmax()) == int(actual_array.argmax()))
@@ -502,6 +577,9 @@ def parity_report(wrapper: nn.Module, coreml_model, manifest: SETCompositionNetV
         "within_fp16_expectation": all(entry["max_abs_error"] <= info_threshold for entry in per_head.values()),
         "informational_threshold": info_threshold,
         "all_heads_finite": all_heads_finite,
+        "passed": all(row["passed"] for entry in per_head.values() for row in entry["cases"].values()),
+        "atol": PARITY_ATOL,
+        "rtol": PARITY_RTOL,
         "intent_sensitivity": intent_sensitivity,
         "cases": [case["case_id"] for case in cases],
     }
@@ -540,10 +618,13 @@ def receipt_path(output: Path) -> Path:
 def export(
     output: Path,
     *,
-    candidate_id: str = DEFAULT_CANDIDATE_ID,
+    candidate_id: str | None = None,
     seed: int = 20260913,
     manifest_path: Path = V2_MANIFEST_PATH,
     overwrite: bool = False,
+    checkpoint_path: Path | None = None,
+    training_config_path: Path | None = None,
+    required_components: dict | None = None,
 ) -> dict:
     import coremltools as ct
 
@@ -553,13 +634,34 @@ def export(
     manifest = SETCompositionNetV2Manifest.load(manifest_path)
     expected = expected_coreml_io(manifest)
 
+    if (checkpoint_path is None) != (training_config_path is None):
+        raise ValueError("checkpoint and training config must be supplied together")
+    checkpoint_origin = None
+    if checkpoint_path is not None:
+        model, weight_sha, parameter_count, checkpoint_origin = load_checkpoint_model(
+            checkpoint_path, training_config_path, manifest, required_components=required_components)
+        if candidate_id is not None and candidate_id != checkpoint_origin["candidate_id"]:
+            raise ContractError("requested candidate conflicts with checkpoint architecture")
+        candidate_id = checkpoint_origin["candidate_id"]
+        component_evidence = checkpoint_origin["component_evidence"]
+        weights_origin = "selected state of explicit records checkpoint; research export only"
+    else:
+        candidate_id = candidate_id or DEFAULT_CANDIDATE_ID
+        model, weight_sha, parameter_count = build_untrained_model(candidate_id, manifest, seed)
+        component_evidence = export_metadata(new_supervision(manifest, {"initialization_sha256":weight_sha}),
+            manifest, required_components=required_components)
+        weights_origin = "deterministically seeded random initialization; no training performed"
+    provenance_flags = dict(PROVENANCE_FLAGS, research_only="true")
+    if checkpoint_origin is not None:
+        provenance_flags.update(artifact_kind="research_checkpoint_export_path_validation", untrained_weights="false",
+            blocked_on="independent data/rights, component coverage, quality, calibration and runtime admission")
+
     if output.exists() or parity_path(output).exists() or receipt_path(output).exists():
         if not overwrite:
             raise FileExistsError(f"output already exists (pass --overwrite): {output}")
         _remove_existing(output)
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    model, weight_sha, parameter_count = build_untrained_model(candidate_id, manifest, seed)
     wrapper = _V2ExportWrapper(model, manifest.output_head_names).eval()
     cases = parity_cases(manifest, seed)
     trace_inputs = _torch_inputs(cases[0], manifest)
@@ -586,18 +688,20 @@ def export(
         )
         converted.author = "SET OS tooling"
         converted.short_description = (
-            "TOOLING ONLY: SETCompositionNet-v2 export-path validation on untrained weights. "
+            "RESEARCH/TOOLING ONLY: SETCompositionNet-v2 export-path validation. "
             "Not a release candidate / not a quality claim."
         )
-        converted.version = f"v2-tooling-untrained-{candidate_id}"
+        converted.version = f"v2-{'research-checkpoint' if checkpoint_origin else 'tooling-untrained'}-{candidate_id}"
         converted.user_defined_metadata.update(
             {
-                **ARTIFACT_PROVENANCE,
+                **{f"com.setos.{key}":value for key,value in provenance_flags.items()},
                 "com.setos.candidate_id": candidate_id,
                 "com.setos.contract_manifest_path": str(manifest_path.relative_to(REPO_ROOT)),
                 "com.setos.contract_manifest_sha256": manifest_sha,
                 "com.setos.weights_sha256": weight_sha,
-                "com.setos.weights_origin": "deterministically seeded random initialization; no training performed",
+                "com.setos.weights_origin": weights_origin,
+                "com.setos.component_evidence": json.dumps(component_evidence, sort_keys=True, separators=(",", ":")),
+                "com.setos.source_checkpoint_sha256": checkpoint_origin["checkpoint_sha256"] if checkpoint_origin else "none",
                 "com.setos.weight_parameter_count": str(parameter_count),
                 "com.setos.contract_version": manifest.raw["contract_version"],
                 "com.setos.input_contract_version": manifest.raw["input_contract_version"],
@@ -617,6 +721,8 @@ def export(
         exported_io = coreml_io_from_description(coreml_model.get_spec().description)
         contract = validate_contract(exported_io, manifest)
         parity = parity_report(wrapper, coreml_model, manifest, cases)
+        if not parity["passed"]:
+            raise ContractError("PyTorch/Core ML parity failed fixed tolerances; package not published")
         package_sha256 = sha256_tree(temporary_package)
         os.replace(temporary_package, output)
 
@@ -629,17 +735,20 @@ def export(
         "compute_units_for_parity": "CPU_ONLY",
     }
     provenance = {
-        "schema_id": "camera-v2-coreml-tooling-export-v1",
+        "schema_id": "camera-v2-coreml-research-export-v2" if checkpoint_origin else "camera-v2-coreml-tooling-export-v1",
         "status": "tooling_path_validated",
-        **PROVENANCE_FLAGS,
+        **provenance_flags,
         "human_gold": False,
         "release_admissible": False,
-        "admitted_data": "none (M03/M04 blocked)",
+        "admitted_data": "not verified by research exporter" if checkpoint_origin else "none (M03/M04 blocked)",
         "candidate_id": candidate_id,
         "weights_sha256": weight_sha,
-        "weights_origin": "deterministically seeded random initialization; no training performed",
+        "weights_origin": weights_origin,
+        "component_evidence": component_evidence,
+        "checkpoint_provenance": checkpoint_origin,
         "weight_parameter_count": parameter_count,
         "seed": seed,
+        "parity_seed": seed,
         "contract_manifest": {
             "path": str(manifest_path.relative_to(REPO_ROOT)),
             "sha256": manifest_sha,
@@ -677,17 +786,31 @@ def export(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_DIR / DEFAULT_OUTPUT_NAME)
-    parser.add_argument("--candidate", default=DEFAULT_CANDIDATE_ID, choices=sorted(CANDIDATE_TYPES))
+    parser.add_argument("--candidate", choices=sorted(CANDIDATE_TYPES))
     parser.add_argument("--seed", type=int, default=20260913)
     parser.add_argument("--manifest", type=Path, default=V2_MANIFEST_PATH)
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--training-config", type=Path)
+    parser.add_argument("--require-component", action="append", default=[], metavar="HEAD:NAME")
     args = parser.parse_args()
+    required = {}
+    for component in args.require_component:
+        if ":" not in component:
+            parser.error("--require-component must be HEAD:NAME")
+        head, name = component.split(":", 1)
+        required.setdefault(head, []).append(name)
+    if args.checkpoint is not None and args.output == DEFAULT_OUTPUT_DIR / DEFAULT_OUTPUT_NAME:
+        parser.error("checkpoint export requires an explicit --output")
     summary = export(
         args.output,
         candidate_id=args.candidate,
         seed=args.seed,
         manifest_path=args.manifest,
         overwrite=args.overwrite,
+        checkpoint_path=args.checkpoint,
+        training_config_path=args.training_config,
+        required_components=required,
     )
     print(json.dumps(summary, indent=2, sort_keys=True))
 

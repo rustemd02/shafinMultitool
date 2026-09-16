@@ -250,6 +250,98 @@ final class CameraManagerLifecycleTests: XCTestCase {
         await manager.releaseAndWait()
     }
 
+    func testFailureBeforeInitialFrameAttachmentThrowsTypedErrorAndCanRecover() async throws {
+        let cases: [(Notification.Name, CameraManagerError)] = [
+            (AVCaptureSession.runtimeErrorNotification, .runtimeError),
+            (AVCaptureSession.wasInterruptedNotification, .sessionInterrupted)
+        ]
+
+        for (notification, expectedError) in cases {
+            let notificationCenter = NotificationCenter()
+            let (manager, runner) = makeManager(notificationCenter: notificationCenter)
+            let session = manager.captureSession
+            var failures: [CameraManagerError] = []
+            let subscription = manager.failurePublisher.sink { failures.append($0) }
+            manager.beforeFrameDeliveryEnableForTesting = {
+                notificationCenter.post(name: notification, object: session)
+            }
+
+            do {
+                try await manager.startAndWait()
+                XCTFail("A current-generation attachment failure must not complete startup successfully")
+            } catch let error as CameraManagerError {
+                XCTAssertEqual(error, expectedError)
+            } catch {
+                XCTFail("Unexpected error: \(error)")
+            }
+
+            XCTAssertEqual(runner.startCount, 0)
+            XCTAssertEqual(runner.stopCount, 0)
+            XCTAssertFalse(runner.isRunning)
+            XCTAssertFalse(manager.frameDeliveryEnabledForTesting)
+            XCTAssertEqual(manager.lifecycleState, .failed(expectedError))
+            XCTAssertEqual(manager.lifecycleError, expectedError)
+            XCTAssertEqual(manager.configurationState, .configured)
+            XCTAssertEqual(manager.sessionGenerationForTesting, 0)
+            XCTAssertEqual(failures, [expectedError])
+
+            manager.beforeFrameDeliveryEnableForTesting = nil
+            await manager.releaseAndWait()
+            XCTAssertEqual(manager.lifecycleState, .idle)
+            XCTAssertNil(manager.lifecycleError)
+            XCTAssertEqual(manager.configurationState, .unconfigured)
+
+            try await manager.startAndWait()
+            XCTAssertEqual(runner.startCount, 1)
+            XCTAssertTrue(runner.isRunning)
+            XCTAssertTrue(manager.frameDeliveryEnabledForTesting)
+            XCTAssertEqual(manager.lifecycleState, .running)
+            XCTAssertNil(manager.lifecycleError)
+            await manager.releaseAndWait()
+            subscription.cancel()
+        }
+    }
+
+    @MainActor
+    func testViewModelRejectedInitialAttachmentNeverPublishesRunning() async {
+        let notificationCenter = NotificationCenter()
+        let (manager, runner) = makeManager(notificationCenter: notificationCenter)
+        let session = manager.captureSession
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil,
+            thermalGovernor: makeThermalGovernor(),
+            neuralHeavyModelsEnabledProvider: { true },
+            liveHybridFusionEnabled: false,
+            demoLiveCoachEnabled: false
+        )
+        let viewModel = CameraViewModel(cameraManager: manager, analysisPipeline: pipeline)
+        let failed = expectation(description: "ViewModel reports rejected startup")
+        failed.assertForOverFulfill = false
+        var observedStates: [CameraLifecycleState] = []
+        let subscription = viewModel.$lifecycleState.sink { state in
+            observedStates.append(state)
+            if state == .failed(.runtimeError) { failed.fulfill() }
+        }
+        defer { subscription.cancel() }
+        manager.beforeFrameDeliveryEnableForTesting = {
+            notificationCenter.post(name: AVCaptureSession.runtimeErrorNotification, object: session)
+        }
+
+        await viewModel.startAndWait()
+        await fulfillment(of: [failed], timeout: 1)
+
+        XCTAssertEqual(runner.startCount, 0)
+        XCTAssertFalse(runner.isRunning)
+        XCTAssertFalse(manager.frameDeliveryEnabledForTesting)
+        XCTAssertFalse(observedStates.contains(.running))
+        XCTAssertEqual(viewModel.lifecycleState, .failed(.runtimeError))
+        XCTAssertEqual(viewModel.lifecycleError, .runtimeError)
+        manager.beforeFrameDeliveryEnableForTesting = nil
+        await viewModel.releaseAndWait()
+    }
+
     func testOrientationMappingKeepsInterfaceCaptureAndImageSemanticsTogether() throws {
         let cases: [(UIInterfaceOrientation, AVCaptureVideoOrientation, CGImagePropertyOrientation)] = [
             (.portrait, .portrait, .right),

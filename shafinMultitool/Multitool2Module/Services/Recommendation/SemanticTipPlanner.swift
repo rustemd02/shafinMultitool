@@ -34,6 +34,23 @@ struct SemanticTipPlannerOutput: Sendable {
     let fallbackUsed: Bool
 }
 
+/// Whether this frame retained the eligible object observations supplied by
+/// its detector/tracker. This is observation coverage, not scene completeness
+/// or calibrated evidence that an object-scoped action is safe.
+enum ObjectObservationCoverage: Sendable, Equatable {
+    case complete
+    case partial
+    case unavailable
+}
+
+/// Image-boundary clipping of current tracking estimates, independent from
+/// observation inventory. Unclipped does not establish physical full visibility.
+enum ObjectTrackingGeometryStatus: Sendable, Equatable {
+    case unclipped
+    case clipped
+    case unavailable
+}
+
 struct LiveCoachQualityGate: Sendable {
     static let maxVisionFreshnessMilliseconds = 250
     static let strongConfidenceFloor = 0.75
@@ -45,7 +62,8 @@ struct LiveCoachQualityGate: Sendable {
                        snapshot: FrameFeatureSnapshot?,
                        semantics: SceneSemanticsReport?,
                        overlappingInstancePairCount: Int? = nil,
-                       tapGroundedObjectTarget: Bool = false) -> Bool {
+                       objectObservationCoverage: ObjectObservationCoverage = .complete,
+                       objectTrackingGeometryStatus: ObjectTrackingGeometryStatus = .unavailable) -> Bool {
         let requiresSpatialEvidence = action.map(isSpatial) == true
             || semanticActionTypes.contains(where: isSpatial)
         guard requiresSpatialEvidence else { return true }
@@ -84,21 +102,26 @@ struct LiveCoachQualityGate: Sendable {
 
         // Scene-object moves claim a physical change of a specific prop, so
         // they additionally require that this live frame detected at least one
-        // object at all. Presence is not identity: per-object association is a
-        // separate owner, and a class label alone never proves the target.
-        if semanticActionTypes.contains(where: isObjectMove), snapshot.objects.totalCount == 0 {
-            return false
+        // object at all, with no known gaps in the eligible observations.
+        // A retained subset cannot establish that no competing target exists.
+        // Presence is not identity: per-object association is a separate owner,
+        // and a class label alone never proves the target.
+        if semanticActionTypes.contains(where: isObjectMove) {
+            guard case .complete = objectObservationCoverage,
+                  case .unclipped = objectTrackingGeometryStatus,
+                  snapshot.objects.totalCount > 0 else { return false }
         }
 
         // CC-O02/O05: when two tracked instances overlap, their regions merge
         // visually and an object-targeted move has no groundable target — the
         // advice cannot claim to move "the lamp" out of two lamps. The honest
         // answer is to withhold the object-scoped correction; frame-global
-        // corrections (angle, framing) stay actionable.
+        // corrections (angle, framing) stay actionable. A raw tap/Boolean
+        // never waives this fence: the evaluated action has no typed target
+        // binding yet.
         if semanticActionTypes.contains(where: isObjectMove),
            let overlappingInstancePairCount,
-           overlappingInstancePairCount > 0,
-           !tapGroundedObjectTarget {
+           overlappingInstancePairCount > 0 {
             return false
         }
 
@@ -150,34 +173,46 @@ struct LiveCoachQualityGate: Sendable {
     }
 }
 
-/// CC-O02 wiring: the operator's last scene-space tap, stored raw by the
-/// pipeline and resolved against tracked instances at evaluation time. Pure
-/// decision core — storage and queue discipline belong to the pipeline; the
-/// region resolution is the same nearest-center/touch-slop contract as
-/// `SubjectTapSelector.hitTestTrackedInstances`.
+/// A tap freezes one existing tracker target at receipt. Coordinates are not
+/// retained for reinterpretation against later observations. This selection
+/// does not authorize object advice; that requires an evaluated-target binding.
 struct SceneTapEvidence: Equatable, Sendable {
-    let sceneX: Double
-    let sceneY: Double
+    let binding: ObjectTargetBinding
+    let sampleSequence: UInt64
+    let frameCapturedAt: Date
     let capturedAt: Date
 
-    /// A tap names an advice target only while it is fresh: the gate
-    /// re-verifies vision evidence inside `maxVisionFreshnessMilliseconds`,
-    /// so a stale naming no longer describes the regions it disambiguates.
-    func namesTrackedInstance(
-        in instances: [(trackID: String, region: NormalizedRect)],
-        now: Date,
-        freshnessMilliseconds: Int = LiveCoachQualityGate.maxVisionFreshnessMilliseconds,
-        touchSlop: Double = SubjectTapSelector.touchSlop
-    ) -> Bool {
-        let ageMilliseconds = now.timeIntervalSince(capturedAt) * 1000
-        guard ageMilliseconds >= 0,
-              ageMilliseconds <= Double(freshnessMilliseconds) else { return false }
-        return SubjectTapSelector.hitTestTrackedInstances(
-            sceneX: sceneX,
-            sceneY: sceneY,
-            instances: instances,
-            touchSlop: touchSlop
-        ) != nil
+    init?(sceneX: Double, sceneY: Double, frame: ObjectTrackFrame, now: Date,
+          freshnessMilliseconds: Int = LiveCoachQualityGate.maxVisionFreshnessMilliseconds) {
+        guard let binding = frame.binding(
+            atSceneX: sceneX, y: sceneY, now: now,
+            freshnessMilliseconds: freshnessMilliseconds
+        ) else { return nil }
+        self.binding = binding
+        self.sampleSequence = frame.sampleSequence
+        self.frameCapturedAt = frame.capturedAt
+        self.capturedAt = now
+    }
+
+    /// Exact target/frame comparison only; never a global "some object hit".
+    func matches(targetTrackID: String, in frame: ObjectTrackFrame, now: Date,
+                 freshnessMilliseconds: Int = LiveCoachQualityGate.maxVisionFreshnessMilliseconds) -> Bool {
+        let tapAge = now.timeIntervalSince(capturedAt) * 1000
+        let frameAge = now.timeIntervalSince(frameCapturedAt) * 1000
+        guard tapAge.isFinite, tapAge >= 0, tapAge <= Double(freshnessMilliseconds),
+              frameAge.isFinite, frameAge >= 0, frameAge <= Double(freshnessMilliseconds),
+              binding.trackID == targetTrackID,
+              binding.generation == frame.generation,
+              binding.boundAtFrameID == frame.frameID,
+              sampleSequence == frame.sampleSequence,
+              frameCapturedAt == frame.capturedAt,
+              frame.currentObjects.contains(where: { $0.identity.trackID == targetTrackID }) else {
+            return false
+        }
+        if case .bound = binding.resolve(in: frame.currentObjects, generation: frame.generation) {
+            return true
+        }
+        return false
     }
 }
 

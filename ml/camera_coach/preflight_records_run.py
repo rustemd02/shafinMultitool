@@ -180,6 +180,7 @@ def _probe_device(config: Any, records: list[Any], contract: Any, loss_config: A
         _available_heads,
         _batch_loss,
         _make_model,
+        _supervised_records,
         _torch_device,
     )
 
@@ -188,7 +189,10 @@ def _probe_device(config: Any, records: list[Any], contract: Any, loss_config: A
     train_records = [record for record in records if record.split == "train"]
     if not train_records:
         raise PreflightError("preflight device probe needs at least one train record")
-    trained, _masks = _available_heads(train_records, config)
+    trained, _masks = _available_heads(train_records, config, loss_config)
+    train_records = _supervised_records(train_records, trained, ranking_enabled=loss_config.weights.ranking > 0)
+    if not train_records:
+        raise PreflightError("preflight device probe has no supervised targets for the requested heads")
     pos_weights = None
     if config.training.class_weight_max > 0.0:
         pos_weights = {
@@ -203,7 +207,7 @@ def _probe_device(config: Any, records: list[Any], contract: Any, loss_config: A
     scalar_terms: dict[str, float] = {}
     for _ in range(2):
         started = time.perf_counter()
-        total, scalar_terms = _batch_loss(
+        total, scalar_terms, _observation = _batch_loss(
             model,
             batch,
             contract,
@@ -433,7 +437,7 @@ def run_preflight(args: argparse.Namespace) -> dict[str, Any]:
             raise PreflightError("copied records do not match the verified data bundle hash")
 
         try:
-            records = load_records(resolved_records, data_hash)
+            records = load_records(resolved_records, data_hash, admission=config.dataset.admission)
         except TrainingRecordError as exc:
             raise PreflightError(f"typed records rejected: {exc}") from exc
         splits: dict[str, int] = {}

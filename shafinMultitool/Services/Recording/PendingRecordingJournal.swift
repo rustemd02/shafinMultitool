@@ -1,8 +1,9 @@
 import Foundation
 
 /// M7-019: durable pending-artifact journal entry. Exactly one record exists
-/// per pending file; every promotion writes it atomically BEFORE moving the
-/// file and removes it only after the move committed, so a crash at any point
+/// per recording; every promotion writes it atomically BEFORE moving the
+/// file and removes it only after DBService persists its project reference,
+/// so a crash during promotion or project save
 /// converges (M7-021) to either one valid project reference or a recoverable
 /// pending state. Paths are Application-Support-relative; the journal never
 /// stores absolute paths or user content.
@@ -12,8 +13,8 @@ struct PendingRecordingJournalEntry: Codable, Equatable, Sendable {
         case pending
         /// The atomic move has been started; recovery must resume promotion.
         case promoting
-        /// The move committed and the journal record is about to be removed.
-        /// Treated the same as a missing record during recovery.
+        /// The move committed; the owning project has not yet acknowledged
+        /// its persisted recording reference. Retain this record across launch.
         case promoted
         /// Retry budget exhausted; the pending file is kept for user-visible
         /// recovery and must not be silently deleted.
@@ -22,6 +23,9 @@ struct PendingRecordingJournalEntry: Codable, Equatable, Sendable {
 
     let recordingID: UUID
     let projectID: UUID
+    /// The committed project generation observed before this promotion.
+    /// Legacy records decode nil and cannot silently add an absent reference.
+    let expectedProjectUpdatedAt: Date?
     /// Pending source path relative to Application Support.
     let sourceTempPath: String
     /// Project destination path relative to Application Support.
@@ -40,6 +44,30 @@ struct PendingRecordingJournalEntry: Codable, Equatable, Sendable {
     /// Bounded retry budget before recovery marks the entry failed.
     static let maxRetryCount = 3
 
+    init(recordingID: UUID,
+         projectID: UUID,
+         sourceTempPath: String,
+         destinationRelativePath: String,
+         expectedFileSize: Int64?,
+         expectedSHA256: String?,
+         state: State,
+         retryCount: Int,
+         createdAt: Date,
+         updatedAt: Date,
+         expectedProjectUpdatedAt: Date? = nil) {
+        self.recordingID = recordingID
+        self.projectID = projectID
+        self.expectedProjectUpdatedAt = expectedProjectUpdatedAt
+        self.sourceTempPath = sourceTempPath
+        self.destinationRelativePath = destinationRelativePath
+        self.expectedFileSize = expectedFileSize
+        self.expectedSHA256 = expectedSHA256
+        self.state = state
+        self.retryCount = retryCount
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
     func updating(state: State, retryCount: Int? = nil, at date: Date) -> Self {
         PendingRecordingJournalEntry(
             recordingID: recordingID,
@@ -51,7 +79,8 @@ struct PendingRecordingJournalEntry: Codable, Equatable, Sendable {
             state: state,
             retryCount: retryCount ?? self.retryCount,
             createdAt: createdAt,
-            updatedAt: date
+            updatedAt: date,
+            expectedProjectUpdatedAt: expectedProjectUpdatedAt
         )
     }
 }
@@ -112,7 +141,11 @@ final class PendingRecordingJournal: @unchecked Sendable {
             throw PendingRecordingJournalError.fileSystemFailure
         }
         do {
-            return try JSONDecoder().decode(PendingRecordingJournalEntry.self, from: data)
+            let entry = try JSONDecoder().decode(PendingRecordingJournalEntry.self, from: data)
+            guard entry.recordingID == recordingID else {
+                throw PendingRecordingJournalError.journalCorrupt(recordingID: recordingID)
+            }
+            return entry
         } catch {
             throw PendingRecordingJournalError.journalCorrupt(recordingID: recordingID)
         }
@@ -138,10 +171,17 @@ final class PendingRecordingJournal: @unchecked Sendable {
     /// All readable records. A corrupt record is surfaced with its recording
     /// identity so recovery can report it instead of ignoring it.
     func allEntries() throws -> [Result<PendingRecordingJournalEntry, PendingRecordingJournalError>] {
-        let urls = (try? fileManager.contentsOfDirectory(
-            at: journalDirectoryURL,
-            includingPropertiesForKeys: nil
-        )) ?? []
+        let urls: [URL]
+        do {
+            urls = try fileManager.contentsOfDirectory(
+                at: journalDirectoryURL,
+                includingPropertiesForKeys: nil
+            )
+        } catch {
+            // An unreadable journal cannot prove that Pending files are
+            // unreferenced. Destructive inventories must fail closed.
+            throw PendingRecordingJournalError.fileSystemFailure
+        }
         return urls.sorted { $0.lastPathComponent < $1.lastPathComponent }.compactMap { url in
             guard url.pathExtension == "json",
                   let recordingID = UUID(uuidString: url.deletingPathExtension().lastPathComponent) else {
@@ -153,6 +193,9 @@ final class PendingRecordingJournal: @unchecked Sendable {
                     PendingRecordingJournalEntry.self,
                     from: data
                 )
+                guard entry.recordingID == recordingID else {
+                    return .failure(.journalCorrupt(recordingID: recordingID))
+                }
                 return .success(entry)
             } catch {
                 return .failure(.journalCorrupt(recordingID: recordingID))

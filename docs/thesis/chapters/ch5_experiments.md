@@ -4,6 +4,10 @@ chapter: experiments
 scope: SceneGeneratorModule only; Camera Analysis eval artifacts added separately and chapter structure needs decision
 last_updated: 2026-06-15
 needs_update_reason: >-
+  2026-09-16 EV-CA-PARTIAL-INTAKE-001 records 17 actual assisted photos, 37 issue
+  labels, 99 unknowns and real masked backward with zero optimizer steps. No fit,
+  calibration or release evaluation can be inferred. EV-SG-BACKEND-PACKAGE-001 is
+  local integration/reproducibility evidence and does not measure generation quality.
   2026-09-13 Q05 sync added experiment-evidence entries not yet reflected here: EV-CA-DATA-ANNO-001/
   CL-CA-035 (21-to-8 frozen label mapping with beauty≠KEEP, absence≠negative and absent-delta=mask
   rules; real 547-record queue integrity and licence provenance; full tools/tests 114 passed),

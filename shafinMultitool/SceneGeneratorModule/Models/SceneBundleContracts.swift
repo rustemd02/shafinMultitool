@@ -1012,7 +1012,7 @@ enum NormalizedScriptUnitKind: String, Codable, Equatable {
     case blank
 }
 
-struct ScriptOffsetRange: Codable, Equatable {
+struct ScriptOffsetRange: Codable, Equatable, Sendable {
     var start: Int
     var end: Int
 }
@@ -1138,6 +1138,7 @@ struct SceneChunkDraft: Codable, Equatable, Identifiable {
     var confidence: Float
     var unresolvedMentions: [String]
     var reasonCodes: [String]
+    var generationProvenance: SceneChunkGenerationProvenance? = nil
 }
 
 struct SceneChunkStateDelta: Codable, Equatable {
@@ -1192,6 +1193,7 @@ struct SceneChunk: Codable, Equatable, Identifiable {
     var reasonCodes: [String]
     var usedFallbackPlanner: Bool
     var usedLegacyPlanBridge: Bool
+    var generationProvenance: SceneChunkGenerationProvenance? = nil
 }
 
 struct SceneStitchState: Codable, Equatable, Identifiable {
@@ -1309,4 +1311,5 @@ struct SceneBundleParsingResult: Equatable {
     var diagnostics: ParsingDiagnostics
     var chunkDiagnostics: [SceneChunkDiagnostics]
     var executionTrace: SceneExecutionTrace?
+    var remoteFailure: SceneRemoteGenerationFailure? = nil
 }

@@ -943,6 +943,11 @@ private struct SETLibraryContactSheet: View {
                 }
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            SETPrivacyEntryButton(accessibilityID: "library_privacy")
+                .frame(maxWidth: .infinity)
+                .background(.setInk)
+        }
     }
 
     private var header: some View {

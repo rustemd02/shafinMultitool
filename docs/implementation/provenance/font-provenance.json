@@ -1,0 +1,93 @@
+{
+  "schema": "set-os-font-provenance",
+  "schema_version": 1,
+  "verified_at": "2026-09-16",
+  "upstream_repository": "https://github.com/google/fonts",
+  "upstream_commit": "e1118da94a8cb00cf6d06cdac9ef13eb1e5c6ab7",
+  "evidence_receipt_path": "../setos-backend/local-data/SETOS/verification/font-upstream-20260916T130200Z-aeeeczkd/font-upstream-comparison.json",
+  "evidence_receipt_sha256": "2e9642800cbddfa397d3c00627ce882168fcb57cba302a05e554f1b8c98b5238",
+  "license": "OFL-1.1",
+  "licensing_basis": {
+    "scope": "Unmodified font binaries bundled within SET OS with the matching full copyright/license notices; no standalone font sale or author endorsement.",
+    "license_text": "https://openfontlicense.org/open-font-license-official-text/",
+    "faq": "https://openfontlicense.org/ofl-faq/",
+    "faq_sections": [
+      "1.3",
+      "1.4",
+      "1.20"
+    ],
+    "evidence": "All five TTF and all five OFL.txt downloads returned HTTP 200 with normal TLS verification and are byte-identical to the corresponding repository files."
+  },
+  "limitations": [
+    "The supplied Release app must independently pass font and notice hashes; source verification does not prove packaging, glyph coverage or visual UI quality.",
+    "Bebas Neue binary copyright 2019 vs notice 2010, and PT Mono binary 2010 vs notice 2011, are retained verbatim from the same pinned upstream distribution; their historical causes are not inferred.",
+    "Other release components retain their independent admission gates."
+  ],
+  "fonts": [
+    {
+      "id": "font-bebasneue-regular",
+      "source_path": "shafinMultitool/Resources/Fonts/BebasNeue-Regular.ttf",
+      "bundle_path": "BebasNeue-Regular.ttf",
+      "sha256": "08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73",
+      "notice_path": "shafinMultitool/Resources/Fonts/OFL-BebasNeue.txt",
+      "notice_bundle_path": "OFL-BebasNeue.txt",
+      "notice_sha256": "72082f6cb4d04be2ecf7cc7d9e1e7d73787f0af8a5a278a47cade70c16b78341",
+      "upstream_font_path": "ofl/bebasneue/BebasNeue-Regular.ttf",
+      "upstream_notice_path": "ofl/bebasneue/OFL.txt",
+      "family": "Bebas Neue",
+      "embedded_version": "Version 2.000"
+    },
+    {
+      "id": "font-caveat-variable",
+      "source_path": "shafinMultitool/Resources/Fonts/Caveat-Variable.ttf",
+      "bundle_path": "Caveat-Variable.ttf",
+      "sha256": "0bdb6b660482d31531b3945849fba5916b3ef8695da7024a9e6b9ee3c4157988",
+      "notice_path": "shafinMultitool/Resources/Fonts/OFL-Caveat.txt",
+      "notice_bundle_path": "OFL-Caveat.txt",
+      "notice_sha256": "1f9d81d094273d82f3898a1ee8b598a717d050ecbf5ff7bede105b704880157b",
+      "upstream_font_path": "ofl/caveat/Caveat[wght].ttf",
+      "upstream_notice_path": "ofl/caveat/OFL.txt",
+      "family": "Caveat",
+      "embedded_version": "Version 2.000"
+    },
+    {
+      "id": "font-jetbrainsmono-variable",
+      "source_path": "shafinMultitool/Resources/Fonts/JetBrainsMono-Variable.ttf",
+      "bundle_path": "JetBrainsMono-Variable.ttf",
+      "sha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+      "notice_path": "shafinMultitool/Resources/Fonts/OFL-JetBrainsMono.txt",
+      "notice_bundle_path": "OFL-JetBrainsMono.txt",
+      "notice_sha256": "b2fe5e8987594e9ffd1d2ca52a2f5d73eb8335243893c5d6254b5ad69269591d",
+      "upstream_font_path": "ofl/jetbrainsmono/JetBrainsMono[wght].ttf",
+      "upstream_notice_path": "ofl/jetbrainsmono/OFL.txt",
+      "family": "JetBrains Mono",
+      "embedded_version": "Version 2.211"
+    },
+    {
+      "id": "font-oswald-variable",
+      "source_path": "shafinMultitool/Resources/Fonts/Oswald-Variable.ttf",
+      "bundle_path": "Oswald-Variable.ttf",
+      "sha256": "5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817",
+      "notice_path": "shafinMultitool/Resources/Fonts/OFL-Oswald.txt",
+      "notice_bundle_path": "OFL-Oswald.txt",
+      "notice_sha256": "0fd731a904b729a4e02eaf5e8ebd06783edd9abe400e8882760160230675b652",
+      "upstream_font_path": "ofl/oswald/Oswald[wght].ttf",
+      "upstream_notice_path": "ofl/oswald/OFL.txt",
+      "family": "Oswald",
+      "embedded_version": "Version 4.103;gftools[0.9.33.dev8+g029e19f]"
+    },
+    {
+      "id": "font-ptm55ft",
+      "source_path": "shafinMultitool/Resources/Fonts/PTM55FT.ttf",
+      "bundle_path": "PTM55FT.ttf",
+      "sha256": "cbe732b3b8fd211fd986ebdfc9b870ddeca4faab0bb5425fc509b37f9b4ac804",
+      "notice_path": "shafinMultitool/Resources/Fonts/OFL-PTMono.txt",
+      "notice_bundle_path": "OFL-PTMono.txt",
+      "notice_sha256": "511125dc85198375795fdbc109d088654d3b7f9dbd3ccb7bf93d844aef0b153c",
+      "upstream_font_path": "ofl/ptmono/PTM55FT.ttf",
+      "upstream_notice_path": "ofl/ptmono/OFL.txt",
+      "family": "PT Mono",
+      "embedded_version": "Version 1.001W OFL"
+    }
+  ]
+}

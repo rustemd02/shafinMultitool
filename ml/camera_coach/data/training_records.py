@@ -55,6 +55,9 @@ from .intent_features import preprocess_frame_v2
 
 TRAINING_RECORD_SCHEMA_ID = "camera-training-record-v2"
 TRAINING_RECORD_SCHEMA_VERSION = "v2.0.0"
+PARTIAL_LABEL_SCHEMA_VERSION = "v2.1.0"
+GEOMETRIC_LABEL_SCHEMA_VERSION = "v2.2.0"
+SUPPORTED_RECORD_SCHEMA_VERSIONS = (TRAINING_RECORD_SCHEMA_VERSION, PARTIAL_LABEL_SCHEMA_VERSION, GEOMETRIC_LABEL_SCHEMA_VERSION)
 RECORDS_GENERATOR_VERSION = "typed_training_records.v2"
 
 SPLITS = ("train", "validation", "calibration", "locked_test")
@@ -197,6 +200,8 @@ class TrainingRecord:
     masks: Mapping[str, Tensor]
     ranking: tuple[tuple[str, int], ...]
     admissible: bool
+    schema_version: str = TRAINING_RECORD_SCHEMA_VERSION
+    annotation_provenance: Mapping[str, Any] | None = None
 
     def model_inputs(self, contract: SETCompositionNetV2Manifest) -> SETCompositionNetV2Inputs:
         return build_model_inputs(self, contract)
@@ -264,6 +269,7 @@ def _targets_from_node(
     admissible: bool,
     intent_name: str,
     label: str,
+    schema_version: str = TRAINING_RECORD_SCHEMA_VERSION,
 ) -> tuple[dict[str, Tensor], dict[str, Tensor]]:
     node = _require_keys(node, _TARGET_KEYS, label)
     scene_names = tuple(contract.output_head_specs["scene_class_logits"]["ordered_names"])
@@ -300,23 +306,30 @@ def _targets_from_node(
     targets["subjectness_roi_agreement_logits"] = torch.tensor(subjectness_values, dtype=torch.float32)
     masks["subjectness_roi_agreement_logits"] = torch.tensor(subjectness_mask, dtype=torch.float32)
 
-    # issue_logits: an unreviewed catalog is missing supervision, not a
-    # negative.  A reviewed catalog labels every one of the eight issues.
-    issues_node = _require_keys(node["issues"], {"reviewed", "present"}, f"{label}.issues")
-    reviewed = _require_bool(issues_node["reviewed"], f"{label}.issues.reviewed")
-    present = issues_node["present"]
-    if not isinstance(present, list) or not all(isinstance(item, str) for item in present):
-        raise TrainingRecordError(f"{label}.issues.present must be a list of issue names")
-    unknown_issues = sorted(set(present).difference(issue_names))
-    if unknown_issues:
-        raise TrainingRecordError(f"{label}.issues.present has unknown neural issues: {unknown_issues}")
-    if not reviewed and present:
-        raise TrainingRecordError(
-            f"{label}.issues.present carries issues while reviewed=false; unlabeled issues must stay unknown"
-        )
-    issue_values = [1.0 if name in set(present) else 0.0 for name in issue_names]
+    # v2.0 remains an explicitly reviewed whole catalog. v2.1 carries one
+    # nullable value per frozen issue; a null never becomes a negative label.
+    if schema_version in (PARTIAL_LABEL_SCHEMA_VERSION, GEOMETRIC_LABEL_SCHEMA_VERSION):
+        issues_node = _require_keys(node["issues"], set(issue_names), f"{label}.issues")
+        issue_values = [0.0 if issues_node[name] is None else float(
+            _require_binary(issues_node[name], f"{label}.issues.{name}")) for name in issue_names]
+        issue_mask = [0.0 if issues_node[name] is None else 1.0 for name in issue_names]
+    else:
+        issues_node = _require_keys(node["issues"], {"reviewed", "present"}, f"{label}.issues")
+        reviewed = _require_bool(issues_node["reviewed"], f"{label}.issues.reviewed")
+        present = issues_node["present"]
+        if not isinstance(present, list) or not all(isinstance(item, str) for item in present):
+            raise TrainingRecordError(f"{label}.issues.present must be a list of issue names")
+        unknown_issues = sorted(set(present).difference(issue_names))
+        if unknown_issues:
+            raise TrainingRecordError(f"{label}.issues.present has unknown neural issues: {unknown_issues}")
+        if not reviewed and present:
+            raise TrainingRecordError(
+                f"{label}.issues.present carries issues while reviewed=false; unlabeled issues must stay unknown"
+            )
+        issue_values = [1.0 if name in set(present) else 0.0 for name in issue_names]
+        issue_mask = [1.0 if reviewed else 0.0] * len(issue_names)
     targets["issue_logits"] = torch.tensor(issue_values, dtype=torch.float32)
-    masks["issue_logits"] = torch.full((len(issue_names),), 1.0 if reviewed else 0.0, dtype=torch.float32)
+    masks["issue_logits"] = torch.tensor(issue_mask, dtype=torch.float32)
 
     # action_utility_logits: intent-conditioned.  Admissible records label
     # acceptable actions 1.0 and forbidden actions 0.0; every other approved
@@ -411,15 +424,160 @@ def _targets_from_node(
     return targets, masks
 
 
+def _partial_provenance(value: object, node: Mapping[str, Any], masks: Mapping[str, Tensor],
+                        contract: SETCompositionNetV2Manifest) -> dict[str, Any]:
+    """The v2.1 research intake admits issue labels only, with retained lineage."""
+    provenance = _require_keys(value, {
+        "schema_id", "label_origin", "journal_sha256", "queue_sha256", "event_line",
+        "event_sha256", "media_sha256", "projection", "research_only", "human_gold",
+        "release_admissible", "training_ready",
+    }, "annotation_provenance")
+    if provenance["schema_id"] != "camera-language-partial-intake-v1":
+        raise TrainingRecordError("unsupported partial intake provenance schema")
+    if provenance["label_origin"] not in (
+        "human_text_model_translation_confirmed", "model_visual_human_confirmed",
+    ):
+        raise TrainingRecordError("unsupported partial intake label origin")
+    flags = {"research_only": True, "human_gold": False, "release_admissible": False, "training_ready": False}
+    for key, expected in flags.items():
+        if _require_bool(provenance[key], f"annotation_provenance.{key}") is not expected:
+            raise TrainingRecordError("v2.1 partial intake must retain its non-admitted research flags")
+    for key in ("journal_sha256", "queue_sha256", "event_sha256", "media_sha256"):
+        digest = provenance[key]
+        if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise TrainingRecordError(f"annotation_provenance.{key} must be a SHA256")
+    if _require_int(provenance["event_line"], "annotation_provenance.event_line") < 1:
+        raise TrainingRecordError("annotation_provenance.event_line must be positive")
+    projection = provenance["projection"]
+    if not isinstance(projection, dict):
+        raise TrainingRecordError("annotation_provenance.projection must retain the source projection")
+    for key, expected in flags.items():
+        if projection.get(key) is not expected:
+            raise TrainingRecordError("source projection research flags drifted")
+    issue_names = tuple(contract.output_head_specs["issue_logits"]["ordered_names"])
+    source_issues = projection.get("issue_logits")
+    if not isinstance(source_issues, list) or len(source_issues) != len(issue_names):
+        raise TrainingRecordError("source projection must contain every nullable issue")
+    for name, target in zip(issue_names, source_issues):
+        if target is not None:
+            _require_binary(target, f"projection.issue_logits.{name}")
+        if target != node["targets"]["issues"][name]:
+            raise TrainingRecordError("partial issue targets disagree with their source projection")
+    if not isinstance(projection.get("spatial_requests"), list):
+        raise TrainingRecordError("source spatial_requests must remain unevaluated metadata")
+    if (node["capture_intent"] != {"styles": [], "known": False} or
+            node["roi_normalized_xywh"] is not None or node["scalar_features"] is not None or
+            node["missing_feature_mask"] is not None or node["ranking"]):
+        raise TrainingRecordError("v2.1 language intake has no admitted intent, ROI, scalars or ranking")
+    if any(torch.any(mask != 0.0) for head, mask in masks.items() if head != "issue_logits"):
+        raise TrainingRecordError("v2.1 language intake supports issue supervision only")
+    return dict(provenance)
+
+
+def validate_record_admission(records: Sequence[TrainingRecord], admission: str) -> None:
+    """A config or bundle manifest cannot promote retained research labels."""
+    if admission == "declared_admitted" and any(record.annotation_provenance is not None for record in records):
+        raise TrainingRecordError("partial language-review and measured research records remain non_admitted_research")
+
+
+def edge_measurement(roi: Sequence[float]) -> int | None:
+    """Strong extremes of live edge pressure; not quality or action utility.
+
+    AnalysisPipeline computes pressure = clamp(1 - minimum_gap / 0.10).
+    A gap at most 0.02 is pressure >= 0.80; gap >= 0.10 is pressure 0.
+    The interval between remains unknown. Tolerance covers floating arithmetic.
+    """
+    x, y, width, height = roi
+    gap = min(x, y, 1.0 - x - width, 1.0 - y - height)
+    return 1 if gap <= 0.020000001 else (0 if gap >= 0.099999999 else None)
+
+
+def _geometric_provenance(value: object, node: Mapping[str, Any], masks: Mapping[str, Tensor],
+                          contract: SETCompositionNetV2Manifest) -> dict[str, Any]:
+    """v2.2 admits only an analytic edge measurement on a retained silver ROI."""
+    provenance = _require_keys(value, {
+        "schema_id", "label_origin", "source_record_id", "source_group_id", "source_media_sha256",
+        "geometry_sha256", "geometry", "rights_sha256", "rights", "geometry_manifest_sha256",
+        "rights_manifest_sha256", "crop_window_xyxy", "coordinate_space", "pixel_sha256", "recipe",
+        "research_only", "human_gold", "release_admissible", "training_ready",
+    }, "annotation_provenance")
+    if (provenance["schema_id"] != "camera-edge-measurement-intake-v1" or
+            provenance["label_origin"] != "silver_apple_vision_analytic_crop" or
+            provenance["coordinate_space"] != "oriented_full_frame_top_left_normalized"):
+        raise TrainingRecordError("unsupported measured edge provenance")
+    for key, expected in {"research_only": True, "human_gold": False, "release_admissible": False, "training_ready": False}.items():
+        if _require_bool(provenance[key], "annotation_provenance." + key) is not expected:
+            raise TrainingRecordError("v2.2 measured labels must retain non-admitted research flags")
+    for key in ("source_media_sha256", "geometry_sha256", "rights_sha256", "geometry_manifest_sha256", "rights_manifest_sha256", "pixel_sha256"):
+        digest = provenance[key]
+        if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise TrainingRecordError("measured provenance needs SHA256 for " + key)
+    for key in ("geometry", "rights"):
+        if not isinstance(provenance[key], dict):
+            raise TrainingRecordError("measured provenance must retain source " + key)
+        encoded = json.dumps(provenance[key], sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+        if hashlib.sha256(encoded).hexdigest() != provenance[key + "_sha256"]:
+            raise TrainingRecordError("measured source " + key + " SHA mismatch")
+    geometry = provenance["geometry"]
+    selected = geometry.get("selected_subject")
+    source = geometry.get("source", {})
+    if (geometry.get("geometry_authority") != "silver_apple_vision" or geometry.get("selection_status") != "selected" or
+            not isinstance(selected, dict) or source.get("source_record_id") != provenance["source_record_id"] or
+            source.get("sha256") != provenance["source_media_sha256"] or provenance["source_group_id"] != node["source_family_id"]):
+        raise TrainingRecordError("measured provenance lost source ROI/group binding")
+    if (geometry.get("coordinate_space", {}).get("id") != "vision_oriented_normalized" or
+            geometry.get("human_gold") is not False or geometry.get("release_admissible") is not False or geometry.get("research_only") is not True):
+        raise TrainingRecordError("measured source geometry contract/rights drifted")
+    if provenance["rights"].get("license_kind") not in ("public-domain", "cc0", "cc-by-4.0"):
+        raise TrainingRecordError("measured edge intake has no supported source rights evidence")
+    if _require_finite(selected.get("confidence"), "geometry.confidence") < 0.8 or selected.get("kind") not in ("face", "person"):
+        raise TrainingRecordError("measured edge intake requires the specified silver person/face ROI")
+    original = _roi_from_node([selected.get(k) for k in ("x", "y", "width", "height")], "geometry ROI")
+    assert original is not None
+    x, bottom_y, width, height = original
+    y = 1.0 - bottom_y - height
+    if edge_measurement((x, y, width, height)) != 0:
+        raise TrainingRecordError("measured control source must have a clear edge margin")
+    window = provenance["crop_window_xyxy"]
+    if not isinstance(window, list) or len(window) != 4:
+        raise TrainingRecordError("measured crop needs four normalized bounds")
+    left, top, right, bottom = [_require_finite(v, "crop bound") for v in window]
+    if not (0 <= left < right <= 1 and 0 <= top < bottom <= 1) or abs((right-left)-(bottom-top)) > 1e-9:
+        raise TrainingRecordError("measured crop must preserve source aspect ratio and stay in frame")
+    expected_roi = ((x-left)/(right-left), (y-top)/(bottom-top), width/(right-left), height/(bottom-top))
+    roi = _roi_from_node(node["roi_normalized_xywh"], "measured ROI")
+    if roi is None or any(abs(a-b) > 1e-7 for a,b in zip(roi, expected_roi)):
+        raise TrainingRecordError("measured ROI does not match the recorded analytic crop")
+    expected = edge_measurement(roi)
+    issues = node["targets"]["issues"]
+    if expected is None or issues["subject_too_close_to_edge"] != expected:
+        raise TrainingRecordError("measured edge target disagrees with its geometric evidence")
+    if any(value is not None for name, value in issues.items() if name != "subject_too_close_to_edge"):
+        raise TrainingRecordError("v2.2 must not fabricate other issue labels")
+    recipe = provenance["recipe"]
+    if recipe not in ("edge_left", "edge_right", "edge_top", "edge_bottom", "clear_crop", "source_noop") or expected != int(recipe.startswith("edge_")):
+        raise TrainingRecordError("measured crop recipe and label disagree")
+    if (node["capture_intent"] != {"styles": [], "known": False} or node["scalar_features"] is not None or
+            node["missing_feature_mask"] is not None or node["ranking"] or
+            any(torch.any(mask != 0) for head, mask in masks.items() if head != "issue_logits")):
+        raise TrainingRecordError("v2.2 supports edge evidence only, with unknown intent and no invented actions/deltas/quality")
+    if hashlib.sha256(bytes(node["pixels"]["values"])).hexdigest() != provenance["pixel_sha256"]:
+        raise TrainingRecordError("measured derivative pixel SHA mismatch")
+    return dict(provenance)
+
+
 def parse_record(raw: object, contract: SETCompositionNetV2Manifest | None = None) -> TrainingRecord:
     """Validate one typed record and derive per-head targets and masks."""
 
     contract = contract or SETCompositionNetV2Manifest.load()
-    node = _require_keys(raw, _RECORD_KEYS, "training record")
+    if not isinstance(raw, dict):
+        raise TrainingRecordError("training record must be an object")
+    version = raw.get("schema_version")
+    if version not in SUPPORTED_RECORD_SCHEMA_VERSIONS:
+        raise TrainingRecordError(f"training record schema_version must be one of {SUPPORTED_RECORD_SCHEMA_VERSIONS}")
+    node = _require_keys(raw, _RECORD_KEYS | ({"annotation_provenance"} if version in (PARTIAL_LABEL_SCHEMA_VERSION, GEOMETRIC_LABEL_SCHEMA_VERSION) else set()), "training record")
     if node["schema_id"] != TRAINING_RECORD_SCHEMA_ID:
         raise TrainingRecordError(f"training record schema_id must be {TRAINING_RECORD_SCHEMA_ID!r}")
-    if node["schema_version"] != TRAINING_RECORD_SCHEMA_VERSION:
-        raise TrainingRecordError(f"training record schema_version must be {TRAINING_RECORD_SCHEMA_VERSION!r}")
     record_id = _require_string(node["record_id"], "record_id")
     split = _require_string(node["split"], "split")
     if split not in SPLITS:
@@ -447,7 +605,7 @@ def parse_record(raw: object, contract: SETCompositionNetV2Manifest | None = Non
         raise TrainingRecordError("missing_feature_mask is present without scalar_features")
 
     targets, masks = _targets_from_node(
-        node["targets"], contract=contract, admissible=admissible, intent_name=intent_name, label="targets"
+        node["targets"], contract=contract, admissible=admissible, intent_name=intent_name, label="targets", schema_version=version
     )
 
     # The frozen contract mask is authoritative for the four intent-conditioned
@@ -470,6 +628,11 @@ def parse_record(raw: object, contract: SETCompositionNetV2Manifest | None = Non
         preference = _require_binary(entry["preference"], f"ranking[{index}].preference")
         ranking.append((_require_string(entry["other_record_id"], f"ranking[{index}].other_record_id"), preference))
 
+    provenance = None
+    if version == PARTIAL_LABEL_SCHEMA_VERSION:
+        provenance = _partial_provenance(node["annotation_provenance"], node, masks, contract)
+    elif version == GEOMETRIC_LABEL_SCHEMA_VERSION:
+        provenance = _geometric_provenance(node["annotation_provenance"], node, masks, contract)
     return TrainingRecord(
         record_id=record_id,
         split=split,
@@ -485,10 +648,13 @@ def parse_record(raw: object, contract: SETCompositionNetV2Manifest | None = Non
         masks=masks,
         ranking=tuple(ranking),
         admissible=admissible,
+        schema_version=version,
+        annotation_provenance=provenance,
     )
 
 
-def load_records(path: str | os.PathLike[str], expected_sha256: str | None = None) -> list[TrainingRecord]:
+def load_records(path: str | os.PathLike[str], expected_sha256: str | None = None, *,
+                 admission: str | None = None) -> list[TrainingRecord]:
     """Load a typed JSONL bundle, verifying its content hash first."""
 
     records_path = Path(path)
@@ -519,6 +685,8 @@ def load_records(path: str | os.PathLike[str], expected_sha256: str | None = Non
     ids = [record.record_id for record in records]
     if len(set(ids)) != len(ids):
         raise TrainingRecordError("training record ids must be unique")
+    if admission is not None:
+        validate_record_admission(records, admission)
     return records
 
 
@@ -807,6 +975,8 @@ __all__ = [
     "TRAINABLE_SPLITS",
     "TRAINING_RECORD_SCHEMA_ID",
     "TRAINING_RECORD_SCHEMA_VERSION",
+    "PARTIAL_LABEL_SCHEMA_VERSION",
+    "SUPPORTED_RECORD_SCHEMA_VERSIONS",
     "TrainingRecord",
     "TrainingRecordError",
     "UTILITY_DIRECTIONAL_PAIRS",
@@ -818,6 +988,7 @@ __all__ = [
     "load_records",
     "merge_intent_mask",
     "parse_record",
+    "validate_record_admission",
     "stack_inputs",
     "stack_masks",
     "stack_targets",

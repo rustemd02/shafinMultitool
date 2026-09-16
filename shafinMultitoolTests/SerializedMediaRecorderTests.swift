@@ -331,7 +331,10 @@ final class SerializedMediaRecorderTests: XCTestCase {
     }
 
     func testAppendedAudioUsesWriterMetadataTrue() async throws {
-        let fixture = makeFixture(audioMode: .required)
+        // This deliberately unpaced 32-pair burst tests ordering and writer
+        // metadata. Queue-overload behavior is tested with small/default caps
+        // in RecordingQueueAdmissionTests, without changing this assertion.
+        let fixture = makeFixture(audioMode: .required, queuedFrameCapacity: 64)
         let configuration = makeConfiguration(audioMode: .required)
         fixture.writer.finishResult = .success(RecordingWriterFinish(hasAudio: true))
 
@@ -1263,7 +1266,8 @@ final class SerializedMediaRecorderTests: XCTestCase {
 
     private func makeFixture(audioMode: RecordingAudioMode = .disabled,
                              maxConsecutiveDroppedFrames: Int = 900,
-                             finalizationTimeout: TimeInterval = 10) -> RecorderFixture {
+                             finalizationTimeout: TimeInterval = 10,
+                             queuedFrameCapacity: Int? = nil) -> RecorderFixture {
         let writer = FakeWriter()
         let writerFactory = FakeWriterFactory(writer: writer)
         let audioDriver = FakeAudioDriver()
@@ -1275,6 +1279,8 @@ final class SerializedMediaRecorderTests: XCTestCase {
             audioDriverFactory: audioFactory,
             outputChecker: outputChecker,
             maxConsecutiveDroppedFrames: maxConsecutiveDroppedFrames,
+            maxQueuedVideoFrames: queuedFrameCapacity ?? 4,
+            maxQueuedAudioFrames: queuedFrameCapacity ?? 16,
             finalizationTimeout: finalizationTimeout
         )
         return RecorderFixture(

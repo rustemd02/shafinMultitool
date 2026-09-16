@@ -1,6 +1,1382 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "set.generator.transfer.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send scene"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправка сцены"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.question": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send this text and the selected object references for this generation?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправить этот текст и ссылки на выбранные объекты для этой генерации?"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.send": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agree and send"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Согласиться и отправить"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.decline": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep on this device"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оставить на устройстве"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Online generation is unavailable because the service has not supplied a complete privacy policy. Your text has not been sent. You can keep editing it."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Онлайн-генерация недоступна: сервис не предоставил полную политику обработки данных. Текст не отправлен. Вы можете продолжить редактирование."
+          }
+        }
+      }
+    },
+    "set.generator.transfer.scope": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service and its AI provider receive the text below, references to selected objects and any clarification answers you submit for this request. The service also receives an installation identifier for authentication and usage limits. Camera images, recordings and AR maps are not part of this transfer. This choice applies to this generation only."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сервис и его ИИ-провайдер получат текст ниже, ссылки на выбранные объекты и ответы на уточнения, которые вы отправите для этого запроса. Сервис также получит идентификатор установки для авторизации и ограничения использования. Изображения камеры, записи и AR-карты не входят в эту отправку. Выбор действует только для этой генерации."
+          }
+        }
+      }
+    },
+    "set.generator.transfer.operator": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Service operator"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оператор сервиса"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.service": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Service address"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Адрес сервиса"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.provider": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI provider"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ИИ-провайдер"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.region": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Processing region"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Регион обработки"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.contentRetention": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scene text and results"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст сцены и результаты"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.metadataRetention": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request records"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Записи о запросах"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.securityRetention": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installation and security records"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Записи об установке и безопасности"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.spendRetention": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usage and cost records"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Записи об использовании и расходах"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.providerRetention": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI provider retention"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хранение у ИИ-провайдера"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.deletion": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request deletion"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Как запросить удаление"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.version": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Policy version"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Версия политики"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.readPolicy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read the privacy policy"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Прочитать политику конфиденциальности"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.text": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text to send"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправляемый текст"
+          }
+        }
+      }
+    },
+    "set.generator.transfer.objects": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected object references"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ссылок на выбранные объекты"
+          }
+        }
+      }
+    },
+    "set.privacy.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy & licenses"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приватность и лицензии"
+          }
+        }
+      }
+    },
+    "set.privacy.introduction": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can read this page without allowing camera or microphone access. Opening it does not send a scene or grant permission."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Эта страница доступна без разрешения на камеру и микрофон. Её открытие не отправляет сцену и не даёт разрешений."
+          }
+        }
+      }
+    },
+    "set.privacy.account.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account and tracking"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Учётная запись и отслеживание"
+          }
+        }
+      }
+    },
+    "set.privacy.account.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SET OS does not require an account. The app does not include advertising or track you across other apps and websites."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SET OS не требует учётной записи. В приложении нет рекламы и отслеживания между другими приложениями и сайтами."
+          }
+        }
+      }
+    },
+    "set.privacy.camera.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera and AR"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Камера и AR"
+          }
+        }
+      }
+    },
+    "set.privacy.camera.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera Coach analyses camera frames on this device. AR uses the camera and motion sensors to place the scene. These frames and AR maps are not included in a Scene Generator request."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera Coach анализирует кадры на этом устройстве. AR использует камеру и датчики движения для размещения сцены. Кадры и карты AR не входят в запрос Scene Generator."
+          }
+        }
+      }
+    },
+    "set.privacy.scenes.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scene descriptions"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Описания сцен"
+          }
+        }
+      }
+    },
+    "set.privacy.scenes.local": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server generation is not connected in this session. Scene descriptions are processed on this device. Saved projects remain in the app’s storage."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Серверная генерация в этом сеансе не подключена. Описания сцен обрабатываются на устройстве. Сохранённые проекты остаются в хранилище приложения."
+          }
+        }
+      }
+    },
+    "set.privacy.scenes.remote": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server generation is connected in this session. A generation request can send the scene description, object references and clarification answers to the SET OS service and its AI provider. It does not include camera frames, recordings or AR maps."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В этом сеансе подключена серверная генерация. Запрос может передавать описание сцены, ссылки на объекты и ответы на уточнения сервису SET OS и его поставщику ИИ. Кадры камеры, записи и карты AR в запрос не входят."
+          }
+        }
+      }
+    },
+    "set.privacy.installation.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Service access"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Доступ к сервису"
+          }
+        }
+      }
+    },
+    "set.privacy.installation.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service uses Apple App Attest and an identifier for this installation to authenticate requests and enforce usage limits. Job identifiers and security records can link requests from the same installation. They are not an advertising identifier."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сервис использует Apple App Attest и идентификатор этой установки для проверки запросов и ограничений использования. Идентификаторы заданий и записи безопасности могут связывать запросы одной установки. Это не рекламный идентификатор."
+          }
+        }
+      }
+    },
+    "set.privacy.server_storage.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server storage"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хранение на сервере"
+          }
+        }
+      }
+    },
+    "set.privacy.server_storage.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service may temporarily store requests and results, and retain security and usage records separately. Storage by an external AI provider follows that provider’s terms. Deleting a project on this device does not itself delete a server request or copies you exported."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сервис может временно хранить запросы и результаты, а записи безопасности и использования — отдельно. Хранение у внешнего поставщика ИИ определяется его условиями. Удаление проекта на устройстве само по себе не удаляет серверный запрос и экспортированные копии."
+          }
+        }
+      }
+    },
+    "set.privacy.microphone.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone and recordings"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Микрофон и записи"
+          }
+        }
+      }
+    },
+    "set.privacy.microphone.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The microphone is used when you choose recording with sound, enable the sound-level meter or start spoken input. Video recording without sound does not use the microphone. The sound-level meter processes audio locally without saving an audio file. Saved recordings stay on the device unless you export or share them."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Микрофон используется при выборе записи со звуком, включении измерителя уровня звука или голосового ввода. Запись видео без звука не использует микрофон. Измеритель обрабатывает звук локально и не сохраняет аудиофайл. Записи остаются на устройстве, пока вы не экспортируете их или не поделитесь ими."
+          }
+        }
+      }
+    },
+    "set.privacy.speech.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spoken input"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Голосовой ввод"
+          }
+        }
+      }
+    },
+    "set.privacy.speech.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spoken scene input uses Apple Speech. Apple may process microphone audio on its servers. SET OS does not upload that audio to its Scene service. The recognized text becomes your editable scene description."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Голосовой ввод сцены использует Apple Speech. Apple может обрабатывать звук микрофона на своих серверах. SET OS не отправляет этот звук своему сервису сцен. Распознанный текст становится редактируемым описанием сцены."
+          }
+        }
+      }
+    },
+    "set.privacy.local_storage.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects and exported copies"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проекты и экспортированные копии"
+          }
+        }
+      }
+    },
+    "set.privacy.local_storage.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects, AR maps and recordings are saved in the app’s storage. You can delete a saved project from the Library. Copies already saved to Photos or shared with another app are managed separately in those apps. Photos access is requested only when you choose to save a recording there."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проекты, карты AR и записи сохраняются в хранилище приложения. Сохранённый проект можно удалить из библиотеки. Копии, уже сохранённые в «Фото» или переданные другому приложению, управляются отдельно. Доступ к «Фото» запрашивается при выборе сохранения записи в медиатеку."
+          }
+        }
+      }
+    },
+    "set.privacy.permissions.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your permissions"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ваши разрешения"
+          }
+        }
+      }
+    },
+    "set.privacy.permissions.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera, microphone, speech recognition and Photos permissions can be changed in iOS Settings. Camera permission alone is not permission to send scene content to an AI service."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешения на камеру, микрофон, распознавание речи и «Фото» можно изменить в настройках iOS. Разрешение на камеру само по себе не разрешает передачу содержимого сцены сервису ИИ."
+          }
+        }
+      }
+    },
+    "set.privacy.settings_unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not open Settings. Open this app’s page in iOS Settings to manage permissions."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось открыть настройки. Откройте страницу этого приложения в настройках iOS, чтобы изменить разрешения."
+          }
+        }
+      }
+    },
+    "set.privacy.notices.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Third-party notices"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Лицензии компонентов"
+          }
+        }
+      }
+    },
+    "set.privacy.notices.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open a component below to read its full license and copyright notice."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Откройте компонент ниже, чтобы прочитать полный текст его лицензии и сведения об авторских правах."
+          }
+        }
+      }
+    },
+    "set.privacy.notice_unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The license text is unavailable in this copy of the app."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст лицензии недоступен в этой копии приложения."
+          }
+        }
+      }
+    },
+    "set.privacy.notice_expanded": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expanded"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Развёрнуто"
+          }
+        }
+      }
+    },
+    "set.privacy.notice_collapsed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapsed"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Свёрнуто"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.missingSamples": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some video or sound was skipped. Check the take before using it."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Часть видео или звука пропущена. Проверьте дубль перед использованием."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.projectName": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera take"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дубль камеры"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.storageUnavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t open video storage. Retry preparing recording."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось открыть хранилище видео. Повторите подготовку записи."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.retryPreparation": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prepare recording again"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Повторить подготовку записи"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.audioUnavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio is unavailable. Finish any other audio activity and try again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Аудио недоступно. Завершите другую работу со звуком и повторите попытку."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.busy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finish the current operation before recording or reviewing a take."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Завершите текущую операцию, чтобы записать или просмотреть дубль."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.cameraDenied": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow Camera access in Settings to record a take."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешите доступ к камере в Настройках, чтобы записать дубль."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.cancel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.captureFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The take could not be recorded. Check the camera and try again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось записать дубль. Проверьте камеру и повторите попытку."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.exported": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved to Photos."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранено в Фото."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.exportFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t save to Photos. The take remains saved in the app."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось сохранить в Фото. Дубль сохранён в приложении."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.exporting": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving to Photos…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохраняем в Фото…"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.finalizing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finishing the take…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Завершаем запись…"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.mediaUnavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This saved take is unavailable. Its file may have been moved or removed."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранённый дубль недоступен. Возможно, его файл перемещён или удалён."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.microphoneDenied": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow microphone access in Settings, or turn sound off to record a silent take."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешите доступ к микрофону в Настройках или отключите звук для записи без звука."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.microphoneUnavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The microphone is unavailable. Try again, or turn sound off to record a silent take."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Микрофон недоступен. Повторите попытку или отключите звук для записи без звука."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.pendingSave": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The take is waiting to be saved. Retry saving before recording another take."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дубль ожидает сохранения. Повторите сохранение перед следующей записью."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.permissionRestricted": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Access is restricted on this device. Check its restrictions before recording."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Доступ ограничен на этом устройстве. Проверьте его ограничения перед записью."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.photos": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save to Photos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить в Фото"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.photosDenied": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow adding to Photos in Settings. The take remains saved in the app."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешите добавление в Фото в Настройках. Дубль сохранён в приложении."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.photosRestricted": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adding to Photos is restricted on this device. The take remains saved in the app."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавление в Фото ограничено на этом устройстве. Дубль сохранён в приложении."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.play": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play take"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Смотреть дубль"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.playbackUnavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t start playback. Finish any other audio activity and try again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось начать просмотр. Завершите другую работу со звуком и повторите попытку."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.playWithoutMeter": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop meter and play"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выключить измеритель и смотреть"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.preparing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing to record…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подготовка к записи…"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.recording": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording. Stop the take to change the lens or Pro controls."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Идёт запись. Для смены объектива или настроек Pro остановите дубль."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.retrySave": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry saving"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Повторить сохранение"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.saved": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Take saved in Scene Library."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дубль сохранён в библиотеке сцен."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.saveFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t save the take to the project. Retry saving."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось сохранить дубль в проекте. Повторите сохранение."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.saving": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving the take…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохраняем дубль…"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.share": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share take"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поделиться"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.shared": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Take shared."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дубль отправлен."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.shareFailed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t share the take. It remains saved in the app."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось отправить дубль. Он сохранён в приложении."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.soundOff": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Without sound"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Без звука"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.soundOn": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With sound"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Со звуком"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.start": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Record"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Записать"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.stop": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Остановить"
+          }
+        }
+      }
+    },
+    "set.cameraRecording.storageFull": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There isn’t enough free space to record a take."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недостаточно свободного места для записи дубля."
+          }
+        }
+      }
+    },
+    "set.cameraRecording.unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording is unavailable. Return to the camera to try again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запись недоступна. Вернитесь к камере, чтобы повторить попытку."
+          }
+        }
+      }
+    },
     "set.a11y.back": {
       "localizations": {
         "en": {
@@ -2337,6 +3713,24 @@
         }
       }
     },
+    "set.generator.recordingSave.pending": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Couldn’t save this take to the project. Retry saving before recording again." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Не удалось сохранить дубль в проекте. Повторите сохранение, чтобы продолжить запись." } }
+      }
+    },
+    "set.generator.recordingSave.retry": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "RETRY SAVING" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "ПОВТОРИТЬ СОХРАНЕНИЕ" } }
+      }
+    },
+    "set.generator.recordingSave.saving": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "SAVING TAKE…" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "СОХРАНЯЕМ ДУБЛЬ…" } }
+      }
+    },
     "set.generator.clarification": {
       "localizations": {
         "en": {
@@ -2641,6 +4035,24 @@
         }
       }
     },
+    "set.generator.error.remote_expired": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This result has expired and was deleted from the server. Your description is still here. Start generation again to request a new scene." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Срок хранения результата истёк, и он удалён с сервера. Описание сохранено. Запустите генерацию ещё раз, чтобы запросить новую сцену." } }
+      }
+    },
+    "set.generator.error.remote_disabled": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Scene generation is temporarily unavailable. Your description is still here. Try again later." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Генерация сцен временно недоступна. Описание сохранено. Попробуйте позже." } }
+      }
+    },
+    "set.generator.error.remote_response": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The service returned an unexpected response. Your description is still here; no new request was sent." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Сервис вернул неожиданный ответ. Описание сохранено; новый запрос не отправлен." } }
+      }
+    },
     "set.generator.error.recorder": {
       "localizations": {
         "en": {
@@ -2655,6 +4067,24 @@
             "value": "Не удалось подготовить запись"
           }
         }
+      }
+    },
+    "set.generator.error.save": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Could not save the scene. Try saving again." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Не удалось сохранить сцену. Повторите сохранение." } }
+      }
+    },
+    "set.generator.error.save_conflict": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This project has a newer saved version. Reopen it before generating again." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "У проекта есть более новая сохранённая версия. Откройте её перед новой генерацией." } }
+      }
+    },
+    "set.generator.save_retry": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Retry saving" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Повторить сохранение" } }
       }
     },
     "set.generator.error.surface_timeout": {
@@ -4545,6 +5975,470 @@
         }
       }
     },
+    "set.pro.state.unsupported": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unavailable in this camera mode."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недоступно в текущем режиме камеры."
+          }
+        }
+      }
+    },
+    "set.pro.state.unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Camera controls are available during live capture."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Управление доступно во время работы камеры."
+          }
+        }
+      }
+    },
+    "set.pro.state.variable_fps": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Variable FPS"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переменный FPS"
+          }
+        }
+      }
+    },
+    "set.pro.error.invalid_value": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This value cannot be applied. Choose a value in the supported range."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Это значение нельзя применить. Выберите значение в допустимом диапазоне."
+          }
+        }
+      }
+    },
+    "set.pro.error.apply_failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The camera could not apply the change. Check the current values and try again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Камера не смогла применить изменение. Проверьте текущие значения и повторите."
+          }
+        }
+      }
+    },
+    "set.pro.error.stale": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The camera changed during this request. Choose the control again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Камера изменилась во время запроса. Повторите настройку."
+          }
+        }
+      }
+    },
+    "set.pro.state.applying": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applying camera settings…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Применяем настройки камеры…"
+          }
+        }
+      }
+    },
+    "set.pro.error.focus_timeout": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus did not settle. Try a clearer detail or use manual focus."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Фокус не установился. Выберите более чёткую деталь или ручной фокус."
+          }
+        }
+      }
+    },
+    "set.pro.error.apply_timeout": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The camera did not confirm the change in time. Check the current values."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Камера не подтвердила изменение вовремя. Проверьте текущие значения."
+          }
+        }
+      }
+    },
+    "set.pro.error.microphone_denied": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microphone access is off. Allow it in Settings to see the audio level."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Доступ к микрофону выключен. Разрешите его в Настройках, чтобы видеть уровень звука."
+          }
+        }
+      }
+    },
+    "set.pro.state.focus_converging": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focusing, then locking…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Наводим и фиксируем фокус…"
+          }
+        }
+      }
+    },
+    "set.pro.action.focus_center": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Focus and lock at frame center"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Навести и зафиксировать фокус в центре"
+          }
+        }
+      }
+    },
+    "set.pro.action.focus_cancel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel focus selection"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить выбор точки фокуса"
+          }
+        }
+      }
+    },
+    "set.pro.caption.focus_position": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lens position scale: 0–1."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Шкала положения линзы: 0–1."
+          }
+        }
+      }
+    },
+    "set.pro.caption.exposure_choose_fps": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a fixed frame rate above to set shutter angle and ISO."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выберите постоянный FPS выше, чтобы настроить угол затвора и ISO."
+          }
+        }
+      }
+    },
+    "set.pro.caption.ev_requires_auto": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exposure compensation is available in Auto exposure."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Компенсация экспозиции доступна в режиме автоэкспозиции."
+          }
+        }
+      }
+    },
+    "set.pro.name.shutter_angle": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shutter angle"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Угол затвора"
+          }
+        }
+      }
+    },
+    "set.pro.name.iso": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ISO"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ISO"
+          }
+        }
+      }
+    },
+    "set.pro.action.apply": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Применить"
+          }
+        }
+      }
+    },
+    "set.pro.action.close": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close controls"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрыть настройки"
+          }
+        }
+      }
+    },
+    "set.pro.action.microphone_enable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable audio meter"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Включить индикатор звука"
+          }
+        }
+      }
+    },
+    "set.pro.action.microphone_disable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn off audio meter"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выключить индикатор звука"
+          }
+        }
+      }
+    },
+    "set.pro.state.audio_waiting": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for microphone samples…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ожидаем сигнал микрофона…"
+          }
+        }
+      }
+    },
+    "set.pro.caption.microphone": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The meter measures microphone level locally. Audio is not saved by this control."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Индикатор измеряет уровень микрофона на устройстве. Эта настройка не сохраняет звук."
+          }
+        }
+      }
+    },
+    "set.pro.preset.wb_warm": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Warm · 3200 K"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Тёплый · 3200 K"
+          }
+        }
+      }
+    },
+    "set.pro.preset.wb_daylight": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Daylight · 5600 K"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дневной · 5600 K"
+          }
+        }
+      }
+    },
+    "set.pro.preset.wb_cloudy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cloudy · 6500 K"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Облачно · 6500 K"
+          }
+        }
+      }
+    },
+    "set.pro.caption.focus_selection": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap the preview to focus and lock there."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Коснитесь превью, чтобы навести и зафиксировать фокус в этой точке."
+          }
+        }
+      }
+    },
+    "set.pro.caption.readback": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Current"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сейчас"
+          }
+        }
+      }
+    },
     "set.pro.name.audio_meter": {
       "localizations": {
         "en": {
@@ -5501,6 +7395,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "Не удалось открыть такт для редактирования"
+          }
+        }
+      }
+    },
+    "set.storyboard.error.save": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not save changes. Try again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось сохранить изменения. Попробуйте ещё раз."
+          }
+        }
+      }
+    },
+    "set.storyboard.error.save_conflict": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This scene changed. Reopen it before editing."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сцена изменилась. Откройте её заново перед редактированием."
           }
         }
       }

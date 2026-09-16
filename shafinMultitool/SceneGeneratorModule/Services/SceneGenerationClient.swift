@@ -36,6 +36,8 @@ enum SceneGenerationClientError: Error, Equatable {
     case jobFailed(SceneJobFailureCode)
     case quotaExceeded(retryAfterSeconds: Int?)
     case killSwitchEngaged
+    case contentExpired
+    case unexpectedGoneResponse
     case cancelled
 
     struct ErrorWrapper: Equatable {
@@ -60,6 +62,8 @@ enum SceneGenerationClientError: Error, Equatable {
         case .jobFailed(let code): return "jobFailed:\(code.rawValue)"
         case .quotaExceeded(let seconds): return "quotaExceeded:\(seconds.map { String($0) } ?? "unknown")"
         case .killSwitchEngaged: return "killSwitchEngaged"
+        case .contentExpired: return "contentExpired"
+        case .unexpectedGoneResponse: return "unexpectedGoneResponse"
         case .cancelled: return "cancelled"
         }
     }
@@ -76,6 +80,13 @@ enum SceneGenerationOutcome: Equatable {
 /// M12-005; the client only consumes the token string).
 protocol SceneServiceTokenProviding: Sendable {
     func currentServiceToken() async -> String?
+    func replacementServiceToken(afterRejecting token: String) async -> String?
+}
+
+extension SceneServiceTokenProviding {
+    /// Providers without a renewal protocol must not replay an unauthorized
+    /// request using the same credential or invent a new installation.
+    func replacementServiceToken(afterRejecting token: String) async -> String? { nil }
 }
 
 /// Configuration owned by deployment, never by call sites.
@@ -88,6 +99,7 @@ struct SceneGenerationClientConfiguration: Equatable, Sendable {
     var promptVersion: String
     var providerName: String
     var providerVersion: String
+    var transferPolicy: SceneRemoteTransferPolicy? = nil
 
     static var placeholder: SceneGenerationClientConfiguration {
         SceneGenerationClientConfiguration(
@@ -129,18 +141,61 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
 
     // MARK: - RemoteScenePlanProvider seam
 
-    /// Runs one backend round for coordinator offload: create, bounded
-    /// poll, then map the terminal job payload. Clarification and
-    /// failure surface as nil so the coordinator keeps the honest
-    /// local result (no fake plan is ever synthesized).
+    /// Noninteractive callers cannot answer a question on the user's behalf.
     func generateRemotePlan(
         description: String,
         markedObjects: [MarkedObject],
         anchors: SourceAnchorBundle,
         state: SceneChunkState?
     ) async -> ScenePlanProviderResult? {
-        _ = anchors
+        await generateRemotePlan(
+            description: description,
+            markedObjects: markedObjects,
+            anchors: anchors,
+            state: state,
+            clarificationHandler: nil
+        )
+    }
+
+    /// Creates one job and resumes that exact job only after an explicit
+    /// answer. There is no paid create retry and no inferred first option.
+    func generateRemotePlan(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        clarificationHandler: SceneRemoteClarificationHandler?
+    ) async -> ScenePlanProviderResult? {
+        guard case .plan(let result) = await generateRemotePlanOutcome(
+            description: description, markedObjects: markedObjects,
+            anchors: anchors, state: state, clarificationHandler: clarificationHandler
+        ) else { return nil }
+        return result
+    }
+
+    func generateRemotePlanOutcome(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        clarificationHandler: SceneRemoteClarificationHandler?
+    ) async -> SceneRemotePlanOutcome {
+        await generateRemotePlanOutcome(
+            description: description, markedObjects: markedObjects, anchors: anchors,
+            state: state, clarificationHandler: clarificationHandler, transferConsentHandler: nil
+        )
+    }
+
+    func generateRemotePlanOutcome(
+        description: String,
+        markedObjects: [MarkedObject],
+        anchors: SourceAnchorBundle,
+        state: SceneChunkState?,
+        clarificationHandler: SceneRemoteClarificationHandler?,
+        transferConsentHandler: SceneRemoteTransferConsentHandler?
+    ) async -> SceneRemotePlanOutcome {
         _ = state
+        guard !Task.isCancelled else { return .unavailable }
         let requestID = UUID()
         guard case .success(let body) = SceneCreateJobRequestBuilder.build(
             requestID: requestID,
@@ -155,44 +210,121 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
             providerName: configuration.providerName,
             providerVersion: configuration.providerVersion
         ) else {
-            return nil
+            return .unavailable
         }
+        guard let policy = configuration.transferPolicy,
+              policy.matches(configuration), let fingerprint = policy.fingerprint else {
+            return .failed(.transferPolicyUnavailable)
+        }
+        let transfer = SceneRemoteTransferRequest(
+            requestID: requestID, requestHash: body.requestHash,
+            scriptText: body.scriptText, markedObjectIDs: body.markedObjectIDs,
+            policy: policy, policyFingerprint: fingerprint
+        )
+        // Enrollment can also disclose an installation identity. Do not even
+        // acquire a service token until this exact content/policy is accepted.
+        guard let transferConsentHandler,
+              let approval = await transferConsentHandler(transfer),
+              approval == transfer.approval, !Task.isCancelled else {
+            return .failed(.transferDeclined)
+        }
+        var activeJobID: String?
         do {
             let idempotencyKey = "gen-\(requestID.uuidString)"
             let status = try await createJob(body: body, idempotencyKey: idempotencyKey)
+            activeJobID = status.jobID
             var outcome = try await pollToTerminal(
                 jobID: status.jobID,
                 expectedRequest: body,
                 originalCreateIdempotencyKey: idempotencyKey
             )
-            // The backend provider can ask for clarification (e.g. "who is the
-            // main subject?"). The client answers using local evidence and
-            // re-enters the poll loop instead of falling back to the local
-            // result. At most one clarification round is attempted.
-            if case .awaitingClarification(let clarificationPayload) = outcome {
-                let selectedOption = clarificationPayload.options.first?.id
+            var answeredQuestions = Set<String>()
+            while case .awaitingClarification(let clarificationPayload) = outcome {
+                let questionKey = "\(clarificationPayload.id)|\(clarificationPayload.epoch)"
+                guard answeredQuestions.count < 3,
+                      !answeredQuestions.contains(questionKey),
+                      let clarificationHandler,
+                      let userAnswer = await clarificationHandler(clarificationPayload),
+                      !Task.isCancelled else {
+                    throw SceneGenerationClientError.cancelled
+                }
+                let text = userAnswer.rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                if userAnswer.isFreeText {
+                    guard clarificationPayload.allowsFreeText,
+                          !text.isEmpty,
+                          text.count <= clarificationPayload.maximumFreeTextCharacters else {
+                        throw SceneGenerationClientError.malformedPayload
+                    }
+                } else {
+                    guard clarificationPayload.options.contains(where: { $0.id == userAnswer.rawValue }) else {
+                        throw SceneGenerationClientError.malformedPayload
+                    }
+                }
                 let answer = SceneClarificationAPIPayload(
                     clarificationID: clarificationPayload.id,
                     requestID: clarificationPayload.requestID,
                     epoch: clarificationPayload.epoch,
-                    selectedOptionID: selectedOption,
-                    freeText: nil
+                    selectedOptionID: userAnswer.isFreeText ? nil : userAnswer.rawValue,
+                    freeText: userAnswer.isFreeText ? text : nil
                 )
-                _ = try await answerClarification(
+                let resumedStatus = try await answerClarification(
                     jobID: status.jobID,
                     answer: answer,
-                    idempotencyKey: idempotencyKey + "-clar"
+                    idempotencyKey: idempotencyKey + "-clar-\(answeredQuestions.count)"
                 )
+                guard Self.matches(resumedStatus, expectedRequest: body, idempotencyKey: idempotencyKey) else {
+                    throw SceneGenerationClientError.responseBindingMismatch
+                }
+                answeredQuestions.insert(questionKey)
                 outcome = try await pollToTerminal(
                     jobID: status.jobID,
                     expectedRequest: body,
                     originalCreateIdempotencyKey: idempotencyKey
                 )
             }
-            guard case .complete(let result) = outcome else { return nil }
-            return SceneGenerationClient.planResult(from: result)
+            guard !Task.isCancelled,
+                  case .complete(let result) = outcome,
+                  SceneResponseValidator.validate(
+                    script: result.sceneScript,
+                    markedObjectIDs: Set(markedObjects.map(\.canonicalMarkedObjectID)),
+                    mentionedMarkedObjects: Set(anchors.mentionedMarkedObjects)
+                  ).isEmpty else { return .unavailable }
+            let receipt = SceneRemoteGenerationReceipt(
+                jobID: status.jobID,
+                requestID: status.requestID,
+                requestHash: status.requestHash,
+                idempotencyKey: status.idempotencyKey,
+                backendSchemaVersion: status.schemaVersionBackend,
+                scriptSchemaVersion: result.schemaVersion,
+                modelVersion: status.modelVersion,
+                promptVersion: status.promptVersion,
+                providerName: status.providerName,
+                providerVersion: status.providerVersion
+            )
+            guard let plan = SceneGenerationClient.planResult(from: result, receipt: receipt) else {
+                return .unavailable
+            }
+            return .plan(plan)
         } catch {
-            return nil
+            // The server has made a terminal decision. Preserve it for the
+            // request owner; do not create a replacement job or a local scene.
+            if !Task.isCancelled, let error = error as? SceneGenerationClientError {
+                switch error {
+                case .contentExpired: return .failed(.contentExpired)
+                case .killSwitchEngaged: return .failed(.serviceDisabled)
+                case .unexpectedGoneResponse: return .failed(.invalidServiceResponse)
+                default: break
+                }
+            }
+            if let activeJobID {
+                // A cancelled task cannot reliably send DELETE through its
+                // cancelled URLSession operation. Join one bounded cleanup
+                // request, never another generation or provider request.
+                await Task.detached { [self] in
+                    _ = try? await cancelJob(jobID: activeJobID)
+                }.value
+            }
+            return .unavailable
         }
     }
 
@@ -207,8 +339,8 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
             contentType: "application/json",
             idempotencyKey: idempotencyKey
         )
-        let (data, response) = try await session.data(for: request)
-        try Self.checkHTTP(response)
+        let (data, response) = try await authenticatedData(for: request)
+        try Self.checkHTTP(response, data: data)
         let status = try decodeAndValidateStatus(data)
         guard Self.matches(status, expectedRequest: body, idempotencyKey: idempotencyKey) else {
             throw SceneGenerationClientError.responseBindingMismatch
@@ -219,8 +351,8 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
     func pollJob(jobID: String) async throws -> SceneJobStatus {
         try Self.requireValidJobID(jobID)
         let request = try await authenticatedRequest(path: "jobs/\(jobID)", method: "GET")
-        let (data, response) = try await session.data(for: request)
-        try Self.checkHTTP(response)
+        let (data, response) = try await authenticatedData(for: request)
+        try Self.checkHTTP(response, data: data)
         let status = try decodeAndValidateStatus(data)
         guard status.jobID == jobID else {
             throw SceneGenerationClientError.responseBindingMismatch
@@ -238,8 +370,8 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
             contentType: "application/json",
             idempotencyKey: idempotencyKey
         )
-        let (data, response) = try await session.data(for: request)
-        try Self.checkHTTP(response)
+        let (data, response) = try await authenticatedData(for: request)
+        try Self.checkHTTP(response, data: data)
         let status = try decodeAndValidateStatus(data)
         guard status.jobID == jobID,
               status.requestID == answer.requestID else {
@@ -251,8 +383,8 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
     func cancelJob(jobID: String) async throws -> SceneJobStatus {
         try Self.requireValidJobID(jobID)
         let request = try await authenticatedRequest(path: "jobs/\(jobID)", method: "DELETE")
-        let (data, response) = try await session.data(for: request)
-        try Self.checkHTTP(response)
+        let (data, response) = try await authenticatedData(for: request)
+        try Self.checkHTTP(response, data: data)
         let status = try decodeAndValidateStatus(data)
         guard status.jobID == jobID else {
             throw SceneGenerationClientError.responseBindingMismatch
@@ -288,11 +420,30 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
             case .awaitingClarification(let payload): return .awaitingClarification(payload)
             case .failed(let failure): return .failed(failure)
             case .rejected(let rejection): throw Self.error(for: rejection)
+            }
         }
-    }
     }
 
     // MARK: - Helpers
+
+    private func authenticatedData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try Task.checkCancellation()
+        let original = try await session.data(for: request)
+        guard (original.1 as? HTTPURLResponse)?.statusCode == 401,
+              let authorization = request.value(forHTTPHeaderField: "Authorization"),
+              authorization.hasPrefix("Bearer ") else { return original }
+        try Task.checkCancellation()
+        let rejectedToken = String(authorization.dropFirst("Bearer ".count))
+        guard let replacement = await tokenProvider?.replacementServiceToken(afterRejecting: rejectedToken),
+              replacement != rejectedToken,
+              Self.isValidServiceToken(replacement) else { return original }
+        try Task.checkCancellation()
+        // Only the credential changes. The original job, payload and
+        // idempotency key survive token rotation; there is at most one retry.
+        var retry = request
+        retry.setValue("Bearer \(replacement)", forHTTPHeaderField: "Authorization")
+        return try await session.data(for: retry)
+    }
 
     private func decodeAndValidateStatus(_ data: Data) throws -> SceneJobStatus {
         let status: SceneJobStatus
@@ -455,11 +606,25 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
         return hasTokenCharacter
     }
 
-    private static func checkHTTP(_ response: URLResponse) throws {
+    private struct APIErrorEnvelope: Decodable {
+        let code: String
+        let message: String
+    }
+
+    private static func checkHTTP(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
             throw SceneGenerationClientError.malformedPayload
         }
-        if http.statusCode == 410 { throw SceneGenerationClientError.killSwitchEngaged }
+        if http.statusCode == 410 {
+            guard let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data) else {
+                throw SceneGenerationClientError.unexpectedGoneResponse
+            }
+            switch envelope.code {
+            case "content_expired": throw SceneGenerationClientError.contentExpired
+            case "kill_switch": throw SceneGenerationClientError.killSwitchEngaged
+            default: throw SceneGenerationClientError.unexpectedGoneResponse
+            }
+        }
         if http.statusCode == 429 {
             // This is a server delay hint, never authority to replay a paid job.
             let raw = http.value(forHTTPHeaderField: "Retry-After") ?? ""
@@ -486,13 +651,16 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
     /// SceneScript is already schema-valid (M3-023 shape enforced by
     /// the validator); plan compilation itself stays with
     /// ScenePlanCompiler (M5-029 owns the compile proof).
-    static func planResult(from result: SceneJobResult) -> ScenePlanProviderResult? {
+    static func planResult(
+        from result: SceneJobResult, receipt: SceneRemoteGenerationReceipt? = nil
+    ) -> ScenePlanProviderResult? {
         let bridge = LegacySceneScriptBridge()
         guard let plan = bridge.planIR(from: result.sceneScript) else { return nil }
         return ScenePlanProviderResult(
             plan: plan,
             usedLegacySceneScriptBridge: true,
-            reasonCodes: ["remote_plan_used"]
+            reasonCodes: ["remote_plan_used"],
+            generationContributors: receipt.map { [.remoteService($0)] }
         )
     }
 }

@@ -73,6 +73,8 @@ struct SubjectIdentityRegistry: Equatable, Sendable {
     private(set) var identities: [RegisteredSubjectIdentity] = []
     private let generation: UInt64
     private var nextTrackNumber = 1
+    private(set) var lastObservedFrameID: String?
+    private var lastSampleSequence: UInt64?
 
     /// `generation` isolates registries across lens/orientation/route changes
     /// (same fence semantics as SubjectTrackIdentity).
@@ -84,7 +86,18 @@ struct SubjectIdentityRegistry: Equatable, Sendable {
     /// associations (by identity trackID), creations (by detection order),
     /// losses (by trackID).
     mutating func observe(detections: [SubjectIdentityObservation],
-                          frameId: String) -> [SubjectIdentityEvent] {
+                          frameId: String,
+                          sampleSequence: UInt64? = nil) -> [SubjectIdentityEvent] {
+        // One accepted batch per frame. Production supplies an ordered sample
+        // sequence, so a delayed or duplicated frame cannot age or revive a track.
+        guard !frameId.isEmpty, frameId != lastObservedFrameID else { return [] }
+        if let sampleSequence {
+            guard lastSampleSequence.map({ sampleSequence > $0 }) ?? true else { return [] }
+            lastSampleSequence = sampleSequence
+        } else if lastSampleSequence != nil {
+            return []
+        }
+        lastObservedFrameID = frameId
         // Reflections are provenance-tagged images, not scene objects: they
         // never claim an identity and never take part in association.
         let detections = detections.filter { !$0.isReflection }
@@ -196,10 +209,13 @@ struct SubjectIdentityRegistry: Equatable, Sendable {
     /// advice targets and does not alter any coaching path.
     /// CC-O02: the tracked instance under a scene-space tap, nearest center
     /// wins. Pure read; the selection decision belongs to the caller.
-    func instance(atSceneX x: Double, y: Double, touchSlop: Double = 0.04)
-        -> RegisteredSubjectIdentity? {
+    func instance(atSceneX x: Double, y: Double,
+                  frameId: String, generation: UInt64,
+                  touchSlop: Double = 0.04) -> RegisteredSubjectIdentity? {
+        guard x.isFinite, y.isFinite, (0...1).contains(x), (0...1).contains(y),
+              touchSlop.isFinite, touchSlop >= 0 else { return nil }
         var best: (identity: RegisteredSubjectIdentity, distance: Double)?
-        for identity in identities {
+        for identity in currentIdentities(frameId: frameId, generation: generation) {
             let region = identity.region
             let insideInflated = x >= region.x - touchSlop
                 && x <= region.x + region.width + touchSlop
@@ -216,7 +232,24 @@ struct SubjectIdentityRegistry: Equatable, Sendable {
         return best?.identity
     }
 
-    func multiObjectSummary() -> MultiObjectSceneSummary {
+    /// Lost/grace-window identities remain available for association, but
+    /// never describe a current-frame object or an overlap in live advice.
+    func currentIdentities(frameId: String, generation: UInt64) -> [RegisteredSubjectIdentity] {
+        guard generation == self.generation, frameId == lastObservedFrameID else { return [] }
+        return identities.filter {
+            $0.identity.generation == generation
+                && $0.lastFrameID == frameId
+                && $0.consecutiveMisses == 0
+                && !$0.region.isDegenerate
+        }
+    }
+
+    func multiObjectSummary(frameId: String? = nil,
+                            generation: UInt64? = nil) -> MultiObjectSceneSummary {
+        let identities = currentIdentities(
+            frameId: frameId ?? lastObservedFrameID ?? "",
+            generation: generation ?? self.generation
+        )
         var perLabel: [String: Int] = [:]
         for identity in identities {
             let key = identity.label ?? "unknown"
@@ -304,4 +337,3 @@ struct TrackIDPair: Equatable, Sendable {
     let lhs: String
     let rhs: String
 }
-

@@ -33,6 +33,7 @@ enum CoachingEpisodeCancellationReason: String, Codable, CaseIterable, Equatable
     case actionChanged = "action_changed"
     case subjectChanged = "subject_changed"
     case staleEvidence = "stale_evidence"
+    case calibrationUnavailable = "calibration_unavailable"
     case outOfOrder = "out_of_order"
     case invalidObservation = "invalid_observation"
     case expired
@@ -46,7 +47,7 @@ extension CoachingEpisodeCancellationReason {
     var permitsAutomaticRetryWithinCapture: Bool {
         switch self {
         case .actionChanged, .subjectChanged, .staleEvidence, .outOfOrder,
-             .invalidObservation, .expired, .sceneCut:
+             .invalidObservation, .expired, .sceneCut, .calibrationUnavailable:
             return true
         case .cameraGenerationChange, .lensChange, .orientationChange,
              .routeExit, .background:

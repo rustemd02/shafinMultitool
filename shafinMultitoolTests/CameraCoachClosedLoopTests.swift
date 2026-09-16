@@ -47,6 +47,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             reasoningProvider: nil,
             visualEvidenceProvider: nil,
             neuralEvidenceService: neuralService,
+            episodeConfidenceCalibrator: CameraEpisodeCalibrationFixture.calibrator,
             thermalGovernor: thermal,
             neuralHeavyModelsEnabledProvider: { true },
             liveHybridFusionEnabled: true,
@@ -184,6 +185,14 @@ final class CameraCoachClosedLoopTests: XCTestCase {
                     XCTFail("stabilized production input must publish a baseline event, got \(String(describing: pipeline.currentCoachingEpisodeEvent))")
                     continue
                 }
+                let expectedCalibration = CameraEpisodeCalibrationFixture.calibrator.calibratedEvidence(
+                    rawScore: plan.planConfidence,
+                    actionID: SemanticActionType.shiftFrameRight.rawValue,
+                    inputVersion: .boundedPlanConfidenceV1
+                )
+                XCTAssertNotNil(expectedCalibration)
+                XCTAssertEqual(observation.frame.evidence?.calibrationVersion,
+                               expectedCalibration?.calibrationReference)
                 guard let baselineBinding = observation.frame.evidence?.subjectBinding else {
                     XCTFail("subject-dependent baseline must retain its validated binding")
                     continue
@@ -588,7 +597,8 @@ final class CameraCoachClosedLoopTests: XCTestCase {
     }
 
     func testProductionSubjectSourceTimestampGateRejectsStaleAndFutureEvidence() {
-        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let pipeline = AnalysisPipeline(reasoningProvider: nil,
+                                        episodeConfidenceCalibrator: CameraEpisodeCalibrationFixture.calibrator)
         let baseDate = Date(timeIntervalSince1970: 1_771_500_100)
 
         func publish(_ frame: ClosedLoopFrame, evaluatedAt: Date) {
@@ -667,7 +677,8 @@ final class CameraCoachClosedLoopTests: XCTestCase {
     }
 
     func testProductionFrameGlobalHintSurvivesSubjectLossWithoutIdentity() {
-        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let pipeline = AnalysisPipeline(reasoningProvider: nil,
+                                        episodeConfidenceCalibrator: CameraEpisodeCalibrationFixture.calibrator)
         let baseDate = Date(timeIntervalSince1970: 1_771_500_200)
         let technicalSignal = TechnicalQualitySignal(issues: [
             TechnicalQualityIssueSignal(
@@ -1268,6 +1279,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             reasoningProvider: nil,
             visualEvidenceProvider: nil,
             neuralEvidenceService: neuralService,
+            episodeConfidenceCalibrator: CameraEpisodeCalibrationFixture.calibrator,
             thermalGovernor: thermal,
             neuralHeavyModelsEnabledProvider: { true },
             liveHybridFusionEnabled: true,
@@ -1440,7 +1452,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
     func testProductionCapturePathPublishesCorrectiveAndHonestAbstention() async throws {
         let corrective = makeCapturePathHarness(visionResult: { _, _ in
             Self.supportedCaptureVisionResult
-        }, neuralEnabled: false)
+        }, neuralEnabled: false, episodeConfidenceCalibrator: CameraEpisodeCalibrationFixture.calibrator)
         await corrective.viewModel.startAndWait()
         corrective.manager.updatePreviewGeometry(Self.capturePreviewGeometry)
 
@@ -1504,11 +1516,54 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         await abstention.viewModel.releaseAndWait()
     }
 
-    func testProductionCapturePathAutomaticallyVerifiesCorrectiveEpisode() async throws {
+    func testProductionCaptureWithoutCalibrationCannotVerifySubjectMovement() async throws {
         let visionSequence = CaptureVisionSequence()
         let harness = makeCapturePathHarness(visionResult: { _, _ in
             visionSequence.nextResult()
         }, neuralEnabled: false)
+        await harness.viewModel.startAndWait()
+        harness.manager.updatePreviewGeometry(Self.capturePreviewGeometry)
+        defer { Task { @MainActor in await harness.viewModel.releaseAndWait() } }
+
+        // Use the same samples as the calibrated positive owner-chain test.
+        // Only its explicitly synthetic calibration dependency is absent.
+        for index in 0..<10 {
+            try await deliverCaptureSample(
+                through: harness,
+                timestamp: CMTime(value: Int64(1_000 + index * 100), timescale: 1_000),
+                lumaValues: Self.supportedCaptureLuma
+            )
+        }
+        let advicePublished = await waitUntil { harness.viewModel.liveHint != nil }
+        XCTAssertTrue(advicePublished, "missing episode calibration must retain useful local live advice")
+        XCTAssertNotNil(harness.pipeline.currentLiveHint?.observedSourceRegion,
+                        "the existing measured subject geometry must remain available")
+        guard case .cancel(.calibrationUnavailable) = harness.pipeline.currentCoachingEpisodeEvent else {
+            return XCTFail("an uncalibrated production candidate must report its missing evidence explicitly")
+        }
+        XCTAssertNil(harness.viewModel.coachingEpisodeState.baseline)
+        XCTAssertNil(harness.viewModel.verificationResult)
+
+        for index in 10..<14 {
+            try await deliverCaptureSample(
+                through: harness,
+                timestamp: CMTime(value: Int64(1_000 + index * 100), timescale: 1_000),
+                lumaValues: Self.supportedCaptureLuma
+            )
+            XCTAssertNil(harness.viewModel.coachingEpisodeState.baseline)
+            XCTAssertNil(harness.viewModel.verificationResult,
+                         "movement and stable after-frames cannot manufacture calibrated evidence")
+        }
+        XCTAssertEqual(harness.viewModel.coachingEpisodeState.phase, .idle)
+        XCTAssertEqual(harness.pipeline.testingDirectFrameAcceptanceCount, 0)
+        await harness.viewModel.releaseAndWait()
+    }
+
+    func testProductionCapturePathAutomaticallyVerifiesCorrectiveEpisode() async throws {
+        let visionSequence = CaptureVisionSequence()
+        let harness = makeCapturePathHarness(visionResult: { _, _ in
+            visionSequence.nextResult()
+        }, neuralEnabled: false, episodeConfidenceCalibrator: CameraEpisodeCalibrationFixture.calibrator)
         await harness.viewModel.startAndWait()
         harness.manager.updatePreviewGeometry(Self.capturePreviewGeometry)
 
@@ -1644,7 +1699,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
     func testProductionCapturePathSceneCutRejectsLatePreCutSampleAndRetries() async throws {
         let harness = makeCapturePathHarness(visionResult: { _, _ in
             Self.supportedCaptureVisionResult
-        }, neuralEnabled: false)
+        }, neuralEnabled: false, episodeConfidenceCalibrator: CameraEpisodeCalibrationFixture.calibrator)
         await harness.viewModel.startAndWait()
         harness.manager.updatePreviewGeometry(Self.capturePreviewGeometry)
 
@@ -2113,7 +2168,8 @@ final class CameraCoachClosedLoopTests: XCTestCase {
 
     private func makeCapturePathHarness(
         visionResult: @escaping (CVPixelBuffer, CGImagePropertyOrientation) -> VisionTrackingResult,
-        neuralEnabled: Bool
+        neuralEnabled: Bool,
+        episodeConfidenceCalibrator: CameraConfidenceCalibrator = .unavailable
     ) -> CapturePathHarness {
         let thermal = ThermalGovernor(
             thermalStateProvider: { .nominal },
@@ -2137,6 +2193,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             reasoningProvider: nil,
             visualEvidenceProvider: nil,
             neuralEvidenceService: neuralService,
+            episodeConfidenceCalibrator: episodeConfidenceCalibrator,
             thermalGovernor: thermal,
             neuralHeavyModelsEnabledProvider: { true },
             liveHybridFusionEnabled: neuralEnabled,

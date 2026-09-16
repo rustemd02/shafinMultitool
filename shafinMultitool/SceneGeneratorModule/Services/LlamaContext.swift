@@ -61,6 +61,10 @@ actor LlamaContext {
     private var batch: llama_batch
     private let batchCapacity: Int
     private let contextWindow: Int
+    private let modelArtifact: SceneLocalModelArtifact?
+    private let generationTemperature: Float
+    private let generationGrammarSHA256: String?
+    private var generationGrammarApplied = false
     private var tokensList: [llama_token]
     private var temporaryInvalidCChars: [CChar]
     
@@ -82,11 +86,15 @@ actor LlamaContext {
         model: OpaquePointer,
         context: OpaquePointer,
         contextWindow: Int,
+        modelArtifact: SceneLocalModelArtifact?,
         temperature: Float = 0.1,
         grammarStr: String? = nil
     ) {
         self.model = model
         self.context = context
+        self.modelArtifact = modelArtifact
+        self.generationTemperature = temperature
+        self.generationGrammarSHA256 = grammarStr.map(GenerationProvenance.sha256)
         self.tokensList = []
         self.batchCapacity = max(1, contextWindow)
         self.contextWindow = max(1, contextWindow)
@@ -102,6 +110,7 @@ actor LlamaContext {
             let grammarSampler = llama_sampler_init_grammar(vocab, grammar, "root")
             if let sampler = grammarSampler {
                 llama_sampler_chain_add(self.sampling, sampler)
+                generationGrammarApplied = true
                 print("✅ [LLM] GBNF grammar сэмплер добавлен")
             } else {
                 print("⚠️ [LLM] Не удалось создать grammar сэмплер, работаем без него")
@@ -136,6 +145,8 @@ actor LlamaContext {
     ///   - temperature: Температура генерации (0.1 = почти детерминированная)
     /// - Returns: Инициализированный LlamaContext
     static func create(modelPath path: String, temperature: Float = 0.1, grammarStr: String? = nil) throws -> LlamaContext {
+        let modelURL = URL(fileURLWithPath: path)
+        let identityBeforeLoad = SceneLocalModelArtifact.fingerprint(at: modelURL)
         LlamaBackendLifecycle.retain()
         var didTransferBackendOwnership = false
         defer {
@@ -176,11 +187,17 @@ actor LlamaContext {
         }
         
         print("✅ [LLM] Модель загружена успешно")
+        // A changed/unreadable override may still load; its identity remains
+        // unknown instead of claiming the bytes of a different file.
+        let identifiedArtifact = try? SceneLocalModelArtifact.identify(at: modelURL)
+        let modelArtifact = identityBeforeLoad != nil && identityBeforeLoad == SceneLocalModelArtifact.fingerprint(at: modelURL)
+            ? identifiedArtifact : nil
         didTransferBackendOwnership = true
         return LlamaContext(
             model: model,
             context: context,
             contextWindow: Int(ctxParams.n_ctx),
+            modelArtifact: modelArtifact,
             temperature: temperature,
             grammarStr: grammarStr
         )
@@ -212,6 +229,21 @@ actor LlamaContext {
             threads: Int32(threads),
             contextTokens: UInt32(contextTokens)
         )
+    }
+
+    func generationReceipt(
+        stage: SceneGenerationContributor.Stage, prompt: String, maximumTokens: Int32
+    ) -> SceneGenerationContributor {
+        .localModel(SceneLocalGenerationReceipt(
+            stage: stage,
+            artifact: modelArtifact,
+            promptSHA256: GenerationProvenance.sha256(prompt),
+            grammarSHA256: generationGrammarSHA256,
+            grammarApplied: generationGrammarApplied,
+            maximumTokens: Int(maximumTokens),
+            temperature: generationTemperature,
+            samplingProfile: "llama-scene-topk20-penalty64x1.3-seed1234-v1"
+        ))
     }
 
     private static func benchmarkOverrideInt(forKey key: String, defaults: UserDefaults) -> Int? {

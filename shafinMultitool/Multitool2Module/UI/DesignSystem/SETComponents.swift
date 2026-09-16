@@ -943,6 +943,7 @@ struct SETMontageReflow<Item: Identifiable, Content: View>: View where Item.ID: 
     let items: [Item]
     let selectedID: Item.ID
     let axis: SETReflowAxis
+    let cellAccessibility: ((Item) -> (identifier: String, label: String))?
     var onSelect: (Item) -> Void
     let content: (Item, Bool) -> Content
 
@@ -953,12 +954,14 @@ struct SETMontageReflow<Item: Identifiable, Content: View>: View where Item.ID: 
         items: [Item],
         selectedID: Item.ID,
         axis: SETReflowAxis = .horizontal,
+        cellAccessibility: ((Item) -> (identifier: String, label: String))? = nil,
         onSelect: @escaping (Item) -> Void = { _ in },
         content: @escaping (Item, Bool) -> Content
     ) {
         self.items = items
         self.selectedID = selectedID
         self.axis = axis
+        self.cellAccessibility = cellAccessibility
         self.onSelect = onSelect
         self.content = content
     }
@@ -1024,6 +1027,8 @@ struct SETMontageReflow<Item: Identifiable, Content: View>: View where Item.ID: 
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .modifier(SETMontageCellAccessibility(descriptor: cellAccessibility?(item)))
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
             .frame(
                 width: axis == .horizontal ? mainLength * layout.fraction(for: index) : crossLength,
                 height: axis == .vertical ? mainLength * layout.fraction(for: index) : crossLength
@@ -1040,7 +1045,24 @@ struct SETMontageReflow<Item: Identifiable, Content: View>: View where Item.ID: 
                             : (axis == .horizontal ? .leading : .top))
                 }
             }
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
+        }
+    }
+}
+
+/// Apply metadata to the actual Button before its frame and overlay wrappers.
+/// An ignored-children element around those wrappers loses the Button role and
+/// separates its identifier from the real selection action.
+private struct SETMontageCellAccessibility: ViewModifier {
+    let descriptor: (identifier: String, label: String)?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let descriptor {
+            content
+                .accessibilityIdentifier(descriptor.identifier)
+                .accessibilityLabel(Text(descriptor.label))
+        } else {
+            content
         }
     }
 }

@@ -38,6 +38,9 @@ struct SceneInputSheet: View {
                 .padding(SETSpacing.x3)
         }
         .preferredColorScheme(.dark)
+        .onChange(of: viewModel.clarificationRequest?.id) { _, _ in
+            clarificationText = ""
+        }
     }
 
     // MARK: - Layout
@@ -46,6 +49,7 @@ struct SceneInputSheet: View {
         HStack(spacing: 0) {
             portraitLayout
                 .frame(maxWidth: .infinity)
+            if viewModel.remoteTransferRequest == nil {
             Rectangle()
                 .fill(Color.setHairline)
                 .frame(width: SETStroke.hairline)
@@ -58,6 +62,7 @@ struct SceneInputSheet: View {
                 .padding(SETSpacing.x4)
             }
             .frame(maxWidth: 320)
+            }
         }
         // The primary action stays in the editor column's safe-area inset
         // (inherited from portraitLayout); the context column scrolls
@@ -78,14 +83,17 @@ struct SceneInputSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: SETSpacing.x4) {
-                    if !viewModel.markedObjects.isEmpty { markedObjectsSection }
+                    if viewModel.remoteTransferRequest == nil, !viewModel.markedObjects.isEmpty { markedObjectsSection }
+                    if let transfer = viewModel.remoteTransferRequest { transferDisclosure(transfer) }
                     if viewModel.generationRequestState.phase == .clarification,
                        let clarification = viewModel.clarificationRequest {
                         clarificationSection(clarification)
                             .id(clarification.id)
                     }
-                    textInputSection
-                    if !viewModel.detectedObjects.isEmpty { detectedObjectsSection }
+                    if viewModel.remoteTransferRequest == nil {
+                        textInputSection
+                        if !viewModel.detectedObjects.isEmpty { detectedObjectsSection }
+                    }
                     Spacer(minLength: SETSpacing.x4)
                 }
                 .padding(.horizontal, SETSpacing.x4)
@@ -96,7 +104,7 @@ struct SceneInputSheet: View {
         // the primary action stays above it without guessing a keyboard
         // height or creating a second modal layer.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            generateButton
+            if viewModel.remoteTransferRequest == nil { generateButton }
         }
         .scrollDismissesKeyboard(.interactively)
         .onDisappear {
@@ -109,7 +117,7 @@ struct SceneInputSheet: View {
 
     private var headerSection: some View {
         HStack(alignment: .firstTextBaseline, spacing: SETSpacing.x3) {
-            Text(SETCopyKey.generatorInputTitle.localizedTextKey)
+            Text((viewModel.remoteTransferRequest == nil ? SETCopyKey.generatorInputTitle : .generatorTransferTitle).localizedTextKey)
                 .font(SETTypography.font(.display, size: SETTypographySize.displayMedium))
                 .fontWeight(.bold)
                 .setDisplayTracking()
@@ -141,6 +149,45 @@ struct SceneInputSheet: View {
     }
 
     // MARK: - Clarification
+
+    private func transferDisclosure(_ transfer: SceneRemoteTransferRequest) -> some View {
+        VStack(alignment: .leading, spacing: SETSpacing.x3) {
+            Text(SETCopyKey.generatorTransferScope.localizedTextKey)
+                .fixedSize(horizontal: false, vertical: true)
+            transferField(.generatorTransferOperator, transfer.policy.operatorName)
+            transferField(.generatorTransferService, transfer.policy.serviceEndpoint.absoluteString)
+            transferField(.generatorTransferProvider, transfer.policy.providerName + " · " + transfer.policy.providerVersion)
+            transferField(.generatorTransferRegion, transfer.policy.processingRegion)
+            transferField(.generatorTransferContentRetention, transfer.policy.sceneContentRetention)
+            transferField(.generatorTransferMetadataRetention, transfer.policy.jobMetadataRetention)
+            transferField(.generatorTransferSecurityRetention, transfer.policy.securityIdentityRetention)
+            transferField(.generatorTransferSpendRetention, transfer.policy.spendRecordRetention)
+            transferField(.generatorTransferProviderRetention, transfer.policy.providerRetention)
+            transferField(.generatorTransferDeletion, transfer.policy.deletionRequestProcedure)
+            transferField(.generatorTransferVersion, transfer.policy.policyVersion)
+            Link(destination: transfer.policy.policyURL) {
+                Text(SETCopyKey.generatorTransferReadPolicy.localizedTextKey)
+                    .underline()
+                    .frame(minWidth: SETComponentMetric.minimumHitTarget,
+                           minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+            }
+            .accessibilityIdentifier("generator_transfer_policy")
+            transferField(.generatorTransferText, transfer.scriptText)
+            if !transfer.markedObjectIDs.isEmpty {
+                transferField(.generatorTransferObjects, String(transfer.markedObjectIDs.count))
+            }
+        }
+        .font(SETTypography.uiBodyFont(weight: .regular))
+        .foregroundStyle(.setTextPrimary)
+        .accessibilityIdentifier("generator_transfer_disclosure")
+    }
+
+    private func transferField(_ title: SETCopyKey, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: SETSpacing.x1) {
+            Text(title.localizedTextKey).fontWeight(.semibold)
+            Text(value).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+        }
+    }
 
     private func clarificationSection(_ clarification: SceneClarificationPayload) -> some View {
         VStack(alignment: .leading, spacing: SETSpacing.x2) {
@@ -174,8 +221,8 @@ struct SceneInputSheet: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .disabled(viewModel.isGenerating || viewModel.clarificationAttemptsRemaining == 0)
-                .opacity(viewModel.isGenerating || viewModel.clarificationAttemptsRemaining == 0 ? 0.45 : 1)
+                .disabled(viewModel.isGenerating || (viewModel.remoteTransferRequest == nil && viewModel.clarificationAttemptsRemaining == 0))
+                .opacity(viewModel.isGenerating || (viewModel.remoteTransferRequest == nil && viewModel.clarificationAttemptsRemaining == 0) ? 0.45 : 1)
                 .accessibilityLabel(option.accessibilityLabel)
                 .accessibilityIdentifier("generator_clarification_option_\(option.id)")
             }
@@ -188,6 +235,7 @@ struct SceneInputSheet: View {
                         .textFieldStyle(.plain)
                         .submitLabel(.send)
                         .onSubmit { submitClarificationText(clarification) }
+                        .disabled(viewModel.isGenerating || (viewModel.remoteTransferRequest == nil && viewModel.clarificationAttemptsRemaining == 0))
                         .accessibilityLabel(Text(clarification.prompt))
                         .accessibilityIdentifier("generator_clarification_text")
 
@@ -200,7 +248,9 @@ struct SceneInputSheet: View {
                     .frame(minWidth: SETComponentMetric.minimumHitTarget,
                            minHeight: SETComponentMetric.minimumHitTarget)
                     .buttonStyle(.plain)
-                    .disabled(viewModel.isGenerating || viewModel.clarificationAttemptsRemaining == 0)
+                    .disabled(viewModel.isGenerating || (viewModel.remoteTransferRequest == nil && viewModel.clarificationAttemptsRemaining == 0)
+                              || clarificationText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || clarificationText.trimmingCharacters(in: .whitespacesAndNewlines).count > clarification.maximumFreeTextCharacters)
                     .accessibilityIdentifier("generator_clarification_submit")
                 }
                 .padding(.horizontal, SETSpacing.x3)
@@ -228,9 +278,10 @@ struct SceneInputSheet: View {
 
     private func submitClarificationText(_ clarification: SceneClarificationPayload) {
         isTextFieldFocused = false
+        let answerText = clarificationText
         Task {
             _ = await viewModel.submitClarificationAnswer(
-                .freeText(clarificationText),
+                .freeText(answerText),
                 for: clarification
             )
         }
@@ -403,8 +454,9 @@ struct SceneInputSheet: View {
 
             HStack {
                 SETDigitalAction(
-                    title: viewModel.isGenerating ? .generatorInputGenerating : .generatorAction,
-                    helper: viewModel.isGenerating ? nil : .generatorHelper,
+                    title: viewModel.isGenerating ? .generatorInputGenerating
+                        : (viewModel.canRetryGenerationPersistence ? .generatorSaveRetry : .generatorAction),
+                    helper: viewModel.isGenerating || viewModel.canRetryGenerationPersistence ? nil : .generatorHelper,
                     showsAccentEdge: shouldShowGenerateAccent,
                     action: {
                         isTextFieldFocused = false

@@ -776,13 +776,15 @@ final class CameraViewModelLifecycleTests: XCTestCase {
 
     func testSelectedTeleLensPresentationSurvivesPauseResumeUntilManagerReportsAgain() async {
         let resumeGate = CameraViewModelTestGate()
+        defer { resumeGate.signal() }
         let fixture = makeFixture(startPlans: [
             .init(succeeds: true),
             .init(succeeds: true, gate: resumeGate)
-        ])
+        ], configuration: .readyWithLens(.telephoto))
 
         await fixture.viewModel.startAndWait()
-        fixture.viewModel.currentLens = .telephoto
+        XCTAssertEqual(fixture.manager.activeLens, .telephoto)
+        XCTAssertEqual(fixture.viewModel.currentLens, .telephoto)
         fixture.pipeline.ingestHigh(context: makeFrameContext(timestamp: 3))
         let evidenceReady = await waitUntil {
             fixture.pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_3000"
@@ -790,9 +792,17 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         XCTAssertTrue(evidenceReady)
 
         fixture.viewModel.togglePause()
-        let paused = await waitUntil { fixture.viewModel.isPaused && fixture.viewModel.takeNumber == 1 }
+        let paused = await waitUntil {
+            fixture.viewModel.isPaused
+                && fixture.viewModel.takeNumber == 1
+                && fixture.viewModel.lifecycleState == .idle
+        }
         XCTAssertTrue(paused)
+        XCTAssertEqual(fixture.manager.activeLens, .telephoto)
         fixture.viewModel.togglePause()
+        let resumeStarted = await waitUntil { fixture.runner.startCount == 2 }
+        XCTAssertTrue(resumeStarted)
+        XCTAssertEqual(fixture.viewModel.lifecycleState, .starting)
         XCTAssertEqual(fixture.viewModel.currentLens, .telephoto)
 
         resumeGate.signal()
@@ -802,6 +812,49 @@ final class CameraViewModelLifecycleTests: XCTestCase {
                 && fixture.viewModel.currentLens == .telephoto
         }
         XCTAssertTrue(resumed)
+        XCTAssertEqual(fixture.manager.activeLens, .telephoto)
+        XCTAssertFalse(fixture.runner.didTimeoutWaitingForStartGate)
+        await fixture.viewModel.releaseAndWait()
+    }
+
+    func testUnconfirmedLensPresentationReconcilesOnlyAfterManagerResumes() async {
+        let resumeGate = CameraViewModelTestGate()
+        defer { resumeGate.signal() }
+        let fixture = makeFixture(startPlans: [
+            .init(succeeds: true),
+            .init(succeeds: true, gate: resumeGate)
+        ])
+        await fixture.viewModel.startAndWait()
+        XCTAssertEqual(fixture.manager.activeLens, .wide)
+        fixture.viewModel.currentLens = .telephoto
+        fixture.pipeline.ingestHigh(context: makeFrameContext(timestamp: 3))
+        let evidenceReady = await waitUntil {
+            fixture.pipeline.testingLatestFrameEvidence?.sourceFrameId == "frame_3000"
+        }
+        XCTAssertTrue(evidenceReady)
+
+        fixture.viewModel.togglePause()
+        let paused = await waitUntil {
+            fixture.viewModel.isPaused
+                && fixture.viewModel.takeNumber == 1
+                && fixture.viewModel.lifecycleState == .idle
+        }
+        XCTAssertTrue(paused)
+        fixture.viewModel.togglePause()
+        let resumeStarted = await waitUntil { fixture.runner.startCount == 2 }
+        XCTAssertTrue(resumeStarted)
+        XCTAssertEqual(fixture.viewModel.lifecycleState, .starting)
+        XCTAssertEqual(fixture.viewModel.currentLens, .telephoto)
+
+        resumeGate.signal()
+        let resumed = await waitUntil {
+            fixture.viewModel.lifecycleState == .running
+                && fixture.viewModel.pausePresentationState == .idle
+                && fixture.viewModel.currentLens == .wide
+        }
+        XCTAssertTrue(resumed)
+        XCTAssertEqual(fixture.viewModel.currentLens, fixture.manager.activeLens)
+        XCTAssertFalse(fixture.runner.didTimeoutWaitingForStartGate)
         await fixture.viewModel.releaseAndWait()
     }
 
@@ -824,7 +877,8 @@ final class CameraViewModelLifecycleTests: XCTestCase {
         await fixture.viewModel.releaseAndWait()
     }
 
-    private func makeFixture(startPlans: [CameraViewModelStartPlan]) -> CameraViewModelFixture {
+    private func makeFixture(startPlans: [CameraViewModelStartPlan],
+                             configuration: CameraManagerTestConfiguration = .ready) -> CameraViewModelFixture {
         let scheduler = RealtimeScheduler()
         let thermalGovernor = ThermalGovernor(thermalStateProvider: { .nominal },
                                                batteryLevelProvider: { 1.0 })
@@ -836,7 +890,7 @@ final class CameraViewModelLifecycleTests: XCTestCase {
                                     thermalGovernor: thermalGovernor,
                                     motionGate: MotionGate(startMotionUpdates: false),
                                     sessionRunner: runner,
-                                    configuration: .ready,
+                                    configuration: configuration,
                                     notificationCenter: NotificationCenter())
         let pipeline = AnalysisPipeline(
             reasoningProvider: nil,

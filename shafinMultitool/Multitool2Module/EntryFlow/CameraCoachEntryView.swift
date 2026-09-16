@@ -113,21 +113,29 @@ struct CameraCoachEntryView: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .topLeading) {
-                Color.setInk
-                    .ignoresSafeArea()
+        VStack(spacing: 0) {
+            GeometryReader { proxy in
+                ZStack(alignment: .topLeading) {
+                    Color.setInk
+                        .ignoresSafeArea()
 
-                editorialContent(in: proxy)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    editorialContent(in: proxy)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                SETRegistrationMarks(color: .setWarmWhite, corner: .topLeading)
-                    .padding(.horizontal, proxy.safeAreaInsets.leading + SETSpacing.x4)
-                    .padding(.vertical, proxy.safeAreaInsets.top + SETSpacing.x4)
+                    SETRegistrationMarks(color: .setWarmWhite, corner: .topLeading)
+                        .padding(.horizontal, proxy.safeAreaInsets.leading + SETSpacing.x4)
+                        .padding(.vertical, proxy.safeAreaInsets.top + SETSpacing.x4)
+                }
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(Self.rootAccessibilityIdentifier(for: phase))
+
+            SETPrivacyEntryButton(accessibilityID: "camera_entry_privacy")
+                .frame(maxWidth: .infinity)
+                .background(.setInk)
         }
+        .background(.setInk)
         .preferredColorScheme(.dark)
-        .accessibilityIdentifier(Self.rootAccessibilityIdentifier(for: phase))
     }
 
     @ViewBuilder

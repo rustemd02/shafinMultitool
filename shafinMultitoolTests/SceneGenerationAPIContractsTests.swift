@@ -69,6 +69,30 @@ final class SceneGenerationAPIContractsTests: XCTestCase {
         XCTAssertEqual(cancelledFailure.code, .cancelled)
     }
 
+    func testClarificationRejectsDuplicateChoicesAndUnanswerableQuestion() throws {
+        let original = try jobFixture("job-valid-awaiting-clarification.json")
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let source = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(original)) as? [String: Any])
+        let originalQuestion = try XCTUnwrap(source["clarification"] as? [String: Any])
+        let duplicateChoice = ["id": "same", "label": "A subject"]
+        for mutation: [String: Any] in [
+            ["options": [duplicateChoice, duplicateChoice]],
+            ["options": [], "allowsFreeText": false],
+            ["options": [], "allowsFreeText": true, "maximumFreeTextCharacters": 0],
+            ["prompt": "   "]
+        ] {
+            var envelope = source
+            var question = originalQuestion
+            question.merge(mutation) { _, new in new }
+            envelope["clarification"] = question
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let status = try decoder.decode(SceneJobStatus.self, from: JSONSerialization.data(withJSONObject: envelope))
+            XCTAssertEqual(SceneJobValidation.validate(status), .rejected(.invalidClarificationPayload))
+        }
+    }
+
     func testCompleteWithoutResultIsRejected() throws {
         let status = try jobFixture("job-invalid-complete-missing-result.json")
         XCTAssertEqual(

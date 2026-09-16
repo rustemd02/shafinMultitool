@@ -88,7 +88,7 @@ class CommercialViewControllerRoute: CommercialRoute {
 @MainActor
 final class CommercialCameraCoachRoute: CommercialViewControllerRoute {
     typealias StopAndWait = @MainActor () async -> Void
-    typealias SceneBackgroundHandler = @MainActor () -> Void
+    typealias SceneBackgroundHandler = @MainActor () async -> Void
     typealias ChromeVisibilityHandler = @MainActor (Bool) -> Void
 
     private let stopAndWait: StopAndWait
@@ -114,7 +114,7 @@ final class CommercialCameraCoachRoute: CommercialViewControllerRoute {
             await cameraViewModel.releaseAndWait()
         }
         self.sceneBackgroundHandler = { [weak cameraViewModel] in
-            cameraViewModel?.reportSceneInactive()
+            await cameraViewModel?.handleSceneDidEnterBackground()
         }
         self.entryFlowModel = entryFlowModel
         super.init(viewController: viewController)
@@ -159,12 +159,9 @@ final class CommercialCameraCoachRoute: CommercialViewControllerRoute {
         }
     }
 
-    /// M1-004 lifecycle-adapter background hook. Forwards to the active capture
-    /// owner; the owner (CameraViewModel.reportSceneInactive) is idempotent and
-    /// early-returns unless capture or pause work is active, so a racing SwiftUI
-    /// scenePhase effect converges on the same single state change.
-    func handleSceneDidEnterBackground() {
-        sceneBackgroundHandler?()
+    /// Await the shared recording owner before ending the shell background lease.
+    func handleSceneDidEnterBackground() async {
+        await sceneBackgroundHandler?()
     }
 
     override func deactivateAndWait() async -> CommercialRouteDeactivationResult {

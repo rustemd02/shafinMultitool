@@ -612,7 +612,243 @@ final class DBServiceConcurrencyTests: XCTestCase {
         }
     }
 
+    func testColdRecoverySavesRenamedMovieReferenceWithoutChangingProjectOrMapPayload() async throws {
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("recording-reference-cold-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+        let store = try RecordingArtifactStore(applicationSupportDirectoryURL: applicationSupportURL)
+        let service = DBService(recordingArtifactStore: store, projectLeases: ProjectLifecycleRegistry())
+        var project = try service.createUnifiedSceneProject(named: "camera-cold-\(UUID().uuidString)")
+        defer { service.deleteUnifiedSceneProject(named: project.name) { _ in } }
+        project.sceneDescription = "latest scene description must survive recovery"
+        project.updatedAt = Date(timeIntervalSince1970: 4_000)
+        let projectURL = try unifiedProjectURL(projectID: project.id)
+        let mapBytes = Data("opaque archived world-map bytes must remain byte-identical".utf8)
+        let projectObject = try JSONSerialization.jsonObject(with: JSONEncoder().encode(project))
+        try JSONSerialization.data(withJSONObject: [
+            "schemaVersion": 1,
+            "project": projectObject,
+            "archivedWorldMap": mapBytes.base64EncodedString()
+        ]).write(to: projectURL, options: [.atomic])
+
+        let recordingID = UUID()
+        let pendingURL = try store.makePendingURL(recordingID: recordingID)
+        try await makeValidMovie(at: pendingURL, recordingID: recordingID)
+        let movieBytes = try Data(contentsOf: pendingURL)
+        let artifact = RecordingArtifact(
+            id: RecordingID(rawValue: recordingID), localURL: pendingURL,
+            duration: 0.1, hasAudio: false
+        )
+        store.testPromotionFaultPoint = .afterRename
+        XCTAssertThrowsError(try store.promoteFinalizedArtifact(
+            artifact, projectID: project.id, expectedProjectUpdatedAt: project.updatedAt
+        ))
+        XCTAssertEqual(try store.journal.entry(for: recordingID)?.state, .promoting)
+
+        let siblingID = UUID()
+        let siblingURL = try store.makePendingURL(recordingID: siblingID)
+        try await makeValidMovie(at: siblingURL, recordingID: siblingID)
+        _ = try store.promoteFinalizedArtifact(RecordingArtifact(
+            id: RecordingID(rawValue: siblingID), localURL: siblingURL,
+            duration: 0.1, hasAudio: false
+        ), projectID: project.id, expectedProjectUpdatedAt: project.updatedAt)
+
+        // No in-memory descriptor/reference is passed into the new owners.
+        let reopenedStore = try RecordingArtifactStore(applicationSupportDirectoryURL: applicationSupportURL)
+        let reopenedDB = DBService(recordingArtifactStore: reopenedStore, projectLeases: ProjectLifecycleRegistry())
+        reopenedDB.performRecordingMaintenance()
+        let savedBytes = try Data(contentsOf: projectURL)
+        let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: savedBytes) as? [String: Any])
+        let savedProjectObject = try XCTUnwrap(envelope["project"])
+        let recovered = try JSONDecoder().decode(
+            UnifiedSceneProject.self,
+            from: JSONSerialization.data(withJSONObject: savedProjectObject)
+        )
+        XCTAssertEqual(recovered.id, project.id)
+        XCTAssertEqual(recovered.name, project.name)
+        XCTAssertEqual(recovered.sceneDescription, project.sceneDescription)
+        XCTAssertEqual(envelope["archivedWorldMap"] as? String, mapBytes.base64EncodedString())
+        XCTAssertEqual(recovered.recordingReferences.count, 2, "same-generation takes must commit in one recovery snapshot")
+        let reference = try XCTUnwrap(recovered.recordingReferences.first(where: { $0.recordingID == recordingID }))
+        XCTAssertEqual(reference.recordingID, recordingID)
+        let destination = try XCTUnwrap(reopenedStore.resolve(reference, ownedBy: project.id))
+        XCTAssertEqual(try Data(contentsOf: destination), movieBytes)
+        XCTAssertNil(try reopenedStore.journal.entry(for: recordingID))
+        XCTAssertNil(try reopenedStore.journal.entry(for: siblingID))
+        XCTAssertEqual(
+            reopenedDB.loadLibrarySceneSnapshots().successValue?.first(where: { $0.id == project.id })?.artifactHealth,
+            .healthy
+        )
+
+        reopenedDB.performRecordingMaintenance()
+        XCTAssertEqual(try Data(contentsOf: projectURL), savedBytes, "an acknowledged take must not append or reorder again")
+    }
+
+    func testSnapshotConflictKeepsPromotionAndAcknowledgementRetryKeepsCommittedSnapshot() async throws {
+        let applicationSupportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("recording-reference-conflict-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: applicationSupportURL) }
+        let store = try RecordingArtifactStore(applicationSupportDirectoryURL: applicationSupportURL)
+        let service = DBService(recordingArtifactStore: store, projectLeases: ProjectLifecycleRegistry())
+        let project = try service.createUnifiedSceneProject(named: "camera-conflict-\(UUID().uuidString)")
+        defer { service.deleteUnifiedSceneProject(named: project.name) { _ in } }
+        let recordingID = UUID()
+        let pendingURL = try store.makePendingURL(recordingID: recordingID)
+        try await makeValidMovie(at: pendingURL, recordingID: recordingID)
+        let reference = try store.promoteFinalizedArtifact(RecordingArtifact(
+            id: RecordingID(rawValue: recordingID), localURL: pendingURL,
+            duration: 0.1, hasAudio: false
+        ), projectID: project.id)
+        var latest = project
+        latest.sceneDescription = "newer user edit"
+        latest.updatedAt = project.updatedAt.addingTimeInterval(10)
+        try service.saveUnifiedSceneProject(latest, worldMap: nil, expectedUpdatedAt: project.updatedAt)
+
+        var stale = project
+        stale.recordingReferences = [reference]
+        stale.updatedAt = latest.updatedAt.addingTimeInterval(10)
+        XCTAssertThrowsError(try service.saveUnifiedSceneProject(stale, worldMap: nil, expectedUpdatedAt: project.updatedAt)) { error in
+            XCTAssertEqual(error as? DBServiceError, .staleSnapshot(storedUpdatedAt: latest.updatedAt))
+        }
+        XCTAssertEqual(try store.journal.entry(for: recordingID)?.state, .promoted)
+        XCTAssertEqual(service.loadUnifiedSceneProject(named: project.name)?.0, latest)
+
+        // Retry with the current aggregate. A journal unlink failure happens
+        // after JSON commit and must not turn that successful save into failure.
+        latest.recordingReferences = [reference]
+        let expectedUpdatedAt = latest.updatedAt
+        latest.updatedAt = latest.updatedAt.addingTimeInterval(20)
+        store.testPromotionFaultPoint = .beforeJournalRemoval
+        XCTAssertNoThrow(try service.saveUnifiedSceneProject(latest, worldMap: nil, expectedUpdatedAt: expectedUpdatedAt))
+        XCTAssertEqual(try store.journal.entry(for: recordingID)?.state, .promoted)
+        let projectURL = try unifiedProjectURL(projectID: project.id)
+        let committedBytes = try Data(contentsOf: projectURL)
+
+        let reopenedStore = try RecordingArtifactStore(applicationSupportDirectoryURL: applicationSupportURL)
+        let reopenedDB = DBService(recordingArtifactStore: reopenedStore, projectLeases: ProjectLifecycleRegistry())
+        reopenedDB.performRecordingMaintenance()
+        XCTAssertNil(try reopenedStore.journal.entry(for: recordingID))
+        XCTAssertEqual(try Data(contentsOf: projectURL), committedBytes, "acknowledgement-only recovery must not mutate the aggregate")
+        XCTAssertEqual(reopenedDB.loadUnifiedSceneProject(named: project.name)?.0, latest)
+    }
+
+    func testColdRecoveryDoesNotReattachIntentionallyDetachedReference() async throws {
+        let fixture = try await makeVersionBoundRecoveryFixture()
+        defer { cleanupRecoveryFixture(fixture) }
+        var attached = fixture.project
+        attached.recordingReferences = [fixture.reference]
+        attached.updatedAt = fixture.project.updatedAt.addingTimeInterval(10)
+        fixture.store.testPromotionFaultPoint = .beforeJournalRemoval
+        try fixture.service.saveUnifiedSceneProject(attached, worldMap: nil, expectedUpdatedAt: fixture.project.updatedAt)
+        XCTAssertNotNil(try fixture.store.journal.entry(for: fixture.reference.recordingID))
+
+        var detached = attached
+        detached.recordingReferences = []
+        detached.updatedAt = attached.updatedAt.addingTimeInterval(10)
+        try fixture.service.saveUnifiedSceneProject(detached, worldMap: nil, expectedUpdatedAt: attached.updatedAt)
+        let projectURL = try unifiedProjectURL(projectID: detached.id)
+        let bytesBeforeRecovery = try Data(contentsOf: projectURL)
+        fixture.service.performRecordingMaintenance()
+
+        XCTAssertEqual(try Data(contentsOf: projectURL), bytesBeforeRecovery)
+        XCTAssertEqual(fixture.service.loadUnifiedSceneProject(named: detached.name)?.0.recordingReferences, [])
+        XCTAssertEqual(try fixture.store.journal.entry(for: fixture.reference.recordingID)?.state, .promoted)
+        XCTAssertNotNil(fixture.store.resolve(fixture.reference, ownedBy: detached.id))
+    }
+
+    func testColdRecoveryDefersWhenProjectGenerationWasModifiedAfterPromotion() async throws {
+        let fixture = try await makeVersionBoundRecoveryFixture()
+        defer { cleanupRecoveryFixture(fixture) }
+        var modified = fixture.project
+        modified.sceneDescription = "a later user edit"
+        modified.updatedAt = fixture.project.updatedAt.addingTimeInterval(10)
+        try fixture.service.saveUnifiedSceneProject(modified, worldMap: nil, expectedUpdatedAt: fixture.project.updatedAt)
+        let projectURL = try unifiedProjectURL(projectID: modified.id)
+        let bytesBeforeRecovery = try Data(contentsOf: projectURL)
+        fixture.service.performRecordingMaintenance()
+
+        XCTAssertEqual(try Data(contentsOf: projectURL), bytesBeforeRecovery)
+        XCTAssertEqual(fixture.service.loadUnifiedSceneProject(named: modified.name)?.0, modified)
+        XCTAssertEqual(try fixture.store.journal.entry(for: fixture.reference.recordingID)?.expectedProjectUpdatedAt, fixture.project.updatedAt)
+        XCTAssertNotNil(fixture.store.resolve(fixture.reference, ownedBy: modified.id))
+    }
+
+    func testColdRecoveryKeepsLegacyUnversionedIntentUntilExplicitReferenceSave() async throws {
+        let fixture = try await makeVersionBoundRecoveryFixture(bindGeneration: false)
+        defer { cleanupRecoveryFixture(fixture) }
+        let journalURL = fixture.store.journal.journalDirectoryURL
+            .appendingPathComponent("\(fixture.reference.recordingID.uuidString).json")
+        let legacyObject = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: journalURL)) as? [String: Any])
+        XCTAssertNil(legacyObject["expectedProjectUpdatedAt"], "old journal bytes have no generation field")
+        let projectURL = try unifiedProjectURL(projectID: fixture.project.id)
+        let bytesBeforeRecovery = try Data(contentsOf: projectURL)
+        fixture.service.performRecordingMaintenance()
+        XCTAssertEqual(try Data(contentsOf: projectURL), bytesBeforeRecovery)
+        XCTAssertNotNil(try fixture.store.journal.entry(for: fixture.reference.recordingID))
+        XCTAssertNotNil(fixture.store.resolve(fixture.reference, ownedBy: fixture.project.id))
+
+        // A live owner's explicit save is authority to attach this user-held
+        // take; automatic cold recovery must not invent that decision.
+        var explicit = fixture.project
+        explicit.recordingReferences = [fixture.reference]
+        explicit.updatedAt = explicit.updatedAt.addingTimeInterval(10)
+        try fixture.service.saveUnifiedSceneProject(explicit, worldMap: nil, expectedUpdatedAt: fixture.project.updatedAt)
+        XCTAssertNil(try fixture.store.journal.entry(for: fixture.reference.recordingID))
+    }
+
+    func testColdRecoveryDoesNotRecreateDeletedProjectFromRetainedIntent() async throws {
+        let fixture = try await makeVersionBoundRecoveryFixture()
+        defer { cleanupRecoveryFixture(fixture) }
+        let projectURL = try unifiedProjectURL(projectID: fixture.project.id)
+        let movieURL = try XCTUnwrap(fixture.store.resolve(fixture.reference, ownedBy: fixture.project.id))
+        let movieBytes = try Data(contentsOf: movieURL)
+        // Represents a stale promotion intent after authoritative metadata was
+        // removed; recovery is not allowed to infer a replacement project.
+        try FileManager.default.removeItem(at: projectURL)
+        fixture.service.performRecordingMaintenance()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: projectURL.path))
+        XCTAssertFalse(fixture.service.listUnifiedSceneProjects().contains(where: { $0.id == fixture.project.id }))
+        XCTAssertNotNil(try fixture.store.journal.entry(for: fixture.reference.recordingID))
+        XCTAssertEqual(try Data(contentsOf: movieURL), movieBytes)
+    }
+
     // MARK: - Helpers
+
+    private struct RecoveryFixture {
+        let root: URL
+        let store: RecordingArtifactStore
+        let service: DBService
+        let project: UnifiedSceneProject
+        let reference: SceneRecordingReference
+    }
+
+    private func makeVersionBoundRecoveryFixture(bindGeneration: Bool = true) async throws -> RecoveryFixture {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("recording-generation-\(UUID().uuidString)", isDirectory: true)
+        let store = try RecordingArtifactStore(applicationSupportDirectoryURL: root)
+        let service = DBService(recordingArtifactStore: store, projectLeases: ProjectLifecycleRegistry())
+        let project = try service.createUnifiedSceneProject(named: "recording-generation-\(UUID().uuidString)")
+        let recordingID = UUID()
+        let url = try store.makePendingURL(recordingID: recordingID)
+        try await makeValidMovie(at: url, recordingID: recordingID)
+        let reference = try store.promoteFinalizedArtifact(RecordingArtifact(
+            id: RecordingID(rawValue: recordingID), localURL: url, duration: 0.1, hasAudio: false
+        ), projectID: project.id, expectedProjectUpdatedAt: bindGeneration ? project.updatedAt : nil)
+        return RecoveryFixture(root: root, store: store, service: service, project: project, reference: reference)
+    }
+
+    private func cleanupRecoveryFixture(_ fixture: RecoveryFixture) {
+        fixture.service.deleteUnifiedSceneProject(named: fixture.project.name) { _ in }
+        try? FileManager.default.removeItem(at: fixture.root)
+    }
+
+    private func unifiedProjectURL(projectID: UUID) throws -> URL {
+        try FileManager.default.url(
+            for: .documentDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: false
+        ).appendingPathComponent("UnifiedSceneProjects", isDirectory: true)
+            .appendingPathComponent("\(projectID.uuidString)_project.json")
+    }
 
     private func makeValidMovie(at outputURL: URL, recordingID: UUID) async throws {
         let configuration = RecordingConfiguration(

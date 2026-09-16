@@ -98,21 +98,72 @@ def test_privacy_manifest_declares_every_required_reason_api_in_use() -> None:
     )
 
 
+def _selected_privacy_manifest_and_profile() -> tuple[dict, str]:
+    """Use the actual built bundle when supplied, otherwise tracked Release defaults."""
+    import os
+    import plistlib
+    from urllib.parse import urlsplit
+
+    built_app = os.environ.get("SETOS_PRIVACY_BUILT_APP")
+    if built_app:
+        app = pathlib.Path(built_app)
+        with (app / "Info.plist").open("rb") as stream:
+            info = plistlib.load(stream)
+        endpoint = info.get("SETOSSceneBaseURL", "")
+        manifest_path = app / "PrivacyInfo.xcprivacy"
+    else:
+        project = (ROOT / "shafinMultitool.xcodeproj/project.pbxproj").read_text(encoding="utf-8")
+        release_blocks = re.findall(
+            r"[A-F0-9]{24} /\* Release \*/ = \{(.*?)name = Release;", project, re.S
+        )
+        app_blocks = [block for block in release_blocks if "INFOPLIST_FILE = shafinMultitool/Info.plist;" in block]
+        assert len(app_blocks) == 1, "Resolve the app's Release configuration before privacy admission"
+        values = re.findall(r'SETOS_SCENE_BASE_URL\s*=\s*"([^"\n]*)";', app_blocks[0])
+        assert len(values) == 1, "A missing or ambiguous endpoint is not proof of local-only behavior"
+        endpoint = values[0]
+        manifest_path = APP_SOURCES / "PrivacyInfo.xcprivacy"
+    assert isinstance(endpoint, str) and "$(" not in endpoint, "Unresolved built configuration"
+    if endpoint:
+        parsed = urlsplit(endpoint)
+        assert parsed.scheme == "https" and parsed.hostname and not parsed.username and not parsed.password
+    with manifest_path.open("rb") as stream:
+        manifest = plistlib.load(stream)
+    return manifest, "remote_enabled" if endpoint else "remote_disabled"
+
+
 def test_privacy_answers_match_the_manifest_and_the_code() -> None:
+    from urllib.parse import urlsplit
+
     answers = json.loads((RELEASE / "AppPrivacyAnswers.json").read_text(encoding="utf-8"))
     assert answers["tracking"]["answer"] is False
-    assert answers["data_collection"]["answer"] == "none in the shipping configuration"
-    manifest = (APP_SOURCES / "PrivacyInfo.xcprivacy").read_text(encoding="utf-8")
-    assert "<key>NSPrivacyTracking</key>\n\t<false/>" in manifest
-    assert "<key>NSPrivacyCollectedDataTypes</key>\n\t<array/>" in manifest
+    profiles = answers["data_collection"]["profiles"]
+    remote = profiles["remote_enabled"]
+    assert remote["developer_collection"] is True
+    remote_categories = {item["type"]: item for item in remote["categories"]}
+    assert {"Other User Content", "Device ID"} <= remote_categories.keys()
+    assert remote_categories["Other User Content"]["linked_to_user"] is True
+    assert remote_categories["Device ID"]["linked_to_user"] is True
+
+    manifest, selected_profile = _selected_privacy_manifest_and_profile()
+    assert manifest["NSPrivacyTracking"] is False
+    declared = {item["manifest_type"]: item for item in profiles[selected_profile].get("categories", [])}
+    shipped = {item["NSPrivacyCollectedDataType"]: item for item in manifest["NSPrivacyCollectedDataTypes"]}
+    assert shipped.keys() == declared.keys(), f"Privacy manifest differs from {selected_profile} disclosure"
+    for identifier, disclosure in declared.items():
+        item = shipped[identifier]
+        assert item["NSPrivacyCollectedDataTypeLinked"] is disclosure["linked_to_user"]
+        assert item["NSPrivacyCollectedDataTypeTracking"] is disclosure["used_for_tracking"]
+        assert set(item["NSPrivacyCollectedDataTypePurposes"]) == set(disclosure["manifest_purposes"])
+
+    policy = answers["privacy_policy"]
+    if policy["answer"] is None:
+        assert "required" in policy["status"] and answers["release_gates"], "Missing hosted policy must remain an open admission gate"
+    else:
+        url = urlsplit(policy["answer"])
+        assert url.scheme == "https" and url.hostname and not url.username and not url.password
     stated = {entry["api"] for entry in answers["required_reason_apis"]["answer"]}
-    assert stated == {
-        "NSPrivacyAccessedAPICategoryUserDefaults",
-        "NSPrivacyAccessedAPICategorySystemBootTime",
-        "NSPrivacyAccessedAPICategoryFileTimestamp",
-        "NSPrivacyAccessedAPICategoryDiskSpace",
-    }
-    assert "must be revisited" in answers["data_collection"]["conditional"]
+    shipped_reasons = {entry["NSPrivacyAccessedAPIType"] for entry in manifest["NSPrivacyAccessedAPITypes"]}
+    assert stated == shipped_reasons
 
 
 def test_metadata_draft_marks_owner_decisions_and_makes_no_quality_promise() -> None:
@@ -137,7 +188,13 @@ def test_gates_report_covers_every_gate_from_the_product_plan() -> None:
     reported = [str(gate["n"]) for gate in report["gates"]]
     assert reported == numbered, f"gates report out of sync with the plan: {reported} vs {numbered}"
     assert report["summary"]["owner_gated"] >= 1
-    assert report["claim_scope"].endswith("no claim that any gate is closed by this audit.")
+    assert isinstance(report["claim_scope"], str) and report["claim_scope"].strip()
+    assert type(report["release_ready"]) is bool
+    if any(gate["missing"] for gate in report["gates"]):
+        assert report["release_ready"] is False, "Open requirements cannot be presented as release-ready"
+    for gate in report["gates"]:
+        if gate["status"] == "satisfied":
+            assert gate["evidence"] and not gate["missing"], "A satisfied gate needs evidence and no unresolved requirement"
 
 
 def test_review_notes_declare_the_open_device_gate() -> None:

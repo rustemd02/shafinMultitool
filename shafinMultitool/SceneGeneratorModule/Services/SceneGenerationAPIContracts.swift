@@ -307,6 +307,19 @@ enum SceneJobValidation: Sendable {
             guard clarification.requestID == status.requestID else {
                 return .rejected(.staleClarificationBinding)
             }
+            guard !clarification.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !clarification.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  clarification.attempt >= 0,
+                  clarification.maximumFreeTextCharacters >= 0,
+                  !clarification.options.isEmpty || (clarification.allowsFreeText && clarification.maximumFreeTextCharacters > 0),
+                  !clarification.allowsFreeText || clarification.maximumFreeTextCharacters > 0,
+                  Set(clarification.options.map(\.id)).count == clarification.options.count,
+                  clarification.options.allSatisfy({
+                    !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        && !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                  }) else {
+                return .rejected(.invalidClarificationPayload)
+            }
             return .awaitingClarification(clarification)
         case .failed, .cancelled:
             guard let failure = status.failure,
@@ -337,5 +350,6 @@ enum SceneJobRejection: String, Equatable, Sendable {
     case unexpectedTerminalPayload
     case versionTripleMismatch
     case staleClarificationBinding
+    case invalidClarificationPayload
     case killSwitchEngaged
 }
