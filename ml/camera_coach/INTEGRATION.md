@@ -99,6 +99,27 @@ The original four-epoch edge-controls experiment remains a negative quality
 result: balanced accuracy 0.5, versus 1.0 for the analytic ROI-gap baseline.
 It is used here only to verify real checkpoint export and preprocessing.
 
+### Completed silver fit (2026-09-18, research only)
+
+The first completed silver-actions Stage-2 fit from verified local media is
+recorded at
+`../setos-backend/local-data/SETOS/verification/silver-fit-20260918-stage2-q8m2v4/`.
+Pipeline: intake of 1,340 frames from `colab_package_v2_20260914` (five source
+families, `research_only`), Apple Vision geometry on the host, 636 silver
+corruption pairs (crop_translate / rotate_horizon / crop_zoom_in), 12-epoch MPS
+fit from the completed EVA Stage-1 encoder, plus a family-disjoint complement
+fit (494 pairs) for held-out measurement. Held-out (142 never-seen-family
+pairs): issue components 1.00 accuracy on the positive-only recipe labels —
+false positives on unchanged frames are **not** measured by this corpus —
+masked action top-1 hit 0.831 with no in-sample gap, masked delta MAE below
+the no-op baseline on all four dimensions. Core ML export passed host parity.
+This is fit/transfer evidence for the three silver-supervised heads only; it
+does not measure semantic advice quality, does not beat the analytic geometry
+path on its own relations, and does not change the app-target exclusion, the
+absent production scorer wiring, or `CameraConfidenceCalibrator.unavailable`.
+
+## Verified provenance of the earlier negative fit
+
 - `pytest-final.json` / `.log`: 64 focused checks passed, including partial
   components, zero masks, failed steps, resume/best-state evidence, legacy
   unknowns and both seeded tooling exports.
