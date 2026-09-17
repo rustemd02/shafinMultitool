@@ -229,3 +229,29 @@ It does not claim the app's advice is correct or incorrect for any of these fram
 not re-label any frame, and does not change a threshold, a label or a policy. It reports
 measured row values, the code paths that produced them, and the two hypotheses that were
 tested and rejected.
+
+## 6. The rest of the unit suite (added after the full-target run)
+
+A full run of the unit target on this snapshot (`-only-testing:shafinMultitoolTests`,
+Debug, simulator `79E82949…`) executes **2296 tests, skips 7 and fails 53** (225 assertion
+failures, 9 unexpected). Of those 53, the 44 in §1 are `AnalysisPipelinePresentationTests`.
+The remaining nine, with the first recorded message:
+
+| Test | Recorded message | Reading |
+| --- | --- | --- |
+| `CaptureConfigurationTests.testUIStateReadsBackFromDeviceAfterStart` | `The capture session reported a runtime error.` | Device-only: the simulator has no capture device. |
+| `CameraTorchTests.testTorchStateResetsOnRelease` | `The capture session reported a runtime error.` | Device-only (no torch). |
+| `CameraAudioMeterTests.testMeterClearsOnRelease` | `The capture session reported a runtime error.` | Device-only (no audio input). |
+| `CameraViewModelLensSwitchTests.testReleaseResetsLensPresentationAndFencesLateCompletion` | `("[]") is not equal to ("[shafinMultitool.CameraLens.wide]")` | After `startAndWait()` the manager publishes no lens availability; needs a start-path trace before it can be called a product bug. |
+| `CameraCoachClosedLoopTests.testFreshReplanningPreservesEpisodeThroughVerification` | `fresh-replanning fixture must actually exercise a frame-local KEEP during the accepted episode` | The live fixture no longer reaches a KEEP — the same confirmation policy as M2/M5, seen from the live side. |
+| `ARAssetOwnerIntegrationTests.testLegacyNamedAnchorsRebuildAssetsUsingPersistedActorMetadata` | `Snapshot is blank or lacks its expected uniform background: fraction=0.0` | AR render is blank; this is the legacy AR rendering/lifecycle gate the tracker already carries. |
+| `VisionRequestIsolationDiagnosticTests.testRecovered184VisionBatchAndIndependentRequests` | `Vision execution failed: original_batch` | The 184-frame Vision batch that an earlier checkpoint recorded as passing; needs a fresh measurement, not an inference. |
+
+`DecisionTracePresentationTests.testPauseTraceConnectsVerdictEvidenceActionsAndLimitations`
+was the tenth and is re-based in this session (the trace shows the canonical catalog copy,
+not the planner paragraph). `FocusWhiteBalancePolicyTests` and
+`CameraCoachLocalizationAddresseeTests` are also re-based and pass.
+
+These seven are recorded as measured, not as fixed. Three are environment gates that a
+simulator cannot clear, and the other four each need their own trace; none of them is
+evidence about advice quality on a frame.
