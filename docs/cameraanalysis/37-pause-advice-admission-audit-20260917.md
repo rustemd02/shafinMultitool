@@ -129,24 +129,36 @@ commands: `demo_object_balance_move_back` requires `rotate_subject_toward_light`
 `shift_frame_right, step_back`. The demo content therefore describes advice the current
 admission policy does not produce.
 
-## 3. Recovered references are device-local
+## 3. Recovered references are device-local and five are unrecoverable
 
 The five recovered legacy references are staged in the simulator app container
 (`Library/Caches/SETOSLegacyCameraReferences/<manifest SHA>/`), not in the repository, and
 are bound to the SHA-pinned manifest `ed652addfd2c661060bb6dfbcab8c9c7f7be1d02a50c1b9a8e518068153e9894`.
 Erasing that simulator, or installing the app into a fresh container without re-staging,
-makes those methods fail with a file error rather than a behavior mismatch. The remaining
-five references (`168`, `179`, `189`, `190`, `202`) are not staged at all; `179`, `189`,
-`190`, `202` are deterministic outputs of
-`docs/cameraanalysis/dataset/synthetic_bad_variants_178_207.jsonl` and are therefore
-regenerable with a recorded SHA check, while `168` belongs to the older imagegen bucket and
-has no recorded recipe.
+makes those methods fail with a file error rather than a behavior mismatch.
+
+The remaining five references (`168`, `179`, `189`, `190`, `202`) cannot be reproduced from
+anything on this machine. The recovery receipt already records why
+(`legacy-reference-recovery-20260917-p8m2af3s/recovery-receipt.json`, `missing_before`):
+
+| Reference | Recorded reason | What it means here |
+| --- | --- | --- |
+| `179`, `189`, `190`, `202` | `AUTHENTICATED_PARENT_NOT_FOUND` | They are deterministic outputs of `synthetic_bad_variants_178_207.jsonl`, but the generator needs the parent stills (`129`, `139`, `140`, `152`). Those parents belong to the 15 `appletv_good` records dropped from the current label set, and their bytes are absent from the pack, the repository and `local-data`. |
+| `168` | `IMAGEGEN_DERIVATIVE_BYTES_NOT_FOUND_NO_REGEN` | It came from the imagegen bucket and has no recorded recipe. |
+
+So regeneration is **not** an available path, contrary to the first reading of the variants
+manifest: a recorded seed and parameters reproduce bytes only together with the parent
+pixels. Restoring these four methods needs the published Apple TV press stills to be
+re-acquired from the recorded `parent_source_page_url` values, which is a network operation
+with its own rights position, or the methods stay blocked.
 
 ## 4. Open decisions and next work
 
 Engineering work that does not need an owner decision:
 
-1. Recover or regenerate the four deterministic references and re-run the four blocked methods.
+1. Decide how the four parent-dependent references are handled: re-acquire the recorded
+   press stills (network, rights position) or retire the four blocked methods with the
+   recorded `AUTHENTICATED_PARENT_NOT_FOUND` reason as their evidence.
 2. Decide per failing method whether the oracle encodes a current product promise. The
    candidates that are clearly pre-policy are the front-fill family, `023`/`039` (keep on a
    deliberately low-key silhouette), and `184`/`183`/`182`/`206` (withdrawn
