@@ -85,8 +85,29 @@ def append(path, value):
         f.flush(); os.fsync(f.fileno())
 
 
+def provider_usage(response):
+    """Optional provider telemetry must not break proposal/error persistence."""
+    usage = response.get("usage") if isinstance(response, dict) else None
+    if not isinstance(usage, dict): return {}
+    return {key: value for key, value in usage.items()
+        if key in {"prompt_tokens", "completion_tokens", "total_tokens"} and type(value) is int and value >= 0}
+
+
+def unique_record_index(records, context):
+    index = {}
+    for row in records:
+        rid = row["record_id"]
+        if not isinstance(rid, str) or not rid.strip():
+            raise ValueError(f"Invalid record ID in {context}")
+        if rid in index:
+            raise ValueError(f"Duplicate record ID in {context}: {rid}")
+        index[rid] = row
+    return index
+
+
 def prepare_queue(path, pilot, temporal_root):
-    if path.exists():
+    existing = path.exists()
+    if existing:
         items = rows(path)
     else:
         items = []
@@ -98,11 +119,13 @@ def prepare_queue(path, pilot, temporal_root):
             if not media.is_relative_to(temporal_root.resolve()): raise ValueError("video path escape")
             items.append(dict(record_id=row["sequence_id"], kind="video", media_path=str(media),
                 media_sha256=row["video_sha256"], title="Видео · " + row["source_family"], source=row, **FLAGS))
-        if not items or len({r["record_id"] for r in items}) != len(items): raise ValueError("empty/duplicate queue")
+    if not unique_record_index(items, "review queue"):
+        raise ValueError("Empty review queue")
+    frame_rows = unique_record_index(rows(temporal_root / "manifest.jsonl"), "frame manifest")
+    if not existing:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("x", encoding="utf-8") as f:
             for item in items: f.write(json.dumps(item, ensure_ascii=False) + "\n")
-    frame_rows = {r["record_id"]: r for r in rows(temporal_root / "manifest.jsonl")}
     root = temporal_root.resolve()
     for item in items:
         item["media_path"] = str(local_media_path(item["media_path"]))
@@ -134,7 +157,9 @@ def jpeg_part(path, expected_sha256):
 
 class Review:
     def __init__(self, folder, queue, annotator, max_requests):
-        self.folder = folder; self.items = {r["record_id"]: r for r in queue}
+        items = unique_record_index(queue, "review queue")
+        if not items: raise ValueError("Empty review queue")
+        self.folder = folder; self.items = items
         self.annotator = annotator; self.max_requests = max_requests
         self.journal = folder / "opinions.jsonl"
         self.events = rows(self.journal)
@@ -145,8 +170,9 @@ class Review:
         drafts = {(e["state"], e.get("review_id") or e.get("job_id")) for e in self.events if e["state"] in ("dispatch", "visual_dispatch")}
         finished = {("dispatch", e.get("review_id")) for e in self.events if e["state"] in ("proposal", "error")}
         finished |= {("visual_dispatch", e.get("job_id")) for e in self.events if e["state"] in ("visual_proposal", "visual_error")}
-        self.billing_unknown = bool(drafts - finished) or any(e.get("billing_unknown") and not
-            (e.get("state") in ("visual_error", "error") and e.get("error") == "ValueError") for e in self.events)
+        # A Python exception class is not evidence that a dispatched request was
+        # unpaid. Local pre-dispatch failures explicitly record false instead.
+        self.billing_unknown = bool(drafts - finished) or any(e.get("billing_unknown") for e in self.events)
         self.file_checks = {}
         self.pending = []; self.inflight = None; self.stopping = False
         self.worker = threading.Thread(target=self._worker, name="camera-visual-prefetch", daemon=True)
@@ -170,6 +196,12 @@ class Review:
             prompt_sha256=hashlib.sha256(visual_prompt().encode()).hexdigest(),
             schema_sha256=hashlib.sha256(json.dumps(output_schema(), sort_keys=True).encode()).hexdigest(),
             derivative_recipe=DERIVATIVE_RECIPE)
+        if item["kind"] == "video":
+            # The model sees these ordered derivatives, not the video container.
+            # Bind their selected content/times while keeping local relocation
+            # irrelevant and leaving existing exact photo cache keys reusable.
+            identity["visual_frames"] = [dict(sha256=frame["sha256"], timestamp_s=frame.get("timestamp_s"))
+                for frame in item["visual_frames"]]
         return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
     def visual_event(self, rid):
@@ -180,6 +212,10 @@ class Review:
                     ("visual_proposal", "visual_error", "visual_confirmed")):
                 return event
         return None
+
+    def has_manual_revision(self, rid):
+        return any(event.get("annotator_id") == self.annotator and event.get("record_id") == rid and
+            event.get("state") in ("draft", "raw", "proposal", "confirmed") for event in self.events)
 
     def visual_superseded(self, event):
         # Journal order, not response time, owns revisions across tabs. A slow
@@ -215,6 +251,8 @@ class Review:
                 human_confirmed=event["state"] == "visual_confirmed")
         if self.inflight == rid: return dict(status="processing")
         if rid in self.pending: return dict(status="queued")
+        if self.has_manual_revision(rid):
+            return dict(status="error", error="Для этого кадра сохранено ваше мнение. Разберите или сохраните текущую правку.")
         return dict(status="idle" if self.key else "needs_key")
 
     def media(self, rid):
@@ -243,7 +281,8 @@ class Review:
             if not self.key: return dict(scheduled=0, reason="needs_key")
             if self.billing_unknown: return dict(scheduled=0, reason="billing_unknown")
             if self.request_count >= self.max_requests: return dict(scheduled=0, reason="limit")
-            self.pending = [rid for rid in record_ids if rid != self.inflight and not self.visual_event(rid)]
+            self.pending = [rid for rid in record_ids if rid != self.inflight and not self.visual_event(rid)
+                and not self.has_manual_revision(rid)]
             self.condition.notify()
             return dict(scheduled=len(self.pending))
 
@@ -275,7 +314,8 @@ class Review:
     def analyze_visual(self, rid):
         cache_key = self.cache_key(rid)
         with self.lock:
-            if self.visual_event(rid) or not self.key or self.billing_unknown or self.request_count >= self.max_requests: return
+            if (self.visual_event(rid) or self.has_manual_revision(rid) or not self.key or
+                    self.billing_unknown or self.request_count >= self.max_requests): return
         job_id = "visual-" + cache_key[:32]
         try:
             content, derivatives = self.media_parts(rid)
@@ -290,7 +330,10 @@ class Review:
             return
         with self.paid_lock:
             with self.lock:
-                if self.visual_event(rid) or self.billing_unknown or self.request_count >= self.max_requests: return
+                # A manual revision may have arrived while this prepared visual
+                # job waited for another provider request to finish.
+                if (self.visual_event(rid) or self.has_manual_revision(rid) or
+                        self.billing_unknown or self.request_count >= self.max_requests): return
                 self.event("visual_dispatch", record_id=rid, job_id=job_id, cache_key=cache_key,
                     media_sha256=self.items[rid]["media_sha256"], media_kind=self.items[rid]["kind"],
                     provider="command-code", endpoint=COMMAND_ENDPOINT, model=MODEL, zdr_enforced=False,
@@ -305,8 +348,7 @@ class Review:
                     dict(role="user", content=content)]))
                 value = json.loads(response["choices"][0]["message"]["content"])
                 validate_visual(value, self.items[rid]["kind"]); value["summary"] = summary(value, visual=True)
-                usage = {k: v for k, v in (response.get("usage") or {}).items()
-                    if k in {"prompt_tokens", "completion_tokens", "total_tokens"} and type(v) is int and v >= 0}
+                usage = provider_usage(response)
                 self.event("visual_proposal", record_id=rid, job_id=job_id, cache_key=cache_key,
                     media_sha256=self.items[rid]["media_sha256"], media_kind=self.items[rid]["kind"],
                     interpretation=value, usage=usage, model=MODEL, provider="command-code",
@@ -317,9 +359,7 @@ class Review:
                 self.event("visual_error", record_id=rid, job_id=job_id, cache_key=cache_key,
                     media_sha256=self.items[rid]["media_sha256"], media_kind=self.items[rid]["kind"],
                     billing_unknown=self.billing_unknown, error=type(exc).__name__, public_error=public,
-                    usage=({k: v for k, v in (response.get("usage") or {}).items() if k in
-                        {"prompt_tokens", "completion_tokens", "total_tokens"} and type(v) is int and v >= 0}
-                        if response else {}), provider="command-code")
+                    usage=provider_usage(response), provider="command-code")
 
     def snapshot(self):
         with self.lock:
@@ -361,14 +401,20 @@ class Review:
         return dict(record_id=rid, raw_text=text, review_id=request_id,
             viewed_at_s=at, media_sha256=self.items[rid]["media_sha256"], media_kind=self.items[rid]["kind"])
 
+    def manual_revision_is_current(self, fields):
+        with self.lock:
+            for event in reversed(self.events):
+                if (event.get("record_id") == fields["record_id"] and
+                        event.get("annotator_id") == self.annotator and
+                        event["state"] in ("draft", "raw", "confirmed", "visual_confirmed")):
+                    return event.get("review_id") == fields["review_id"]
+        return False
+
     def interpret(self, data, paid=True):
+        fields = self.opinion(data)
+        fields["operation"] = "interpret" if paid else "raw"
         with self.condition:
             if paid: self.pending = []  # Human correction takes priority over speculative lookahead.
-        if not self.paid_lock.acquire(timeout=85): raise ValueError("Фоновый анализ не завершился; повторная оплата не запущена")
-        fields = None
-        try:
-            fields = self.opinion(data)
-            fields["operation"] = "interpret" if paid else "raw"
             prior = [e for e in self.events if e.get("review_id") == fields["review_id"]]
             if prior:
                 first = prior[0]
@@ -381,18 +427,30 @@ class Review:
             if not paid:
                 self.event("raw", **fields, normalized=False)
                 return dict(saved=True)
-            # Write the raw opinion BEFORE any model call, including failed configuration.
+            # Persist the user's revision before waiting behind an in-flight
+            # provider. Other tabs must see it even if this HTTP request is lost.
+            # The same locked reservation also deduplicates concurrent request IDs.
             self.event("draft", **fields, paid=False)
+        if not self.paid_lock.acquire(timeout=85):
+            return dict(error="Фоновый анализ не завершился; повторная оплата не запущена", draft_saved=True)
+        try:
+            if not self.manual_revision_is_current(fields):
+                return dict(error="Для этого кадра уже есть более новое мнение; платный запрос не отправлен", draft_saved=True)
             if not self.key: return dict(error="Подключите ключ Command Code в настройках или сохраните только текст", draft_saved=True)
             if self.billing_unknown: return dict(error="Предыдущий платный запрос имеет неизвестную стоимость; нужна сверка журнала", draft_saved=True)
             if self.request_count >= self.max_requests:
                 return dict(error="Достигнут лимит запросов этой сессии. Можно сохранить только текст", draft_saved=True)
             content, derivatives = self.media_parts(fields["record_id"])
-            self.event("dispatch", **fields, paid=True, provider="command-code", endpoint=COMMAND_ENDPOINT,
-                model=MODEL, zdr_enforced=False, derivatives=derivatives, pixels_sent=True,
-                prompt_sha256=hashlib.sha256(prompt().encode()).hexdigest(),
-                schema_sha256=hashlib.sha256(json.dumps(output_schema(), sort_keys=True).encode()).hexdigest())
-            self.request_count += 1
+            with self.lock:
+                # A newer opinion may arrive while JPEG preparation runs. Bind
+                # current revision and durable dispatch in one critical section.
+                if not self.manual_revision_is_current(fields):
+                    return dict(error="Для этого кадра уже есть более новое мнение; платный запрос не отправлен", draft_saved=True)
+                self.event("dispatch", **fields, paid=True, provider="command-code", endpoint=COMMAND_ENDPOINT,
+                    model=MODEL, zdr_enforced=False, derivatives=derivatives, pixels_sent=True,
+                    prompt_sha256=hashlib.sha256(prompt().encode()).hexdigest(),
+                    schema_sha256=hashlib.sha256(json.dumps(output_schema(), sort_keys=True).encode()).hexdigest())
+                self.request_count += 1
             try:
                 # Muse exposes its answer after a reasoning phase; 2,200 ends at that phase.
                 response = command_api("chat/completions", self.key, dict(model=MODEL, max_tokens=6000, temperature=0,
@@ -403,8 +461,7 @@ class Review:
                 value = json.loads(response["choices"][0]["message"]["content"])
                 validate(value, fields["raw_text"], fields["media_kind"])
                 value["summary"] = summary(value)
-                usage = {k: v for k, v in (response.get("usage") or {}).items()
-                    if k in {"prompt_tokens", "completion_tokens", "total_tokens"} and type(v) is int and v >= 0}
+                usage = provider_usage(response)
                 self.event("proposal", **fields, interpretation=value, usage=usage, model=MODEL,
                     provider="command-code", response_id=response.get("id"), language_assisted=True, pixels_sent=True)
                 return dict(review_id=fields["review_id"], interpretation=value, usage=usage)
@@ -422,10 +479,11 @@ class Review:
             if not matches: raise ValueError("Не найден перевод")
             last = matches[-1]
             if last.get("record_id") != rid or last.get("raw_text") != data.get("text"): raise ValueError("Отзыв изменён: сначала получите новый перевод")
+            newer = [e for e in self.events if e.get("record_id") == rid and e.get("annotator_id") == self.annotator and
+                e["state"] in ("draft", "raw", "confirmed", "visual_confirmed")]
+            if newer and newer[-1].get("review_id") != review_id: raise ValueError("Для этого кадра уже есть более новое мнение")
             if last["state"] == "confirmed": return dict(saved=True)
             if last["state"] != "proposal": raise ValueError("Нет принятого перевода")
-            newer = [e for e in self.events if e.get("record_id") == rid and e.get("annotator_id") == self.annotator and e["state"] in ("draft", "raw", "confirmed")]
-            if newer and newer[-1]["review_id"] != review_id: raise ValueError("Для этого кадра уже есть более новое мнение")
             self.media(rid)
             value = dict(last["interpretation"]); value.setdefault("spatial_requests", [])
             validate({k: v for k, v in value.items() if k != "summary"}, last["raw_text"], last["media_kind"])

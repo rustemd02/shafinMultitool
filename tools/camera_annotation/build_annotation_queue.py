@@ -162,7 +162,11 @@ def main(argv: list[str] | None = None) -> int:
         per_source[name] = int(count)
 
     records = build_queue(per_source=per_source, seed=args.seed)
-    seen = {r["record_id"] for r in records}
+    by_id = {}
+    for record in records:
+        if record["record_id"] in by_id:
+            raise ValueError(f"Duplicate source record ID: {record['record_id']}")
+        by_id[record["record_id"]] = record
     for manifest in args.extra_manifest:
         if not manifest.exists():
             print(f"[skip] нет манифеста {manifest}")
@@ -172,9 +176,13 @@ def main(argv: list[str] | None = None) -> int:
             if not line.strip():
                 continue
             record = json.loads(line)
-            if record["record_id"] in seen:
+            if record["record_id"] in by_id:
+                # An exact repeated import is harmless. Sharing an ID while
+                # changing media or pair/provenance fields is not deduplication.
+                if by_id[record["record_id"]] != record:
+                    raise ValueError(f"Conflicting record ID in {manifest}: {record['record_id']}")
                 continue
-            seen.add(record["record_id"])
+            by_id[record["record_id"]] = record
             records.append(record)
             added += 1
         print(f"[ok] {manifest.name}: +{added} записей")

@@ -31,6 +31,25 @@ research or resumed with an unknown prefix; an old aggregate flag cannot establi
 coverage for unrecorded components. Existing checkpoints and receipts are never
 rewritten to claim stronger provenance.
 
+### Local image-placement intent (2026-09-17)
+
+The ordinary accepted-pause UI now produces `CaptureIntent.imagePlacementGoal`
+for one exact observed region or explicit user ROI and a centre-of-image goal.
+The existing local planner consumes this review preference; it is not another
+style flag or a learned spatial head. The eight style flags, nine-component
+`intent_features`, Core ML IO, loaders, targets/masks, losses and weights are
+unchanged. An unknown style remains unknown even when placement is explicit.
+
+Snapshot/frame IDs, user ROI provenance and the local revision follow
+[the implemented domain boundary](../../docs/cameraanalysis/03-domain-contracts.md#n31-локальная-цель-положения-в-принятом-кадре).
+`CameraCloudPauseContext.imagePlacementRevision` is local correlation state,
+not a new S1/provider wire input. User ROI selection does not create training
+labels or human gold. No placement episode/verifier or trained-output status is
+implied. Execution evidence, artifact versions and current native/UI results
+belong in the existing [execution tracker](../../docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/EXECUTION_STATE.md);
+this declaration itself is not a PASS. The existing draft v3, checkpoint
+provenance, scenario-quality and production admission gates remain separate.
+
 ## Export a real records checkpoint
 
 Run from the repository root in the pinned macOS Python/torch/coremltools
