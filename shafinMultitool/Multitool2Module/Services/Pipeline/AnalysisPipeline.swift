@@ -321,6 +321,23 @@ struct PauseActionRow: Equatable, Sendable {
     }
 }
 
+/// One technical improvement offered next to a confirmation.
+///
+/// Owner decision 2026-09-17: a frame that already reads well may still carry a
+/// technical note, and that note is optional wording ("everything is fine, you
+/// could also do this"), not a defect of the frame. A dominant measured defect
+/// is not an improvement: it keeps the existing corrective path and no
+/// confirmation. This value grants no completion, verifier or action authority.
+struct PauseOptionalImprovement: Equatable, Sendable {
+    let actionType: TechnicalQualityActionType
+    let traceId: String
+
+    init(actionType: TechnicalQualityActionType, traceId: String) {
+        self.actionType = actionType
+        self.traceId = traceId
+    }
+}
+
 struct PauseCritiquePresentation: Equatable, Sendable {
     let frameId: String
     let verdict: FrameVerdict
@@ -345,6 +362,9 @@ struct PauseCritiquePresentation: Equatable, Sendable {
     /// The user explicitly retained a style that conflicts with one or more
     /// proposed corrections. This does not certify frame quality.
     let intentionalStylePreserved: Bool
+    /// Present only when the frame is confirmed and a non-dominant technical
+    /// improvement was measured for this exact frame.
+    let optionalImprovement: PauseOptionalImprovement?
 
     init(frameId: String,
          verdict: FrameVerdict,
@@ -362,7 +382,8 @@ struct PauseCritiquePresentation: Equatable, Sendable {
          fallbackUsed: Bool,
          linkedEvidence: CameraLinkedEvidenceProjection? = nil,
          technicalQualityMeasurement: TechnicalQualityMeasurement = .unavailable(.notMeasured),
-         intentionalStylePreserved: Bool = false) {
+         intentionalStylePreserved: Bool = false,
+         optionalImprovement: PauseOptionalImprovement? = nil) {
         self.frameId = frameId
         self.verdict = verdict
         self.verdictConfidence = verdictConfidence
@@ -380,6 +401,7 @@ struct PauseCritiquePresentation: Equatable, Sendable {
         self.linkedEvidence = linkedEvidence
         self.technicalQualityMeasurement = technicalQualityMeasurement
         self.intentionalStylePreserved = intentionalStylePreserved
+        self.optionalImprovement = optionalImprovement
     }
 }
 
@@ -710,6 +732,9 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
     let debugSemanticLabels: [String: String]
     // Optional for decoding historical rows; absence means provenance is unknown.
     var confidenceEvidence: SemanticEvalConfidenceEvidence? = nil
+    /// The optional technical improvement offered next to a confirmation, if any.
+    /// Absent in historical rows and whenever the frame is not confirmed.
+    var optionalImprovement: String? = nil
 #if DEBUG
     var debugModelExecution: SemanticEvalModelExecutionMetadata? = nil
     var debugTechnicalMeasurement: SemanticEvalTechnicalMeasurementMetadata? = nil
@@ -734,6 +759,7 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
         case debugNumericFeatures = "debug_numeric_features"
         case debugSemanticLabels = "debug_semantic_labels"
         case confidenceEvidence = "confidence_evidence"
+        case optionalImprovement = "optional_improvement"
 #if DEBUG
         case debugModelExecution = "debug_model_execution"
         case debugTechnicalMeasurement = "debug_technical_measurement"
@@ -860,7 +886,8 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
             debugActionTypes: critique?.actions.map { $0.actionType.rawValue } ?? [],
             debugNumericFeatures: debugNumericFeatures.filter { $0.value.isFinite },
             debugSemanticLabels: debugSemanticLabels,
-            confidenceEvidence: confidenceEvidence
+            confidenceEvidence: confidenceEvidence,
+            optionalImprovement: critique?.optionalImprovement?.actionType.rawValue
         )
     }
 
@@ -10765,6 +10792,12 @@ final class AnalysisPipeline: ObservableObject {
         let traceRootIds = preservesGoodFrameActions
             ? ["cinematic_good_frame_action_preservation"] + critique.traceRefs
             : (contextualCorrection.map { [$0.traceId] } ?? critique.traceRefs)
+        // A confirmed frame may still carry one technical improvement. It is
+        // attached only when the presentation confirms the frame; a dominant
+        // measured defect never reaches this branch and keeps its corrective path.
+        let optionalImprovement = effectiveVerdict == .good && !withholdsPositiveVerdict
+            ? optionalTechnicalImprovement(from: technicalQualitySignal)
+            : nil
 
         return applyingPauseIntent(to: PauseCritiquePresentation(
             frameId: critique.frameId,
@@ -10791,8 +10824,31 @@ final class AnalysisPipeline: ObservableObject {
                 plan: plan,
                 actions: canonicalActions
             ),
-            technicalQualityMeasurement: resolvedTechnicalMeasurement
+            technicalQualityMeasurement: resolvedTechnicalMeasurement,
+            optionalImprovement: optionalImprovement
         ))
+    }
+
+    /// Mirrors the floor used by `dominantTechnicalQualityIssue`: at or above it
+    /// a measured technical issue is worth telling the user about, below it the
+    /// signal stays out of the presentation entirely.
+    private static let technicalImprovementFloor = 0.55
+
+    /// The single measured technical issue offered next to a confirmation.
+    /// A dominant defect is not an improvement, so its presence removes the note
+    /// and leaves the frame on the corrective path.
+    private func optionalTechnicalImprovement(from signal: TechnicalQualitySignal) -> PauseOptionalImprovement? {
+        guard dominantTechnicalQualityIssue(from: signal) == nil else { return nil }
+        let candidates = signal.issues.filter {
+            max($0.confidence, $0.severity) >= Self.technicalImprovementFloor
+        }
+        guard let issue = candidates.max(by: {
+            max($0.confidence, $0.severity) < max($1.confidence, $1.severity)
+        }) else { return nil }
+        return PauseOptionalImprovement(
+            actionType: issue.actionType,
+            traceId: "optional_improvement_\(issue.type.rawValue)"
+        )
     }
 
     /// Keeps the pause explanation and marker on the same typed action/issue
@@ -14464,6 +14520,14 @@ extension AnalysisPipeline {
         let keptEvidence = presentation.linkedEvidence.flatMap { evidence in
             actions.contains { $0.actionId == evidence.actionID } ? evidence : nil
         }
+        // A suppressed action family also removes the optional note that family
+        // would have carried; the note never survives as orphaned advice.
+        let keptImprovement = presentation.optionalImprovement.flatMap { improvement in
+            let suppressed = UserMovementObserver.actionFamily(for: improvement.actionType)
+                .flatMap(cameraAdviceActionFamily(for:))
+                .map(intentClarification.suppressedFamilies.contains) ?? false
+            return suppressed ? nil : improvement
+        }
         return PauseCritiquePresentation(
             frameId: presentation.frameId, verdict: presentation.verdict,
             verdictConfidence: presentation.verdictConfidence, summaryId: presentation.summaryId,
@@ -14474,7 +14538,8 @@ extension AnalysisPipeline {
             noChangeRationale: nil, assumptions: presentation.assumptions,
             traceRootIds: presentation.traceRootIds, fallbackUsed: presentation.fallbackUsed,
             linkedEvidence: keptEvidence, technicalQualityMeasurement: presentation.technicalQualityMeasurement,
-            intentionalStylePreserved: true
+            intentionalStylePreserved: true,
+            optionalImprovement: keptImprovement
         )
     }
 

@@ -49,6 +49,7 @@ struct CameraReviewFinding: Equatable, Sendable {
     enum Kind: String, Equatable, Sendable {
         case issue
         case strength
+        case improvement
     }
 
     let id: String
@@ -272,6 +273,18 @@ extension CameraReviewPresentation {
 
         let findings = (critique?.issues.map { finding(from: $0, locale: locale) } ?? [])
             + (critique?.strengths.map { finding(from: $0, locale: locale) } ?? [])
+            // Owner decision 2026-09-17: the optional technical note rides along
+            // with a confirmed frame and is worded as an addition, not a defect.
+            + (critique?.optionalImprovement.map {
+                [CameraReviewFinding(
+                    id: $0.traceId,
+                    kind: .improvement,
+                    area: nil,
+                    referenceID: $0.traceId,
+                    title: SETCameraCopy.optionalImprovementKey(for: $0.actionType)
+                        .localizedString(locale: locale)
+                )]
+            } ?? [])
 
         let evidence = evidenceRows(from: critique, locale: locale)
         let groups = alternativeGroups(from: critique?.actions ?? [])

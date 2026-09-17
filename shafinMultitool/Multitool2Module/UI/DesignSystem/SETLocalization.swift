@@ -214,6 +214,16 @@ enum SETCopyKey: String, CaseIterable, Sendable {
     case cameraTechnicalReduceNoise = "set.camera.technical.reduce_noise"
     case cameraTechnicalAvoidOcclusion = "set.camera.technical.avoid_occlusion"
     case cameraTechnicalCleanLens = "set.camera.technical.clean_lens"
+    // Owner decision 2026-09-17: a confirmed frame may be accompanied by one
+    // technical improvement. These keys phrase it as an optional addition to a
+    // frame that already reads well, never as a defect of the frame.
+    case cameraOptionalImprovementStabilizeCamera = "set.camera.optional.stabilize_camera"
+    case cameraOptionalImprovementRefocusSubject = "set.camera.optional.refocus_subject"
+    case cameraOptionalImprovementReduceExposure = "set.camera.optional.reduce_exposure"
+    case cameraOptionalImprovementIncreaseExposure = "set.camera.optional.increase_exposure"
+    case cameraOptionalImprovementReduceNoise = "set.camera.optional.reduce_noise"
+    case cameraOptionalImprovementAvoidOcclusion = "set.camera.optional.avoid_occlusion"
+    case cameraOptionalImprovementCleanLens = "set.camera.optional.clean_lens"
     case cameraEpisodeAwaitingMovement = "set.camera.episode.awaiting_movement"
     case cameraEpisodeCollecting = "set.camera.episode.collecting"
     case cameraEpisodeChecking = "set.camera.episode.checking"

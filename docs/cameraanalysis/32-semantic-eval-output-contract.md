@@ -35,6 +35,15 @@ Each output row represents what a candidate system would show for one labeled im
 - `shown`: whether a user-facing tip would be shown.
 - `semantic_actions`: closed catalog actions currently expressible by the app.
 - `future_actions`: technical/IQA actions that are tracked by eval but not yet part of the current live semantic UI.
+- `optional_improvement` (optional, added 2026-09-17): the single technical
+  improvement presented together with a confirmation, as
+  `PauseOptionalImprovement.actionType`. It is present only when the frame is
+  confirmed (verdict `good`, positive semantic coverage, current measurement) and
+  the measured issue is not dominant; a dominant defect keeps the corrective path
+  and carries no confirmation. The note reads as an addition ("everything is
+  fine, you could also do this") and never as a defect of the frame. An absent
+  field in a historical row means it was not produced, not that no improvement
+  exists.
 - `confidence`: number in `[0, 1]`. For Swift rows this is the normalized
   numeric score attached to the supplied presentation, not an independently
   adjusted evaluation score, established probability or proof of a visible

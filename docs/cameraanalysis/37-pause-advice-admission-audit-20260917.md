@@ -92,9 +92,31 @@ The row's `futureActions` is a union built by `testingSemanticEvalFutureActions`
 resolved technical signal **plus** motion state, `exposureBiasHint` and legacy
 suggestions, while the critique verdict only sees the resolved signal. For these four
 frames `technical_issue_count` is 0, so the critique is right that nothing was measured —
-and the exported correction comes from the wider union. Whether the app must suppress
-`keep` whenever it also reports a correction is a product decision (see §4), not a bug
-that can be settled from the code alone.
+and the exported correction comes from the wider union.
+
+**Resolved by owner decision 2026-09-17.** The owner confirmed that a confirmation and a
+technical note may appear together, and that the note must be phrased as an optional
+improvement ("everything is fine, you could also do this") rather than as a defect. The
+implemented boundary is the one the code already used for admission:
+
+- `PauseCritiquePresentation.optionalImprovement` (`PauseOptionalImprovement`) carries at
+  most one non-dominant measured improvement, attached only when the presentation
+  confirms the frame (verdict `good`, positive semantic coverage, current measurement).
+- A **dominant** measured defect is not an improvement: `dominantTechnicalQualityIssue`
+  keeps precedence, the frame is not confirmed and the corrective path is unchanged.
+- `CameraReviewPresentation` exposes it as a `CameraReviewFinding` of kind `improvement`
+  with dedicated optional wording (`set.camera.optional.*` in the string catalog, RU/EN),
+  so the user reads an addition, not a fault. The corrective `set.camera.technical.*`
+  wording keeps its defect role.
+- The eval row gains an optional `optional_improvement` field, absent in historical rows.
+- Verified by `testStillImageReplayConfirmsFrameWithOptionalImprovement` (`050`: keep plus
+  `increase_exposure`, no issue rows) and
+  `testStillImageReplayWithholdsOptionalImprovementUnderDominantDefect` (`006`, `130`: no
+  note, no confirmation). The localization gate passes with 689 compiled keys in both
+  locales.
+- Still open for `220`/`232`: those labels forbid keep for a *perception* reason (large
+  synthetic overlays the current features do not measure), which this decision does not
+  address.
 
 ### M6 — The shipped demo pack encodes pre-policy expectations
 
@@ -131,12 +153,20 @@ Engineering work that does not need an owner decision:
    `synthetic_bad_paired_apple_tv_press` bucket, dropped by the 2026-06-05 audit as
    "stylized cinematic frames and subtle synthetic artifacts").
 3. Record the retracted hypothesis (M3) so the same experiment is not repeated.
+4. Open a defect ticket for `220`/`232`: a frame with large synthetic overlays is answered
+   `keep`. The overlays are not measured by any current feature, so this is a perception
+   gap, not an admission-setting.
+5. `DecisionTracePresentationTests.testPauseTraceConnectsVerdictEvidenceActionsAndLimitations`
+   fails on the committed snapshot too (verified by re-running it with this session's
+   changes stashed: identical assertion text at `DecisionTracePresentationTests.swift:94`).
+   It expects the older `simplify_background` wording and is outside the class measured in
+   §1, so the wider suite has more red tests than the 44 counted here.
 
 Owner decisions, because they change the product promise rather than its implementation:
 
-- May the app confirm `keep_current_setup` while the same screen shows a technical
-  correction (M5)? The current label set forbids it for `220`/`232`; four tests want
-  opposite answers for low-key frames.
+- ~~May the app confirm `keep_current_setup` while the same screen shows a technical
+  correction?~~ **Answered 2026-09-17:** yes, provided the correction is phrased as an
+  optional improvement. Implemented in M5.
 - Should the bundled demo scenarios declare scene control explicitly, or be rewritten to
   camera-only actions (M6)?
 - Is the semantic lighting advice path intended to stay reachable only after the user

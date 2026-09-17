@@ -1793,6 +1793,20 @@ enum SETCameraCopy {
         }
     }
 
+    /// Optional-improvement wording for a confirmed frame. These keys never read
+    /// as a defect; the corrective technical keys keep that role.
+    static func optionalImprovementKey(for actionType: TechnicalQualityActionType) -> SETCopyKey {
+        switch actionType {
+        case .stabilizeCamera: return .cameraOptionalImprovementStabilizeCamera
+        case .refocusSubject: return .cameraOptionalImprovementRefocusSubject
+        case .reduceExposure: return .cameraOptionalImprovementReduceExposure
+        case .increaseExposure: return .cameraOptionalImprovementIncreaseExposure
+        case .avoidOcclusion: return .cameraOptionalImprovementAvoidOcclusion
+        case .cleanLens: return .cameraOptionalImprovementCleanLens
+        case .reduceIsoNoise: return .cameraOptionalImprovementReduceNoise
+        }
+    }
+
     static func actionKey(for semanticActionType: SemanticActionType) -> SETCopyKey {
         switch semanticActionType {
         case .shiftFrameLeft: return .traceActionShiftLeft

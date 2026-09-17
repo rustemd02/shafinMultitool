@@ -4017,6 +4017,118 @@
         }
       }
     },
+    "set.camera.optional.stabilize_camera": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The frame reads well. You could also retake it with a steadier camera."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Кадр читается. Можно ещё повторить его с более устойчивой камерой."
+          }
+        }
+      }
+    },
+    "set.camera.optional.refocus_subject": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The frame reads well. You could also fine-tune focus on the subject."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Кадр читается. Можно ещё точнее навести фокус на главном."
+          }
+        }
+      }
+    },
+    "set.camera.optional.reduce_exposure": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The frame reads well. You could also lower the exposure a little."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Кадр читается. Можно ещё немного уменьшить экспозицию."
+          }
+        }
+      }
+    },
+    "set.camera.optional.increase_exposure": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The frame reads well. You could also raise the exposure a little."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Кадр читается. Можно ещё немного поднять экспозицию."
+          }
+        }
+      }
+    },
+    "set.camera.optional.reduce_noise": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The frame reads well. You could also reduce the digital noise."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Кадр читается. Можно ещё снизить цифровой шум."
+          }
+        }
+      }
+    },
+    "set.camera.optional.avoid_occlusion": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The frame reads well. You could also clear what overlaps the subject."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Кадр читается. Можно ещё убрать перекрытие главного объекта."
+          }
+        }
+      }
+    },
+    "set.camera.optional.clean_lens": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The frame reads well. You could also wipe the lens."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Кадр читается. Можно ещё протереть объектив."
+          }
+        }
+      }
+    },
     "set.camera.why": {
       "localizations": {
         "en": {

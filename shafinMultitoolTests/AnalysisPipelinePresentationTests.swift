@@ -1990,6 +1990,74 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         XCTAssertTrue(result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue))
     }
 
+    /// Owner decision 2026-09-17: a confirmed frame may carry one technical
+    /// improvement, and that note is optional wording ("everything is fine, you
+    /// could also do this") rather than a defect of the frame.
+    @MainActor
+    func testStillImageReplayConfirmsFrameWithOptionalImprovement() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        let result = await pipeline.testingReplayStillImageForSemanticEval(
+            recordId: "ca_img_050",
+            filename: "050.jpg",
+            pixelBuffer: try makeDatasetPixelBuffer(named: "050.jpg"),
+            orientation: .up,
+            capturedAt: Date(timeIntervalSince1970: 1_768_500_216),
+            options: .fullRuntime
+        )
+
+        XCTAssertTrue(
+            result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue),
+            "semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions)"
+        )
+        XCTAssertEqual(
+            result.pauseRow.optionalImprovement,
+            TechnicalQualityActionType.increaseExposure.rawValue,
+            "optionalImprovement=\(result.pauseRow.optionalImprovement ?? "nil") future=\(result.pauseRow.futureActions) confidence=\(result.pauseRow.confidence)"
+        )
+        // The note stays a note: it never turns into a correction of a frame the
+        // critique already judged good.
+        XCTAssertTrue(
+            result.pauseRow.debugIssueTypes.isEmpty,
+            "issues=\(result.pauseRow.debugIssueTypes)"
+        )
+    }
+
+    /// A dominant measured defect is not an improvement: it keeps the corrective
+    /// path and the frame is not confirmed.
+    @MainActor
+    func testStillImageReplayWithholdsOptionalImprovementUnderDominantDefect() async throws {
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil,
+            visualEvidenceProvider: nil,
+            neuralEvidenceService: nil
+        )
+
+        for (recordId, filename) in [("ca_img_006", "006.jpg"), ("ca_img_130", "130.jpg")] {
+            let result = await pipeline.testingReplayStillImageForSemanticEval(
+                recordId: recordId,
+                filename: filename,
+                pixelBuffer: try makeDatasetPixelBuffer(named: filename),
+                orientation: .up,
+                capturedAt: Date(timeIntervalSince1970: 1_768_500_216),
+                options: .fullRuntime
+            )
+
+            XCTAssertNil(
+                result.pauseRow.optionalImprovement,
+                "recordId=\(recordId) optionalImprovement=\(result.pauseRow.optionalImprovement ?? "nil") future=\(result.pauseRow.futureActions)"
+            )
+            XCTAssertFalse(
+                result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue),
+                "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions)"
+            )
+        }
+    }
+
     @MainActor
     func testStillImageReplayMapsLowAestheticObjectToBackgroundClearance() async throws {
         let pipeline = AnalysisPipeline(
