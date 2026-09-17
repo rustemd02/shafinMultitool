@@ -143,16 +143,25 @@ implemented boundary is the one the code already used for admission:
   synthetic overlays the current features do not measure), which this decision does not
   address.
 
-### M6 — The shipped demo pack encodes pre-policy expectations
+### M6 — The device benchmark's expectation set encodes pre-policy expectations
 
-`docs/cameraanalysis/demo/semantic_demo_scenarios.json` is bundled into the app
-(`scripts/copy_debug_device_benchmark_resources.sh`) and expects light and object
-commands: `demo_object_balance_move_back` requires `rotate_subject_toward_light`,
-`add_front_fill_light`, `move_object_back`; `demo_step_closer_and_fill` requires
-`add_front_fill_light`. `demo_keep_wide_establishing` (`010.jpg`) requires
-`keep_current_setup` with `minimum_pause_confidence 0.75` while the app currently answers
-`shift_frame_right, step_back`. The demo content therefore describes advice the current
-admission policy does not produce.
+`docs/cameraanalysis/demo/semantic_demo_scenarios.json` is materialized into the **camera
+device benchmark pack** (`DeviceBenchmarkSupport.materializeCameraPack`) and copied into the
+debug pack by `scripts/copy_debug_device_benchmark_resources.sh`; no user-facing surface
+reads it, so this is the device benchmark's expected-actions set rather than shipped demo
+content. Those expectations are the same pre-policy ones:
+
+| Scenario | Expected pause actions | Current behaviour |
+| --- | --- | --- |
+| `demo_keep_wide_establishing` (`010`) | `keep_current_setup`, minimum confidence 0.75 | `shift_frame_right`, `step_back` (verdict `needs_fix` on `subject_too_close_to_edge`) |
+| `demo_object_balance_move_back` (`022`) | `rotate_subject_toward_light`, `add_front_fill_light`, `change_camera_angle`, `move_object_back` | no action rows (M3 chain) |
+| `demo_step_closer_and_fill` (`093`) | `add_front_fill_light`, `step_closer` | no action rows |
+| `demo_level_horizon_and_hotspot` (`074`) | `remove_background_hotspot`, `change_camera_angle`, `simplify_background`, `level_horizon` | camera-only subset at best |
+
+A device benchmark whose expectations cannot be produced will fail on every run, so this
+set needs the same oracle decision as the failing unit methods. It is recorded here as a
+measurement, not changed: rewriting the expectations would silently redefine what the
+device gate measures.
 
 ## 3. Recovered references are device-local and five are unrecoverable
 
@@ -207,8 +216,9 @@ Owner decisions, because they change the product promise rather than its impleme
 - ~~May the app confirm `keep_current_setup` while the same screen shows a technical
   correction?~~ **Answered 2026-09-17:** yes, provided the correction is phrased as an
   optional improvement. Implemented in M5.
-- Should the bundled demo scenarios declare scene control explicitly, or be rewritten to
-  camera-only actions (M6)?
+- Should the device benchmark's expectation set declare scene control explicitly, or be
+  rewritten to camera-only actions (M6)? A set whose expectations cannot be produced makes
+  every device run fail.
 - Is the semantic lighting advice path intended to stay reachable only after the user
   answers the scene-control sheet (M3), or should the pause path raise lighting issues
   without that answer?

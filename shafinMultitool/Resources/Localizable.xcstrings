@@ -3238,13 +3238,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Try another camera position while keeping the main subject in frame"
+            "value": "Move with the phone to another camera position while keeping the main subject in frame"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Попробуй другую точку съёмки, сохраняя главный объект в кадре"
+            "value": "Сместись с телефоном к другой точке съёмки, сохраняя главный объект в кадре"
           }
         }
       }
@@ -9212,13 +9212,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Try another camera position while keeping the main subject in frame"
+            "value": "Move with the phone to another camera position while keeping the main subject in frame"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Попробуй другую точку съёмки, сохраняя главный объект в кадре"
+            "value": "Сместись с телефоном к другой точке съёмки, сохраняя главный объект в кадре"
           }
         }
       }
