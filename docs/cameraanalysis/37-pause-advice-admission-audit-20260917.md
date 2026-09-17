@@ -1,0 +1,151 @@
+# 37 — Pause advice admission audit (2026-09-17)
+
+Scope: why `shafinMultitoolTests/AnalysisPipelinePresentationTests` reports **44 failing
+methods out of 110** on the committed snapshot, and which of those failures are product
+defects versus oracles that predate the current admission policy.
+
+Source: clean working tree at `d37ca42` (`store`), Debug configuration,
+`xcodebuild -workspace shafinMultitool.xcworkspace -scheme shafinMultitool`,
+destination `iOS Simulator id=79E82949-E735-45CC-9092-DE74200971E7`,
+`-parallel-testing-enabled NO`.
+
+## 1. Measured baseline
+
+| Run | Result |
+| --- | --- |
+| Full class | 110 executed, 44 failed, 204 assertion failures, 5 unreadable references |
+| Earlier receipts | 6–19 *selected* methods only; the full class had not been characterized |
+
+The five unreadable references are `168.jpg`, `179.jpg`, `189.jpg`, `190.jpg`, `202.jpg`.
+Four methods (`testStillImageReplayWithholdsUnownedFillWhileKeepingCameraOcclusionAdvice`,
+`…MapsSyntheticHotspotToCorrectiveSemanticActions`, `…SuppressesPreservationForReadableSyntheticSmallSubject`,
+`…MapsSyntheticCrookedFramesToLevelHorizon`) cannot run at all without them.
+
+## 2. Mechanisms
+
+Numbers below come from a temporary read-only dump of `pauseRow` for 23 named frames
+(the dump test was deleted after use; the rows it printed are quoted here).
+
+### M1 — Most frames raise no semantic issue, so the semantic channel is empty
+
+For 15 of the 23 dumped frames `debugIssueTypes` is empty while `debugNumericFeatures`
+shows a technical defect (for example `ca_img_007`: `technical_max_severity 1.00`,
+`exposure_bias -2.23`, and no issue). The planner has an explicit branch for this state:
+
+```swift
+// SemanticTipPlanner.plan
+} else if input.critique.issues.isEmpty {
+    rankedCandidates = []          // "no_supported_correction_for_non_good_frame"
+}
+```
+
+The app then answers with the technical exposure note only. This is the single largest
+source of `semanticActions=[]` in the failures.
+
+### M2 — Limited scene coverage demotes the verdict and caps confidence at 0.55
+
+`FrameCritiqueEngine.analyze` admits a positive verdict only when
+`hasCurrentTechnicalMeasurement && hasPositiveSemanticCoverage`; otherwise it demotes
+`good → mixed` and caps confidence at `degradedVerdictConfidenceCap = 0.55`.
+`hasPositiveSemanticCoverage` also refuses frames carrying `lowSceneConfidence`, which
+`AnalysisPipeline` sets when horizon, Vision **and** DETR source confidences are all
+below 0.20.
+
+Thirteen of the dumped frames report confidence exactly `0.55` — the documented ceiling,
+not a measured probability. Tests that assert `confidence >= 0.75` on those frames are
+asserting past the cap.
+
+### M3 — The lighting mapping is gated twice and is effectively unreachable today
+
+Lighting actions (`addFrontFillLight`, `addBackgroundLight`) require
+`PauseSceneControlFacts.lighting == .allowed` for the exact frame
+(`PauseSceneControlFacts.permits`). Even with all three categories granted, a probe over
+12 frames produced **no semantic action at all** — including frames that do raise
+`backlight_hides_subject` (`022`, `224`, `180`, `188`, `204`). The lighting tips are also
+dropped when the driving issue's confidence is below 0.45
+(`SemanticTipPlanner.shouldInclude`).
+
+**This disproved the first hypothesis of this audit**: the pause scene-control gate is not
+what removes the expected actions, so re-granting facts in the replay path does not
+restore them. The corresponding replay seam and the test edits built on that hypothesis
+were reverted.
+
+### M4 — A technical issue displaces the semantic presentation
+
+`selectPreparedPauseReplayPresentation` tries `technicalPauseIssue(...)` first and returns
+a technical-only presentation when the eligible technical issue survives the preservation
+guards and no non-keep semantic tip exists. That is why rows can be `shown` and still
+carry `semanticActions=[]`.
+
+### M5 — `keep_current_setup` coexists with an exported correction
+
+Four frames report `keep_current_setup` **and** non-empty `futureActions`:
+
+| Frame | Verdict | keep | futureActions | Current label set |
+| --- | --- | --- | --- | --- |
+| `220` | good | yes | `reduce_exposure` | `forbidden: keep_current_setup` |
+| `232` | good | yes | `increase_exposure` | `forbidden: keep_current_setup` |
+| `181` | good | yes | `increase_exposure`, `stabilize_camera` | test expects technical-only |
+| `184` | good | yes | `increase_exposure` | legacy oracle expects `step_back` |
+
+The row's `futureActions` is a union built by `testingSemanticEvalFutureActions` from the
+resolved technical signal **plus** motion state, `exposureBiasHint` and legacy
+suggestions, while the critique verdict only sees the resolved signal. For these four
+frames `technical_issue_count` is 0, so the critique is right that nothing was measured —
+and the exported correction comes from the wider union. Whether the app must suppress
+`keep` whenever it also reports a correction is a product decision (see §4), not a bug
+that can be settled from the code alone.
+
+### M6 — The shipped demo pack encodes pre-policy expectations
+
+`docs/cameraanalysis/demo/semantic_demo_scenarios.json` is bundled into the app
+(`scripts/copy_debug_device_benchmark_resources.sh`) and expects light and object
+commands: `demo_object_balance_move_back` requires `rotate_subject_toward_light`,
+`add_front_fill_light`, `move_object_back`; `demo_step_closer_and_fill` requires
+`add_front_fill_light`. `demo_keep_wide_establishing` (`010.jpg`) requires
+`keep_current_setup` with `minimum_pause_confidence 0.75` while the app currently answers
+`shift_frame_right, step_back`. The demo content therefore describes advice the current
+admission policy does not produce.
+
+## 3. Recovered references are device-local
+
+The five recovered legacy references are staged in the simulator app container
+(`Library/Caches/SETOSLegacyCameraReferences/<manifest SHA>/`), not in the repository, and
+are bound to the SHA-pinned manifest `ed652addfd2c661060bb6dfbcab8c9c7f7be1d02a50c1b9a8e518068153e9894`.
+Erasing that simulator, or installing the app into a fresh container without re-staging,
+makes those methods fail with a file error rather than a behavior mismatch. The remaining
+five references (`168`, `179`, `189`, `190`, `202`) are not staged at all; `179`, `189`,
+`190`, `202` are deterministic outputs of
+`docs/cameraanalysis/dataset/synthetic_bad_variants_178_207.jsonl` and are therefore
+regenerable with a recorded SHA check, while `168` belongs to the older imagegen bucket and
+has no recorded recipe.
+
+## 4. Open decisions and next work
+
+Engineering work that does not need an owner decision:
+
+1. Recover or regenerate the four deterministic references and re-run the four blocked methods.
+2. Decide per failing method whether the oracle encodes a current product promise. The
+   candidates that are clearly pre-policy are the front-fill family, `023`/`039` (keep on a
+   deliberately low-key silhouette), and `184`/`183`/`182`/`206` (withdrawn
+   `synthetic_bad_paired_apple_tv_press` bucket, dropped by the 2026-06-05 audit as
+   "stylized cinematic frames and subtle synthetic artifacts").
+3. Record the retracted hypothesis (M3) so the same experiment is not repeated.
+
+Owner decisions, because they change the product promise rather than its implementation:
+
+- May the app confirm `keep_current_setup` while the same screen shows a technical
+  correction (M5)? The current label set forbids it for `220`/`232`; four tests want
+  opposite answers for low-key frames.
+- Should the bundled demo scenarios declare scene control explicitly, or be rewritten to
+  camera-only actions (M6)?
+- Is the semantic lighting advice path intended to stay reachable only after the user
+  answers the scene-control sheet (M3), or should the pause path raise lighting issues
+  without that answer?
+
+## 5. What this audit does not claim
+
+It does not claim the app's advice is correct or incorrect for any of these frames, does
+not re-label any frame, and does not change a threshold, a label or a policy. It reports
+measured row values, the code paths that produced them, and the two hypotheses that were
+tested and rejected.
