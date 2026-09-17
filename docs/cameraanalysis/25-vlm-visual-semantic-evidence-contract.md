@@ -1,5 +1,71 @@
 # 25. VLM Visual Semantic Evidence Contract (PR-S02)
 
+
+## Дополнение 2026-09-16: выбранный кадр, Camera Evidence v1
+
+Статус этого дополнения: контракт и реализация в пакете интеграции; результаты исполнения перечисляются отдельно в release tracker. Исторический статус PR-S02 ниже не является доказательством production deployment, качества VLM или физической приёмки.
+
+`camera_evidence_v1` — отдельный транспортный envelope для одного явно выбранного pause-кадра. Его результат адаптируется к существующему локальному S1 и проходит `VLMVisualEvidenceValidator` и `SemanticTipPlanner`. Это не `s2-draft`; новые remote entity refs, actions, verdict, good-frame и completion поля в wire запрещены.
+
+S1 получает два совместимых расширения:
+
+- `VLMPrivacyTier.authorizedSelectedStill = authorized_selected_still`;
+- `VLMVisualInputAttachmentKind.userSelectedStill = user_selected_still`.
+
+Этот tier требует `mode=pause`, `trigger=explicit_user_request`, `mediaRef=sha256:<64 lowercase hex>`, `longEdgePx<=1024`, `exifStripped=true` и **`redactionApplied=false`**. Эти метаданные сами по себе не разрешают отправку. Существующие `structured_only` и `redacted_visual` не получают новые права. ENV-флаг или ambient callback не заменяет действие пользователя.
+
+`CameraCloudFramePreprocessor` берёт точный `AcceptedSnapshot.displayImage`, уже ориентированный и принадлежащий принятому кадру. Он создаёт новый raster/JPEG, действительно удаляет EXIF и прочие запрещённые metadata segments, проверяет повторное декодирование, размер и отсутствие запрещённых метаданных. SHA рассчитывается после всех преобразований. Лица, предметы и текст остаются видимыми. EXIF stripping и уменьшение разрешения не являются анонимизацией.
+
+### Запрос
+
+`POST /v1/camera/evidence` использует тот же HTTPS service root и тот же installation App Attest token actor, что Scene и удаление данных. Заголовки: `Authorization: Bearer ...`, `Content-Type: application/json`, `Idempotency-Key=request_id`, `X-Camera-Request-SHA256=SHA256(exact UTF-8 body)`. Body hash не включается в body.
+
+| Поле | Содержание |
+| --- | --- |
+| `schema_version` | Только `camera_evidence_v1` |
+| `request_id` | UUID одного отправления |
+| `locale` | `ru` или `en`, фактическая локаль UI |
+| `correlation` | `frame_id`, `snapshot_id`, `capture_session_id`, `capture_generation`, `frame_pts`, `scene_epoch`, `intent_revision` |
+| `consent` | `mode=authorized_selected_still`, UUID `nonce`, `policy_fingerprint` |
+| `media` | `mime_type=image/jpeg`, `encoding=base64`, `data`, `sha256`, `width`, `height`, `metadata_stripped=true`, `redaction=none`, `coordinate_space=normalized_top_left` |
+| `local_context` | `known_entities`, `issue_ids`, `strength_ids`, `allowed_dimensions`, `allowed_problem_types`, `allowed_strength_types`, `allowed_relation_types`, `intent_answers` |
+
+`capture_session_id` равен `capture-session:<actual sessionGeneration>`; ноль допустим и не заменяется выдуманным UUID. `capture_generation` — фактический `lensGeneration>0`. `frame_pts` содержит точные `value:Int64, timescale:Int32, flags:UInt32, epoch:Int64`; численное значение CMTime обязательно, округления через секунды нет. `scene_epoch` — существующий `pauseAnalysisRevision` принятого review, а не восстановленная геометрическая сцена. `intent_revision` изменяется с действительным ответом или сбросом `CameraIntentClarificationPolicy`.
+
+`known_entities` содержит `entity_ref, kind, region, detector_label, confidence`. Регион локального S1/Vision переводится из bottom-left/y-up в top-left/y-down ровно один раз: `y'=1-y-height`. Preview aspect-fill к JPEG не применяется. `region=null` допускается только для общих `frame/background_area`; отсутствие измеренной уверенности — `confidence=null`, не ноль. Локальные refs имеют смысл только в данном кадре, не являются live track ID и не доказывают физическую идентичность экземпляра.
+
+`issue_ids/strength_ids` — ID экземпляров локального отчёта, не имена классов. `intent_answers` содержит настоящие Bool по существующим ключам `lowKey, silhouette, symmetry, tilt, motionBlur, negativeSpace`; отсутствующий ответ неизвестен. Consent на передачу изображения не предоставляет права перемещать человека, предмет или источник света.
+
+Перед получением любого service token UI показывает подготовленное JPEG и политику обработки. Подтверждение привязано к UUID, SHA всего body и fingerprint раскрытой политики. Изменение locale, intent, pixels, correlation или политики требует новой подготовки и нового подтверждения.
+
+### Ответ и пределы
+
+Успешный HTTP 200 содержит ровно `schema_version, request_id, request_sha256, correlation, media_sha256, policy_fingerprint, evidence`. Все correlation значения и SHA должны совпасть с запросом. Поля `status/completed` в wire отсутствуют.
+
+`evidence` содержит `observations, relations, abstained, abstention_reason`:
+
+- Observation: `observation_id, dimension, polarity, score, confidence, uncertainty_reasons, entity_refs, visual_problem_type, visual_strength_type, supporting_issue_ids, supporting_strength_ids, rationale`.
+- Relation: `relation_id, relation_type, source_entity_ref, target_entity_ref, dimension, score, confidence, uncertainty_reasons, supported_observation_ids, rationale`.
+- `entity_refs` содержит максимум два известных ref в порядке primary/secondary. Каждый relation ссылается на два разных известных ref и на непустое подмножество observation IDs этого ответа.
+- `uncertainty_reasons` использует настоящий enum S1. Числовая «uncertainty probability» не вводится. `score/confidence` конечны в [0,1]; существующее правило S1 `confidence<0.45` требует явной причины неопределённости. Калибровка этим не утверждается.
+- `supports_problem` требует problem type и пустые strength IDs; `supports_strength` — обратное. `neutral_context` не приписывает проблем/сильных сторон. Nullable поля обязательны и передают явный JSON null.
+- При `abstained=true` массивы пусты и причина непуста; иначе причина null. Неизвестные поля, refs, IDs, enum значения и противоречивые комбинации отвергаются.
+
+Пределы: body 768 KiB, JPEG 512 KiB, длинная сторона 1024 px, entities 32, каждый catalog/ID-массив 64, observations 8, relations 6, response 128 KiB, rationale 500 символов. ID: ASCII `[A-Za-z0-9][A-Za-z0-9:._-]{0,127}`; descriptive detector label — непустой Unicode до 128 символов без control chars. Rationale непустой и без control chars.
+
+Адаптер переносит только проверенные описательные поля в S1. Локальные labels/kinds берутся из запроса; модель не присылает label confidence или action IDs. Внутреннее S1 `status=completed` означает только полученный ответ анализа, не выполненное действие. Свободный rationale не становится инструкцией UI.
+
+### Жизненный цикл
+
+Один запрос имеет общий deadline 20 s, включая ожидание token; HTTP использует общий `BoundedServiceHTTPTransport` с ограничением bytes, запретом redirects/cookies/cache и отменой. Допустим ровно один retry после 401 с отличающимся действительным токеном и теми же body/ID. Автоматического provider retry или новой отправки под новым UUID нет.
+
+Отмена сначала закрывает локальную generation/pause/intent fence. Если POST мог начаться, bounded best-effort `DELETE /v1/camera/evidence/{request_id}` использует только уже полученный bearer (3 s); после отмены новое enrollment не запускается. DELETE не заменяет локальный отказ от устаревшего ответа. Отмена до POST не требует provider обращения.
+
+Принятый ответ проходит существующий S1 validator, planner, technical precedence и точный local entity-to-region owner. Облачный ответ не повышает неизмеренную оценку до «хорошего кадра», не снимает измеренный технический дефект и не меняет локальный verdict. Публикация разрешена только для того же accepted snapshot, capture generation, PTS, pause revision и intent revision. Обновляются и pipeline critique, и associated critique в `CameraPausePresentationState.success`, из которого действительно читает экран.
+
+Неполная service policy, отсутствующий endpoint/provider или конечный server budget оставляют путь отключённым. Наличие клиента и тестового mock не подтверждает доступность production backend, модельное качество или выполнение физического действия.
+
+
 Дополнение 2026-09-11: следующий provider revision описан в [Camera Coach Domain v3, N8](03-domain-contracts.md#n8-provider-contract-vlm-предлагает-evidence-приложение-принимает-решение). `camera-coach.vlm-evidence.s2-draft.1` допускает ограниченные proposals новых объектов, которые сначала принимает локальный grounding owner; frame-local refs не превращаются в trackID. Точные correlation/coverage, draft catalogs и запрет provider-owned decision/verification зафиксированы там. Ниже сохранён s1; s2 не должен декодироваться его валидатором и не разрешает production upload кадров.
 
 Статус: design spec + design verify (ready for implement)

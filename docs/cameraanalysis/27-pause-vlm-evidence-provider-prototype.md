@@ -1,5 +1,7 @@
 # 27. Pause VLM Evidence Provider Prototype (PR-S03)
 
+Дополнение 2026-09-16: выбранный пользователем JPEG и отдельный first-party `camera_evidence_v1` описаны в [дополнении к S1](25-vlm-visual-semantic-evidence-contract.md#дополнение-2026-09-16-выбранный-кадр-camera-evidence-v1). `CameraCloudAnalysisClient` использует общий Scene App Attest actor/HTTPS transport, request-specific consent до token acquisition и deadline 20 s. Старый ambient coordinator с cap 1500 ms остаётся отдельным локальным/prototype seam; его cap не применяется к явно ожидаемому сетевому разбору. Ни ENV, ни строка `mediaRef` не доказывают redaction или разрешение отправки. Исторические пункты ниже относятся к первоначальному PR-S03, а не к текущей production qualification.
+
 Статус: design verify (ready for implement)
 
 Дата: 2026-05-05

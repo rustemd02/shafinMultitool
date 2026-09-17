@@ -1,5 +1,82 @@
 # Claim Registry
 
+## 2026-09-17 — bounded integration and numerical claims
+
+| Claim ID | Bounded assertion | Evidence | Status |
+|---|---|---|---|
+| CL-IOS-CLOUD-GROUNDING-20260916 | Cloud/grounding/intent/AR changes are applied. Historical97 integration is92PASS/5FAIL plus six missing selectors; local owners retain decision and physical-action authority. Applied bytes do not establish complete acceptance. | EV-IOS-CLOUD-GROUNDING-20260916 | partially_verified |
+| CL-IOS-CLOUD-FOLLOWUP-20260916 | Local observed-region/manual-ROI centering feeds the paused next-take instruction; current RU/EN UI passes 2/2. Original critique, dominant technical priority and unknown comparison are preserved; no cross-frame or physical completion is inferred. 37/37 Simulator controls pass: 14 DETR, 8 metadata, 13 AR surface and 2 projection. The actual bundled019 two-chair request also passes 1/1. These qualify state/contracts and that request, not general model or physical AR quality. Replay 3/3 supplied-evidence controls qualify arbitration only. iPad preference persists but AUT geometry still fails; quality/physical gates remain open. | EV-IOS-CLOUD-FOLLOWUP-20260916 | partially_verified |
+| CL-NIMA-SIMULATOR-NUMERIC-20260917 | Three passed Simulator methods have20 source-bound numeric rows. Nominal CPU/ANE does not prove ANE execution; whole39-run remains FAIL. App weights and quality/rights/physical/release admission are unchanged. | EV-NIMA-SIMULATOR-NUMERIC-20260917 | partially_verified |
+| CL-CAMERA-BACKEND-TLS-20260916 |73 scoped backend checks and native Swift/TLS/FastAPI/mock-provider behavior support the corrected31-file archive. Local preflight passes; live provider, Apple enrollment, hosting and production configuration remain unqualified. | EV-CAMERA-BACKEND-TLS-20260916 | partially_verified |
+| CL-RELEASE-CLOUD-DISCLOSURE-20260916 | Archive050524 is an identified unsigned Release engineering artifact with successful compilation and verified contents; overall release validation remains FAIL on four known blockers. Four model/resource decisions and production/signing/physical gates remain open. | EV-RELEASE-CLOUD-DISCLOSURE-20260916 | partially_verified |
+| CL-ANNOTATION-BUDGET-UI-20260916 | Actual Chrome qualifies annotation 7 cases and, separately, runtime-review v1 3 cases plus a prior draft workflow. Runtime v2 passes 7 targeted controls after lease/JSON repairs; v1 browser evidence is not v2 execution. Mixed and empty-run failures remain preserved. Fixture processes closed; no real provider calls or owner votes. A separate offline v2 owner server is available and its invitation is pending. No independent human labels, trained output or provider-quality acceptance follows. | EV-ANNOTATION-BUDGET-UI-20260916 | partially_verified |
+
+CL-CA-PARTIAL-INTAKE-001 followup remains partially_verified: The research sidecar computes a conditional image offset [-.028,-.101] from one unconfirmed ROI to center; selected binding, physical actuator/outcome and admitted neural targets remain unknown. Seventeen assisted confirmations/one center preference justify no fit. Local user placement is separate; model IO, masks, losses and weights are unchanged. Existing15 metadata controls/3 loader promotion rejections remain source-bound evidence.
+
+## 2026-09-16 — selected-frame and confidence export correction
+
+| Claim ID | Bounded assertion | Evidence | Status |
+|---|---|---|---|
+| CL-CA-JPEG-CONFIDENCE-20260916 | The corrected selected-frame encoder passes11 actual Simulator cases, and presentation-derived semantic confidence export passes5. The earlier149-method FAIL is retained. This establishes metadata handling and export provenance for the recorded source, not calibrated probabilities, rendered percentages, cloud/provider or physical acceptance, model quality or release readiness. | EV-CA-JPEG-CONFIDENCE-20260916 | partially_verified |
+
+## 2026-09-16 — applied lifecycle and external conversion claims
+
+| Claim ID | Bounded assertion | Evidence | Status |
+|---|---|---|---|
+| CL-IOS-BOUNDARIES-20260916 | The applied HTTP/auth/recording/permission/Vision owners pass their specified Simulator cases within an overall149-method FAIL. Five valid-image encoder failures and a separate TLS header-only oracle remain explicit; no physical or cloud-provider acceptance is inferred. | EV-IOS-BOUNDARIES-20260916 | partially_verified |
+| CL-CA-NIMA-CORRECTED-EXPORT-20260916 | An external FP32 reconstruction imports all137 pinned checkpoint datasets and passes declared conversion/reproduction/macOS CPU Vision checks. Full FP16 fails3/9; app replacement, iOS/ANE, quality, provenance disposition and release admission are not established. | EV-CA-NIMA-CORRECTED-EXPORT-20260916 | partially_verified |
+
+## 2026-09-16 — source chronology claim
+
+| Claim ID | Bounded assertion | Evidence | Status |
+|---|---|---|---|
+| CL-CA-LASIESTA-NUMERIC-20260916 | Two applied external tools produce and verify one250-frame numeric-source derivative without altering raw media or inventing FPS/labels. Separate272-row native evidence measures conditional tracking; it does not establish physical motion, correct advice, source-independent quality or training/release admission. | EV-CA-LASIESTA-NUMERIC-20260916 | partially_verified |
+
+## 2026-09-16 — sampling and benchmark measurement claims
+
+| Claim ID | Bounded assertion | Evidence | Status |
+|---|---|---|---|
+| CL-CA-SAMPLING-EXECUTION-20260916 | Equal-cell pixel sampling removes the demonstrated right/bottom coverage bias. Debug replay exports observed model outcomes bound to current frame/mode/time.20 related iOS methods pass; the combined43-method checkpoint remains FAIL because22 legacy image scenarios fail. No physical, subjective or model-quality acceptance is inferred. | EV-CA-SAMPLING-EXECUTION-20260916 | partially_verified |
+| CL-CA-BENCHMARK-GATE-20260916 | Applied gate accepts measured zero violation and checks actual nested/nonempty source coverage without changing thresholds;39 synthetic exporter/helper checks pass. This does not establish quality of any Camera model. | EV-CA-BENCHMARK-GATE-20260916 | partially_verified |
+
+## 2026-09-16 — annotation revision and dispatch claim
+
+| Claim ID | Bounded assertion | Evidence | Status |
+|---|---|---|---|
+| CL-ANNOTATION-CONSISTENCY-20260916 | Applied annotation owners preserve current manual intent, reject stale confirmation/dispatch, bind video cache inputs and retain ambiguous billing across restart.62 Python,8 inline-JS VM and9 source-matched HTTP cases pass without paid calls or changing real journals. Browser layout, human labels and model quality remain separate. | EV-ANNOTATION-CONSISTENCY-20260916 | partially_verified |
+
+## 2026-09-16 — current archive and coupled capture claims
+
+| Claim ID | Bounded assertion | Evidence | Status |
+|---|---|---|---|
+| CL-REL-CURRENT-ARCHIVE-20260916 | The retained19:51 source snapshot reproduces an unsigned engineering archive with qualified compiled membership/resources/model bytes and12 negative bundle controls. Later app/provenance edits require a new archive qualification. Ten provenance gates, empty backend configuration, intended App Attest signing and physical/human acceptance prevent release readiness. | EV-REL-CURRENT-ARCHIVE-20260916 | partially_verified |
+| CL-CA-COUPLED-MOTION-20260916 | Four actual iOS Simulator selectors qualify ordinary capture admission, cancellation of unstable/stale evidence and measurement identity through reseed. Synthetic motion and scripted Vision/calibration do not establish physical-action attribution or useful model advice. | EV-CA-COUPLED-MOTION-20260916 | partially_verified |
+
+The current archive claim supersedes only the earlier pending-current-build status; the old archive and failed integrated receipts remain historical evidence. No model or product release-ready claim is added. Chapters3/4/5/6 remain needs_update.
+
+## 2026-09-16 — bounded claims after 19:46 UTC
+
+| Claim ID | Bounded assertion | Evidence | Status |
+|---|---|---|---|
+| CL-CA-AVAILABILITY-20260916 | Applied current-frame technical availability prevents unsupported positive confirmation. Ordinary technical advice retains its confirmation cadence through recipe waiting/spatial output; nine named owner/presentation tests pass. Useful model advice and real object identity remain unqualified. | EV-CA-AVAILABILITY-20260916 | partially_verified |
+| CL-INTEGRATED-UI-20260916 | The 581-method run remains FAIL545/26/10. Named Scene/auth/deletion/shell/iPad suites pass; six intended UI methods per simulator are covered by preserved incomplete five-method runs and explicit corrective one-method runs at identical source. RU/EN XXL screenshot inspection qualifies presentation only. | EV-INTEGRATED-UI-20260916 | partially_verified |
+| CL-IOS-DELETION-20260916 | Current iOS actor/transport/Privacy flow passes86 actual target methods and8 real Swift/TLS/Python cases with5 measurement controls. Fixture enrollment is not Apple App Attest or hardware Keychain proof; hosting/provider/policy gates remain open. | EV-IOS-DELETION-20260916 | partially_verified |
+| CL-CA-PAIRED-TRACKING-20260916 | Grouped paired-geometry targets and exact native tracker outputs are measured with fixed diagnostic criteria. Consecutive identical-frame controls separate seed refinement from tracking drift. No physical-action attribution, calibrated completion, human labels or model admission is established. | EV-CA-PAIRED-TRACKING-20260916 | partially_verified |
+
+Earlier candidate-not-applied/iOS-deletion-pending statements are historical to their artifacts. CL-SG-CLOUD-AUTH-001 remains partially_verified, and CL-REL-ARCHIVE-20260916 still describes the old15:20 archive. No product or model release-ready claim changes. Chapters3/4/5/6 remain needs_update.
+
+## 2026-09-16 — bounded claims after 18:40 UTC
+
+| Claim ID | Bounded assertion | Evidence | Status |
+|---|---|---|---|
+| CL-LIBRARY-WINDOW-20260916 | Nonempty Library creation, two-project relaunch persistence, inspected header/type layout and Privacy routes pass the named iPad3/3 and iPhone5/5 Simulator runs. Native iPad window configuration corrects measured compatibility scaling. This does not qualify every window/orientation, physical AR or assistive technology. Earlier fullscreen-only configuration is superseded under master§3.8. | EV-LIBRARY-WINDOW-20260916 | partially_verified |
+| CL-BACKEND-CANCEL-20260916 | The exact392-test server snapshot owns transport cleanup through repeated cancellation and durably purges before job cancellation; its29-file package is locally reproducible and passes extracted profiles. iOS deletion, hosted service, real provider, physical App Attest and policy qualification remain open. | EV-BACKEND-CANCEL-20260916 | partially_verified |
+| CL-REL-LOCALIZATION-20260916 | The new comparison gate is qualified by33 actual compiler tests and rejects the unchanged old archive for89 missing keys per language. A localization-only fixture is not a full app or rights admission. | EV-REL-LOCALIZATION-20260916 | verified |
+| CL-CA-BN-REFRESH-20260916 | A predeclared frozen-weight TRAIN refresh removes score collapse but does not improve held-out discrimination usefully: BA0.513889/AUC0.546296. Weights remain rejected, with no additional supervision, threshold tuning, locked-test use or runtime promotion. | EV-CA-BN-REFRESH-20260916 | verified |
+
+The prior deletion-unqualified/current privacy-UI-failure interpretations are superseded only by the named later artifacts. Historical failures remain valid observations. CL-SG-CLOUD-AUTH-001 remains partially_verified; CL-REL-ARCHIVE-20260916 still refers to the15:20 unsigned archive. Current Camera availability and iOS deletion proposals are not yet applied or qualified. Chapters3/4/5/6 remain needs_update.
+
+
 ## 2026-09-16 — scope after the 16:49 UTC checkpoint
 
 Later entries here supersede only the current-state interpretations of earlier artifact-specific claims. The historical observations, counts and negative receipts below are retained. Working-tree changes are identified by source manifests, not HEAD alone; chapters 3/4/5/6 remain `needs_update` and no release-ready assertion is supported.
@@ -250,3 +327,30 @@ Export feasibility extension: the same evidence now includes successful research
 | CL-CA-027 | Tap-grounding for object advice is implemented at the verifiable core: a pure tracked-instance hit test with the same hit/slop/nearest-center contract as subject selection, a registry accessor for the tapped instance, and a `tapGroundedObjectTarget` exception in `LiveCoachQualityGate` that lifts the overlap refusal once the operator names the target. Unit tests pin the hit/slop semantics, the nearest-center resolution, the nil-away case, and both sides of the gate exception. The overlay and ViewModel wiring of the tap gesture is a deferred iteration: the gesture cannot be exercised in the simulator, and the production path does not yet activate the exception. No master gate in §9.6 is met. | implementation/limitation | EV-CA-EVAL-021 | ch4, ch6 | partially_verified |
 | CL-CA-028 | A pause-verdict confidence gate (silence below threshold instead of corrective actions) was pre-tested as a repair for the good-frame overcorrections and rejected at every threshold: pause confidence does not separate the 13 overcorrected good frames (range 0.648–1.000, median 0.740) from the 65 correctly kept good frames (range 0.463–1.000, median 0.750), because `pauseVerdictConfidence` caps mixed-verdict corrections at 0.74 and floors dominant-issue good verdicts at 0.75, placing the uncertainty signal in the wrong region. Measured through the canonical evaluator over the committed lane rows, the gate never raises pass_rate (best 92/174 against the ungated 93/174; 91/174 at the preservation-optimal t=0.69–0.70 where preservation rises to 0.864198, and 81/174 at t=0.75 where preservation reaches 0.925926), and no threshold approaches the §9.6 release forbidden gate of ≤ 0.02 (best 0.091954). Recorded as a known limitation of pause confidence as an uncertainty signal; no source change. | methodology/limitation | EV-CA-EVAL-022 | ch5, ch6 | partially_verified |
 | CL-CA-029 | The 8 `missing_future_action` failures on the 174-label still-replay lane are fully attributed and none admits a deterministic fix: 5 are occlusion-recall misses where the pixel-driven probe never fires so `avoid_occlusion` cannot be routed (the recall counterpart of CL-CA-023), 2 are exposure-direction contradictions where the labels claim overexposure against measured `exposure_bias` of −2.60/−1.71 and the probe emits `increase_exposure` (label-revision candidates with pixel evidence, same policy as CL-CA-025), and 1 is a sharpness-recall miss below the gradient thresholds. With CL-CA-020/021/022/028 the failure-class accounting for the still-replay lane is closed: every remaining expectation failure is signal-limited detection or label revision. | methodology/limitation | EV-CA-EVAL-023 | ch5, ch6 | partially_verified |
+
+## 2026-09-17 — bounded annotation identity claim
+
+| Claim ID | Bounded assertion | Evidence | Status |
+|---|---|---|---|
+| CL-CA-ANNOTATION-IDENTITY-20260917 | Applied queue import/recovery rejects conflicting IDs before output mutation or ambiguous review lookup; identical repeated imports remain allowed. Actual main44 tests pass, and independent actual CLI rejects raw SceneTrans900 before output while preserving all900 normalized rows/450 scoped pair links. Existing package/review inputs are unaffected; no corrupted fit, new labels, model-quality gain, rights, human or release admission follows. | EV-CA-ANNOTATION-IDENTITY-20260917 | verified |
+
+Verification is restricted to the recorded annotation/data boundary. Chapters4/5 remain `needs_update`; no chapter/litreview text or historical verification metadata changes.
+
+## 2026-09-17 — bounded DETR measurement and notice claims
+
+| Claim ID | Bounded assertion | Evidence | Status |
+|---|---|---|---|
+| CL-CA-DETR-ORIGIN-20260917 | A source-bound macOS execution returned 78 successful unique DETR results for 42 development pairs/84 references. Independent pixel/model/executable binding and raw origin-alignment recomputation pass. The measurement and AI contact-sheet inspection establish no semantic accuracy, visibility/FN labels, persistent identity, advice quality, human-gold or physical-device result. | EV-CA-DETR-ORIGIN-20260917 | verified |
+| CL-REL-DETR-NOTICES-20260917 | Applied metadata truthfully records both exact notice documents in the frozen unsigned 050524 source/bundle snapshot; 8 main checks and source+bundle validation pass. Legal/disposition/replacement values, model bytes and four Release blockers are unchanged. | EV-REL-DETR-NOTICES-20260917 | verified |
+
+These statuses apply only to the assertions above. Chapters 4/5 remain `needs_update`; no chapter/litreview text or historical verification metadata is changed.
+
+## 2026-09-17 — uncertainty and consumed-evidence claims
+
+| Claim ID | Bounded assertion | Evidence | Status |
+|---|---|---|---|
+| CL-CA-PARTIAL-20260917 | Separate 38-control native checkpoint and unchanged current 2-method legacy replay qualify withholding positive confirmation under partial detail coverage. Historical 0/2 failure remains. No useful new advice, subjective quality or positive-blur accuracy follows. | EV-CA-PARTIAL-20260917 | verified |
+| CL-CA-CONSUMED-20260917 | Ten actual native controls qualify consumed measurement diagnostics and identity/staleness safeguards without rescanning or changing historical scoring. They do not validate a noise estimator or optical diagnosis. | EV-CA-CONSUMED-20260917 | verified |
+| CL-CA-REVIEW-20260917 | Fourteen actual native unit/UI checks plus saved artifact review qualify deduplicated EN/RU XXL uncertainty and visible next-take action. Raw uncertainty and attempted result meanings remain; no unattempted comparison is shown. Static source tracing confirms a bound live verifier path and no accepted-pause result adapter. | EV-CA-REVIEW-20260917 | verified |
+
+Verified means only these scoped assertions. The initial two passing UI tests still had a recorded visual defect. RU lower human-input full-scroll reach, whole-UI acceptance, physical/subjective/calibrated advice and model-release admission remain open. The four Release blockers and frozen unsigned archive 050524 are unchanged. Chapters 4/5 remain `needs_update`; no protected text or historical commit metadata is changed.

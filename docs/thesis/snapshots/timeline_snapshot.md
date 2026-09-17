@@ -1,5 +1,15 @@
 # Timeline Snapshot
 
+2026-09-17 current checkpoint: After retained failures: replay parity 3/3; annotation browser 7/runtime v1 browser 3; runtime v2 controls 7; real owner form available. Then DETR/AR controls 37/37, next-take RU/EN UI 2/2 and actual019 request 1/1. Archive 050524 build succeeds unsigned, release validation remains blocked by four components. Sources and limits: [EXECUTION_STATE](../../aegis/work/2026-09-03-gpt-5-6-pro-guidance/EXECUTION_STATE.md), [evidence map](../03_evidence_map.md). Quality/human/physical/production gates remain open; chapters 3/4/5/6 remain needs_update.
+
+## Historical source-bound snapshots
+
+## 2026-09-17 — integration and source-bound checkpoints
+
+After the preservation commit, Cloud/grounding/intent/AR/privacy/annotation, marker/copy/coverage changes progressed through preserved failures97=92/5,39=34/5,9=8/1 and UI/mixed checkpoints. Marker10/geometry1 pass inside15=14/1, whose EN reset/done is not reached; later iPhone4/4 completes them. Exact recovery9/14 enables6=1/5 without file errors. The19=17/2 checkpoint qualifies11 coverage/integration,4 direction and2 complete RU/EN UI paths;180 is then mixed without KEEP with Vision unavailable. Subsequent CPU isolation1PASS and production-owner6=1/5 restore actual Vision execution, while all five recovered methods fail and180 returns good/KEEP. Corrected AR control completes three failed captures without prior SIGTRAP; The completed iPad Full Screen Settings procedure is0PASS/2FAIL with original selections restored; the application still reportsUIScene101 and its effective mode remains unknown. Fresh-read/identity instrumentation is applied; run014636 failed compilation with0 tests and the corrected repeat stopped before Xcode at the8GiB storage guard; iPad landscape remains open. Six scoped resource approvals leave four PENDING. Backend73/TLS, NIMA20 numerical rows and LASIESTA250 retain their boundaries; no current quality/physical/final Release acceptance. Spend$0. Chapters3/4/5/6 remain needs_update.
+
+Applied-source followup (EV-RELEASE-CLOUD-DISCLOSURE-20260916 / EV-CA-PARTIAL-INTAKE-001): DETR release gate8 controls, both source notices and shell syntax pass; full-app negative controls await a fresh archive. Spatial intake15 controls/3 loader rejections and actual CLI byte parity preserve17 assisted confirmations and one research-only table→center request. Selected candidate/actuator/targets remain unknown; zero neural admission/fit/provider calls. Six approvals/four PENDING are unchanged.
+
 Source: `diploma.md`
 Last verified commit: `02bdf3ae0b711ed5e0b7a640cbf808196d304b62`
 

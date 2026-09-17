@@ -4213,3 +4213,342 @@ EV-SG-CLOUD-AUTH-001 и EV-REL-ARCHIVE-20260916; точные пути, hashes, 
 синхронизированы в evidence map/claim registry и трёх существующих snapshots.
 Главы3/4/5/6 остаются needs_update. Litreview и текст глав не изменялись;
 готовность к релизу, физическая приёмка и человеческая оценка не объявлены.
+
+### 2026-09-16 — Library, native iPad windowing, cancellation and measured ML follow-up
+
+По повторному указанию владельца сохранено прежнее рабочее дерево: commit
+`c5eb957975cb4f2ee1beb98df49572ec806dd520`, 171 изменённый/новый файл.
+После commit обычный/staged diff и untracked status пусты; последующая работа
+остаётся незакоммиченной. HEAD не подменяет её source manifests.
+
+В существующем Library-пути подключено создание следующей сцены после первой.
+Два разных именованных проекта сохраняются после перезапуска. Снимки работающего
+приложения выявили перекрытие заголовка переключателем режимов и сжатие названий
+датой при крупном тексте. Исправлены резервирование места оболочкой и адаптивная
+строка проекта. На iPadOS26 старый UIRequiresFullScreen приводил к системному
+масштабированию: кнопка44points измерялась как39.7118644points. Debug/Release
+теперь используют native resizable windows и все ориентации iPad Scene-стека,
+как требует master plan§3.8. Прежняя fullscreen-only конфигурация не описывает
+текущий продукт. Итоговые source-bound прогоны iPad18:37 —3/3 и iPhone18:40 —5/5
+прошли без пропусков и изменения исходников. Проверены Create/relaunch, Generator
+input/return, крупный текст и Privacy. Просмотрены реальные изображения: production
+iPhone landscape и portrait fixture/iPad; старые имена attachments не доказывают
+ориентацию. Матрица всех размеров/ориентаций и физический AR этим не закрыты.
+Ранние неудачные iPad-прогоны сохранены. Отдельный прогон18:20 проверил обе прежде
+пропущенные actual-module Swift/Python policy interop функции.
+
+Backend исправляет две доказанные гонки: purge удаления установки теперь
+предшествует cancellation handlers; cloud adapter удерживает HTTP transport
+до завершения cleanup даже при timeout и повторной отмене. Три новые отрицательные
+проверки падали на исходном поведении. Квалифицированы392/392 теста32модулей,
+10 настоящих loopback checks и72 неизменённых source inputs. Архив29файлов
+`setos-service-cancellation-20260916T182346795774Z.tar.gz` имеет SHA256
+`cc9145ae20f9c74f93d711e8dee34e792a03c291ec93a1021b5f25e6c2e15049`,
+воспроизводится побайтно и проходит проверки извлечённых режимов/shutdown/backup.
+Это локальная квалификация серверного snapshot. iOS deletion client, реальный
+host/TLS/provider, физический App Attest и окончательная policy остаются открытыми.
+
+Релизный gate теперь сравнивает исходные string catalogs с фактическими продуктами
+компилятора Xcode, включая локали, ключи, типы, plural и substitution.33/33 проверки
+реального компилятора прошли; неизменённый старый archive корректно отклонён:
+ему недостаёт89 ключей Localizable в каждом языке. Отдельная compilation fixture
+текущих615 ключей проходит, но не является новым приложением или legal admission.
+StoreKit/IAP исключены из критического пути согласно master§3.9; metadata8/8PASS.
+
+Предварительно зафиксированный frozen-weight BN refresh выполнился за45.556s
+на CPU1/$0.155 TRAIN примеров обновили102 статистических буфера без backward
+или optimizer; параметры и исходный checkpoint сохранены. На54validation примерах
+при прежнем threshold0.5 получено TP5/TN16/FP2/FN31 против TP0/TN18/FP0/FN36.
+Balanced accuracy выросла0.500000→0.513889, AUC снизилась0.558642→0.546296,
+squared score error ухудшилась0.251213→0.260037. Устранение почти постоянного
+выхода не восстановило полезное качество. Использованы sample-weighted within-batch
+moments, не точные population moments; это отдельный diagnostic state, не новая
+допущенная модель. Locked test не использован; threshold, trained heads и runtime
+admission не изменены.
+
+Источники: EV-LIBRARY-WINDOW-20260916, EV-BACKEND-CANCEL-20260916,
+EV-REL-LOCALIZATION-20260916 и EV-CA-BN-REFRESH-20260916 в существующих
+evidence map/claim registry/snapshots. Каждый результат связан с командой,
+receipt, исходниками и границами вывода. Camera availability и iOS deletion
+продолжаются как внешние кандидаты. Главы3/4/5/6 остаются needs_update;
+litreview и текст глав не изменялись. Готовность к релизу не объявлена.
+
+### 2026-09-16 — интеграция Camera availability, удаления установки и измерений Vision
+
+После19:46 UTC Camera technical availability и iOS installation deletion уже
+применены в основном рабочем дереве поверх c5eb957975cb4f2ee1beb98df49572ec806dd520.
+Новых коммитов после согласованного сохранения исходного diff не было.
+Измеренные пустые технические признаки отделены от недоступных; evidence связан
+с точными frame/time и проходит через critique, fusion, Live и Pause. При отсутствии
+достаточных оснований RU/EN интерфейс сообщает недостаток данных. На обоих
+симуляторах просмотрены реальные снимки XXL интерфейса; они подтверждают текст
+и геометрию элементов, но не привязку к объекту на подставленном DEBUG изображении.
+
+Большой интеграционный прогон реально исполнил581 метод:545PASS/26FAIL/10SKIP.
+Он остаётся FAIL. Все выбранные Scene, AppAttest/deletion, shell и четыре актуальных
+iPad-контракта прошли. Для двух некорректных Live fixtures заданы честные cadence,
+семантика и положительный target-free control без ослабления quality thresholds.
+Третий случай выявил production bug: recipe waiting/spatial output прерывал
+подтверждение технического дефекта. Обычный typed technical candidate теперь
+сохраняет приоритет, а tracker продолжает обновляться. Узкий финальный прогон
+20260916T194203814951Z-camera-technical-recipe-priority:9/9, native0, unchanged
+source.23 старых image-replay failures и недостающие данные остаются открытыми.
+Два неполных UI прогона сохранили FAIL, несмотря на пять прошедших методов;
+недостающие selectors исполнены отдельно на том же source fingerprint.
+
+Существующий AppAttest actor получил устойчивую операцию удаления: persistent
+operation/proof/receipt, блокирование токенов и новой регистрации после intent,
+точный replay после обрыва и восстановление ошибки первоначальной записи Keychain.
+Privacy UI требует явного подтверждения.86 соответствующих actual iOS target
+методов прошли. Отдельно настоящий Swift URLSession через pinned loopback TLS
+взаимодействует с Python/SQLite/assertion verifier:8/8 сценариев и5 измерительных
+negative controls проходят; build/native/server0,54 inputs unchanged.
+Receipt20260916T194248565601Z SHA316868f75fb04be74f0f1ec207cbe615174e6227638a091445f3964a32a91b2b.
+Файловое хранилище и fixture P256 enrollment не подменяют iOS Keychain и Apple
+attestation. Реальный hosting/provider/policy/budget пока не настроены.
+
+Для измеримого geometry baseline подготовлены382 связанные пары с provenance,
+scene/source grouping, известными affine targets и явными masks. Это не physical
+action supervision и не новая обученная spatial head. Exact native production
+Vision tracker исполнил391 pair/lifecycle case за17.83s. Условное покрытие
+TRAIN164/225, VAL84/97; joint center/IoU criterion на unclipped returns41.6%/50%.
+Отдельный83-case TRAIN-only identity repeat отличает seed refinement от continuing
+drift: у77 последовательных unclipped outputs median0.00217/P950.00996/max0.01741,
+ни одного displacement>0.02. Locked test, threshold tuning и paid inference не
+использовались; rejected issue-0 model и BN refresh не получили runtime admission.
+
+Источники и ограничения: EV-CA-AVAILABILITY-20260916, EV-INTEGRATED-UI-20260916,
+EV-IOS-DELETION-20260916, EV-CA-PAIRED-TRACKING-20260916. Существующие execution
+tracker, evidence map, claim registry и implementation/model/camera snapshots
+синхронизированы. Главы3/4/5/6 остаются needs_update, litreview не изменён.
+Следующий пакет: actual Debug resource-owner tests, свежий Release archive,
+сохранение контейнера установленного iPhone13Pro и физическая квалификация.
+
+### 2026-09-16 — актуальный Release archive и связанная проверка движения
+
+После20:22 UTC подтверждён новый unsigned archive20260916T195158920366Z:
+build0, unchanged source3931df3de95e7fcd2542a1fea4ead2edf7254099f58ab2d02cde7b41f9c79200,
+193 app Swift inputs, шесть сохранённых untracked inputs. Сверены фактические
+EN/RU каталоги638+5, два privacy manifests и bytes весов DETR/NIMA.12negative
+bundle controls проходят. Validator1/wrapper2 сохраняют10PENDING provenance
+entries; пустой backend URL и отсутствие distribution signing не позволяют
+считать archive готовым релизом. Evidence EV-REL-CURRENT-ARCHIVE-20260916,
+aggregate receipt SHA13198b3aa57582c95c0a4026f4788c3118341d663c34e9b855da475563d4c75b.
+Старая сборка15:20 и её результаты остаются историческими.
+
+Реальный device Debug build завершился65: Personal Team5NAKQ28539 не поддерживает
+App Attest. Это установленная причина ошибки provisioning, а не ошибка Swift.
+Контейнер существующего iPhone13Pro предварительно сохранён локально:5файлов,
+1,141,642байта Documents+Library; remote SHA недоступны, Keychain не включён.
+Основное установленное приложение не переустанавливалось и не запускалось.
+Внешняя диагностическая сборка имеет отдельный bundle ID и не квалифицирует
+предусмотренный App Attest или выпуск; физические результаты фиксируются отдельно.
+
+Существующий Debug resource owner исправлен и прошёл5actual iOS methods:
+bundle lookup, staged copy, восстановление пустого interrupted cache,
+сохранение непустого cache и cleanup собственного partial copy. Обязательные
+отсутствующие изображения теперь дают явную ошибку.14 недоступных references
+и23 прежних image-replay failures не подменены сгенерированным gold.
+
+EV-CA-COUPLED-MOTION-20260916:4/4 actual Simulator selectors через captureOutput,
+реальный scheduler и episode coordinator, native0, source unchanged. Три traces
+содержат13/14/16callbacks, direct frame acceptance0. При still-but-unstable
+envelope эпизод отменяется по существующей причине staleEvidence. Сохранённый
+token в terminal state нужен для диагностики и не является продолжающимся
+действием. После одного/двух интервалов движения last-delivered capture gaps
+0.398936/0.407487s, source measurement gaps0.389777/0.397098s превышают Vision0.25s;
+исходный эпизод не получает success. Положительный обычный capture test тоже
+проходит. Повторное DETR обнаружение сохраняет trackID/entityRef и обновляет
+provenance, но само не разрешает физическое действие над объектом.
+Первый3/4 прогон сохранён: исправлены только два неверных ожидания теста.
+Motion/Vision/calibration являются fixtures, поэтому это не физическая IMU,
+оценка полезности модели или человеческая приёмка. Evidence и claims обновлены
+до snapshots; главы3/4/5/6 остаются needs_update, litreview не изменён.
+
+### 2026-09-16 — устойчивость разметчика и защита актуальной правки
+
+В четыре файла существующего разметчика внесены исправления ревизий, кэша,
+worker и отправки запросов. Текст сохраняется до ожидания провайдера. Старый
+перевод не подтверждается после новой правки; сохранение одной вкладки не
+удаляет отличающийся локальный черновик другой. Video cache key учитывает SHA,
+порядок и позиции выбранных кадров. Некорректная необязательная telemetry usage
+больше не прекращает работу единственного visual worker.
+
+Отдельно воспроизведены четыре случая, когда устаревший manual request ждал
+paid slot или подготовку JPEG и затем всё же отправлялся. Проверка актуальности
+после обоих этапов и атомарная запись dispatch устраняют лишний запрос:
+obsolete calls0, допустимая новая правка при необходимости вызывает ровно1.
+Историческое billing_unknown теперь сохраняется после restart; ValueError
+само по себе не доказывает отсутствие расхода.100request ceiling не объявляется
+денежным бюджетом. Raw save и просмотр готового кэша доступны без нового запроса.
+
+Финальный applied receipt SHA47cb6b22784865b368d5a094410c1a1c64e0f97a8dec36df48f84d3008311839:
+62Python,8actual-inline-JS VM checks и9actualHTTPHandler cases с совпадающими
+source inputs;0fail/skip,0paidrequests. Начальный58-case набор не суммируется
+с расширенным62. Реальные queue.jsonl/opinions.jsonl не изменились побайтово,
+никакие подтверждения владельца не выполнялись. Browser layout, качество
+provider, human gold, обучение и релиз этим результатом не квалифицируются.
+EV/CL-ANNOTATION-CONSISTENCY-20260916 синхронизированы через evidence map,
+claim registry и implementation/model snapshots; главы остаются needs_update.
+
+### Контроль измерений Camera, 2026-09-16 после21:07 UTC
+
+В production TechnicalQualityAnalyzer обнаружена ошибка пространственной
+выборки: целочисленный шаг для143пикселей охватывал только0...95, для352 —
+только0...285. Правая и нижняя области выпадали из статистики. На16созданных
+BGRAполях исходный native owner показал шесть пропусков яркой полосы и шесть
+нарушений симметрии отражения. Выбор центров равных ячеек по всему изображению
+устранил эти пропуски:16полей измерены,8пар совпали. Пороги не менялись.
+Это проверка геометрии измерения, а не человеческая оценка фотографий.
+
+Debug replay теперь сохраняет реально возвращённые model execution metadata
+с привязкой к frame/mode/capturedAt. Неизвестный результат NIMA и пустой DETR
+не объявляются успешным inference, если wrapper не раскрывает причину.
+Composition scorer на этом пути отмечается not_invoked. Вызовы моделей и
+допуск их результатов этим изменением не расширяются.
+
+Связанный iOS Simulator прогон20260916T210512610297Z выполнил43метода:
+5measurement+11metadata+4capture/reseed PASS; среди23прежних image failures
+один cinematic-object preservation метод PASS,22остаются FAIL. Итого21/22/0,
+native65 и общий FAIL сохранены, исходники не изменились во время запуска.
+ReceiptSHAd98785966c8ce6af3a6df1f2fc3a624b5cec826abb71cc8070bebd8a47fd65af,
+sourcecb54ca77bc88d06a3e628b2563221b1baebd0d33d43cab7f8871a847331063e0.
+Ни требования к сценам, ни ожидаемые ответы для получения PASS не ослаблялись.
+
+Исправлен и Python benchmark gate: измеренный ноль запрещённых действий
+больше не заменяется единицей; source_bucket читается по фактической схеме,
+пустые/несогласованные counts и неизвестные rates не проходят.39контрольных
+проверок применённых owners PASS; пороги.80/.08/.92/.40 и quick sample_only
+сохранены. EV/CL-CA-SAMPLING-EXECUTION-20260916 и
+EV/CL-CA-BENCHMARK-GATE-20260916 внесены сначала в evidence/claims,
+затем в snapshots. Физическая, субъективная и модельная приёмка остаётся
+открытой; архив19:51 относится к сохранённому снимку до новых appизменений.
+
+### Числовая хронология LASIESTA и наблюдаемые модели, 2026-09-16 после21:26 UTC
+
+Внешние lasiesta_temporal.py и verify_package.py исправлены и проверены:
+8 положительных,34 отрицательных и3 CLI контроля, затем один фактический
+offline-сбор I_OC_01.250 записей упорядочены по исходным номерам1...250;
+SHA изображений, архива и прежних манифестов сохранены. Новый manifestSHA
+d15ef76391cd49fd436448d0ece253486c8109ea82f1f4068e9aed65d3b4d5d9.
+Неизвестные FPS/время и training_ready=null не заменены выдуманными значениями;
+полный прежний пакет11810 не перепаковывался. Completion receiptSHA
+77ec3d7cf35b921b1ebb2ab274fa4b808921d3349de49b1c54f46a35262ac196.
+
+Отдельный ранее выполненный native VisionTracking прогон содержит272 наблюдения:
+62/87 допустимых естественных кадров дают рамку,44/55 сравнимых определённых
+необрезанных наблюдений проходят центр<=0.02 и IoU>=0.5 с nil как неуспехом.
+В30 повторах одного кадра нет последовательного смещения>0.02; для направления
+сравнимы лишь две пары. Source-mask seed и виртуальное время не доказывают
+физическую причинность, качество совета или допуск обученной модели.
+
+Из actual Simulator attachments отдельно подтверждён путь bundled001.jpg:
+compact disabled, DETR12 исходных/один downstream объект, NIMA score10=
+4.277284324169159, composition not_invoked. ReceiptSHA
+bfd18e845e40bbfa0061121a29f866b356ad51da015ad67e13ab51e77fec1858.
+EV/CL-CA-LASIESTA-NUMERIC-20260916 внесены в evidence/claims до snapshots;
+22 прежних image failures и физический/человеческий допуск остаются открытыми.
+
+### Границы исполнения и воспроизводимый NIMA candidate, 2026-09-16 после22:03 UTC
+
+Применены общий ограниченный HTTP transport для существующих Scene/AppAttest/
+deletion owners, независимое владение фоновыми leases, завершение записи при
+ошибке ARSession и отменяемое ожидание разрешения микрофона. Ошибка Vision
+теперь отличается от успешно измеренного отсутствия наблюдений; устаревшие
+и частичные результаты не превращаются в отсутствие людей. Source-bound
+Simulator checkpoint149 фактически завершился144PASS/5FAIL/0SKIP, receiptSHA
+bf32d1292e05056ad6f77a1f807971b4d767c886ee2e2cc181025604dc366aec.
+Пять ошибок относятся к кодированию допустимого изображения новым JPEG owner;
+общий результат остаётся FAIL. Два проходящих теста создают воспроизводимые
+проигрываемые файлы настоящим AVAssetWriter, но не подтверждают физическую
+камеру, микрофон, AR tracking или системную выдачу доступа к Photos.
+
+Внешний NIMA FP32 candidate воспроизводит137 исходных datasets с исправленной
+геометрией padding. Девять численных сравнений CoreML проходят исходные
+допуски; повторный экспорт сохраняет weights и outputs. Native Vision CPU
+на macOS проходит9 численных и2 orientation/validity случая. Полный FP16
+остаётся неудачным:6PASS/3FAIL, а не шесть неудачных случаев. Candidate receiptSHA
+032defeb665568411fbf217d566065f96cee0b77ea939b5c4268903c9b6c6beb;
+root перепроверил25 ссылочных SHA. Это реконструкция Keras-геометрии в PyTorch,
+не запуск старой TensorFlow-среды и не доказательство качества Camera Coach.
+Модель приложения не заменена, допуск iOS/ANE, provenance/notices, полезности
+и реальной съёмки открыт. EV/CL-IOS-BOUNDARIES-20260916 и
+EV/CL-CA-NIMA-CORRECTED-EXPORT-20260916 внесены в evidence/claims до snapshots.
+Главы3/4/5/6 требуют последующей актуализации; их текст и litreview не изменены.
+
+### Исправление JPEG и измерительного экспорта confidence, 2026-09-16
+
+Последующий фактический Simulator прогон завершился16PASS/0FAIL/0SKIP:
+11 методов проверяют исправленный accepted-frame encoder,5 — экспорт confidence.
+ReceiptSHA314a92ce4424aa953c0bbc0051f23117400ef101a6236ad1a626d2626bb5d009
+содержит команды, полный набор6 selectors и неизменный fingerprint исходников.
+Причиной прежних пяти encoder failures были автоматически добавляемые ImageIO
+APP1/APP13. Их удаление сохраняет сжатые пиксели и ICC, после чего проходят
+исходные строгие проверки. Отдельный fixture содержит реальные EXIF/GPS/
+UserComment/MakerNote bytes и проверяет неизменность изображения и входа.
+Исторический149-method FAIL не переписан.
+
+Экспорт больше не повышает и не ограничивает confidence отдельными от UI
+эвристиками. Он следует переданному presentation и отдельно указывает источник
+raw candidate evidence; скрытый вывод, NaN/Inf и прежний JSON проверены.
+Runtime admission, веса, калибровка и пороги качества не изменились.
+Число в экспорте не доказывает показ процента на экране. EV/CL-CA-JPEG-CONFIDENCE-
+20260916 внесены перед обновлением snapshots. Более поздняя привязка объекта
+к области наблюдения отдельно от цели кадрирования ещё требует интеграционной
+проверки. Облако, физическая съёмка и model admission не объявлены готовыми;
+главы3/4/5/6 и litreview в этом пакете не изменялись.
+
+### Camera Cloud integration and scoped qualification, 2026-09-17
+
+Applied Camera Cloud24 files reuse Scene installation authentication after exact selected-JPEG approval and return validated descriptive evidence to the existing local planner. Grounding separates observed regions from framing destinations; local component inventory, intent refresh6, scene-control answers, original AR assets, privacy4 and annotation HTML are applied. Later observed-marker and four-key RU/EN copy corrections preserve that distinction: exploratory camera relocation has no invented physical destination, direction or completion authority.
+
+The [canonical tracker](docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/EXECUTION_STATE.md) retains source-bound receipts and historical failures:97=92PASS/5FAIL with six missing selectors;39=34/5 closes those selection gaps;9=8/1 qualifies six persistence/race and two technical fixture cases. Initial Camera UI0/4 and later failed checkpoints remain recorded. Marker10 and geometry1 pass inside15=14/1, whose EN scene-control case stops at the44pt comparison before final reset/done. Current-copy iPhone4/4 completes consent and scene-control paths including final reset/done. Matching iPad2/4 passes portrait/RU paths, while two landscape cases fail the actual-viewport precondition. Automatic sensor rotation, iPad landscape and a production orientation cause remain unqualified.
+
+Nine of14 missing reference images were recovered with exact historical hashes. All seven required inputs now load in five replay methods: the unowned-light/subject-rotation policy passes, but underexposure, small-subject, clutter and edge-cutoff behavior assertions fail. Together with blank legacy AR rendering, the recovered-input run is1PASS/5FAIL; all12 sampled later AR frames remain blank. These are behavior failures without file errors. Five references remain missing; the four failures are not added to the historical22 until overlap is reconciled. No thresholds, labels or source-pack bytes were changed.
+
+The [NIMA qualification](../setos-backend/local-data/SETOS/verification/nima-ios-simulator-qualification-20260916-955kofxs/actual-subset-ntgmnl1w/qualification-receipt.json), SHA `6f90b13f290fe83de7952518d3468d6f9243f48118267dafe76c611f0d140dff`, binds3 passed Simulator methods to20 numeric rows:9CPU,9 nominal CPU/ANE and2 orientation. Canonical maximum probability error is4.559755325317383e-6 and score error1.2230419088155031e-5 in both nominal modes. No ANE execution was observed; timing includes two calls and fixture overhead. This does not admit model quality, rights, physical performance or release use; old bundled weights are unchanged and the whole39-method run remains FAIL. LASIESTA250 numeric preparation is complete as research tooling.
+
+The [backend final receipt](../setos-backend/local-data/SETOS/verification/camera-swift-backend-tls-20260916-ebpmho3j/FINAL_RECEIPT.json) qualifies73 scoped checks and native Swift→TLS→FastAPI behavior using synthetic JPEG/installation and a mocked provider. Corrected cancellation was repeated alone: POST499, DELETE204 after provider close, no remaining tasks/cache and reservation retained. Manifest-verified31-file archive SHA `07f4eed4fa259e5b4e2bb45b67e6f72cd1d5f537c51b9037c62ad05d1ec17770` passes local preflight; production configuration, live provider and real Apple enrollment remain open.
+
+Applied privacy copy distinguishes ephemeral image/context and bounded response cache from retained security/spend records. Debug/iPhoneSimulator compiled-content proof qualifies exact RU/EN666 Localizable+5Info entries, privacy checks and55 validator controls. The later applied [source/resource packet](../setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/receipt.json), SHA `11bf9ca47a7d217ac3b9d65cc46044d317b1697ee85292b4971b25bc64201179`, approves six scoped components: both original procedural AR assets, Localizable/Info resources, module-assets catalog and privacy manifest. Four remain PENDING: llama, DETR, NIMA and resource PNG/branding catalog. Exact official DETR/source/license correspondence is documented separately without model or replacement admission. Final Release bundle and physical AR gates remain open. Applied annotation HTML matches15JS-VM/7HTTP checks with no real provider/owner-journal actions; browser runs remain0.
+
+The preceding [19-method receipt](../setos-backend/local-data/SETOS/verification/release-execution-20260916/20260917T010521828370Z-camera-positive-coverage-direction-vision-ar-ui/receipt.json), SHA `31bfacbde0e290f32b75b0ebf606c44e69efbeac09b9ce2cde8b2800f8faeb1d`, is17PASS/2FAIL/0SKIP with every selector and unchanged source/tool. All11 positive-admission/integration,4 observed-direction and2 complete RU/EN advice/CTA UI methods pass. The shared guard requires current semantic coverage before good/style promotion, while preserving valid scene evidence, measured corrections and typed user intent. Its [source-bound subset qualification](../setos-backend/local-data/SETOS/verification/camera-positive-semantic-coverage-_nzezx87/native19-qualification/qualification-receipt.json), SHA `a8ed0f0fa82b6e613855934418077a1b4f8b3cafd99209ac15a87d4ff1d743bf`, binds actual180 to mixed/.4535 without KEEP, with unknown scene, unavailable Vision and a weak object/tie hypothesis. It does not validate tie identity or step_closer usefulness. The future-action exposure union does not establish raw underexposure classification. At that19-run checkpoint, default Vision isolation failed and AR A/B/A was incomplete. The later diagnostics and current six-method result below supersede those pending execution states. Physical/human/signing/hosting/provider-policy-budget gates stay open; release readiness is not claimed. Spend$0; no new commit or ASC action. Evidence, claims and affected snapshots are synchronized; chapters3/4/5/6 remain needs_update, with chapter text, litreview and historical commit metadata unchanged.
+
+Latest execution update: The later source-bound6-method checkpoint is1PASS/5FAIL/0SKIP: the actual production Vision owner on184 passes with Simulator CPU compatibility, while all five recovered legacy replay methods fail their unchanged behavior assertions. Earlier180/KEEP and control-policy passes belong to their earlier source/execution conditions; they are not current quality acceptance. Failure of the policy-named method is a no-KEEP assertion, not evidence that forbidden physical actions leaked. No thresholds or labels were changed. See the canonical tracker for run012215 and receipt8b4e1925… . Chapters3/4/5/6 remain needs_update.
+
+
+2026-09-17 followup: the [Full Screen Settings run](../setos-backend/local-data/SETOS/verification/release-execution-20260916/20260917T012555189114Z-camera-ipad-full-screen-mode-layout/receipt.json) completed0PASS/2FAIL/0SKIP with all selectors and unchanged source/tool. Both Settings selection/restoration triples complete, but the application remainsUIScene101/820×1180; effective application mode and landscape acceptance remain unknown. Fresh-read/identity instrumentation is applied; run014636 failed compilation with0 tests and the corrected repeat stopped before Xcode at the8GiB storage guard; the rejected framebuffer attempt restored original geometry without rotation acceptance. The release DETR gate, bounded bundle fixtures and spatial intake are applied (five-file receipt957ce1c6…). Applied-source checksdd149b0e… pass8 DETR controls, both source notices and shell syntax; the actual spatial CLI reproduces the reviewed bytes. Full-app negative controls await the fresh archive. Six scoped resource approvals and four PENDING are unchanged. Applied spatial intake preserves17 assisted confirmations and one table→center preference as research evidence. Its15 metadata controls and3 actual-loader promotion rejections pass; the applied CLI reproduces the reviewed one-row projection without changing the journal. The single model ROI is an unconfirmed candidate; selected candidate, actuator, geometric targets/deltas and observed outcome remain unknown. Neural admission0, model forwards0, optimizer steps0 and provider calls0; no training or human_gold is claimed. The [applied-source receipt](../setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/applied-source-checks/receipt.json), SHA `dd149b0eb0bf8286ec829521bc184749e55b0c1277398afc18cc0ac241609a54`, and EV-IOS-CLOUD-FOLLOWUP/EV-CA-PARTIAL-INTAKE preserve the exact evidence. Old-predicate replay-priority controls are applied but run014636 failed compilation before tests; no priority correction or180 quality fix is claimed. Chapters3/4/5/6 remain needs_update; chapter text/litreview and thresholds are unchanged. Spend$0; NOT READY.
+
+
+2026-09-17 — completed archive050524 packet supersedes earlier latest-execution labels: local placement now feeds paused next-take instruction; current RU/EN UI2/2, DETR/metadata/AR/projection37/37, actual bundled019 request1/1 and replay arbitration3/3 pass within their recorded scope. Annotation/runtime browser subsets and v2 lease/JSON controls are qualified; owner answers remain pending. Conditional research ROI offset supplies no neural/physical target admission. Identified unsigned engineering archive050524 compiles successfully (build0); release validation1 and wrapper2 retain exactly four known blockers. Its frozen source and bundle identity are verified; it is not distribution-signed or release-ready. Four PENDING, five legacy behavior failures, AR render/lifecycle, iPad landscape and human/physical/production gates remain open. No fit, threshold change or new human_gold. See [EXECUTION_STATE](docs/aegis/work/2026-09-03-gpt-5-6-pro-guidance/EXECUTION_STATE.md) and the [evidence map](docs/thesis/03_evidence_map.md). Chapters3/4/5/6 remain needs_update; chapter/litreview text and historical metadata unchanged.
+
+### 2026-09-17 — целостность ID при импорте и восстановлении очереди Camera
+
+Проверен конкретный дефект инструмента данных: в сыром SceneTrans900 записей имеют450 уникальных ID (300 идентификаторов повторяются между группами), поэтому прежний `--extra-manifest` молча сохранял450 строк и возвращал успех. Текущий производный пакет уже имел900 уникальных ID и450 корректных связей A/B; текущие review384 и pilot300 не содержат SceneTrans. Повреждение их меток или обучения не установлено.
+
+Применённый код отклоняет конфликт ID до записи output, сохраняет семантику точного повторного импорта и проверяет дубликаты при повторном открытии/direct Review и построении индекса кадров. Девять новых регрессий дали на прежнем коде7FAIL/2PASS; кандидат и затем actual main с существующими consistency/recovery тестами дали44PASS/0FAIL, exit0 ([применённая квитанция](../setos-backend/local-data/SETOS/verification/annotation-record-identity-s2y7d7p6/root-applied-receipt.json)). Независимая [проверка реального CLI](../setos-backend/local-data/SETOS/verification/annotation-record-identity-s2y7d7p6/applied-real-import-receipt.json), SHA `ac4d65004877f327f7d415c3a9beee545ceac424ef00f0ce3ff6b954b6b95caa`, отклонила raw900 без вызова записи и сохранила все900 нормализованных строк/450 связей; запись результата перехвачена. Исходные данные, receipts и журналы не изменены, provider/модель/голоса владельца не использовались. EV/CL-CA-ANNOTATION-IDENTITY-20260917 — доказательство целостности инструмента, не качества модели или допуска к релизу. Главы4/5 остаются `needs_update`; главы, litreview и исторические commit-метаданные сохранены.
+
+### 2026-09-17 — фактический DETR host-прогон и уточнение evidence notices
+
+Один macOS-прогон использовал неизменённый production `DETRDetector.swift` и compiled-модель из unsigned-архива 050524: получены 78 успешных результатов для 42 пар/84 ссылок SceneTrans, без повторного inference при проверке. Независимо пересчитаны RGB SHA, привязка пяти файлов модели и кривые пространственного совпадения ([квалификация и определения метрик](../setos-backend/local-data/SETOS/verification/model-quality-next-local-w29enczq/qualification-v1/QUALIFICATION.md); receipt SHA `28115df086e118cf8b5f704895eedded0e9e6a225dbb040e2198664e22ea06a1`). Медиана 77.027 мс и p95 80.444 мс включают чтение PNG, decode, source/RGB hashing, Vision/Core ML и выделение областей; это не device latency. Измеряется попадание projected origin в область, а не semantic recall: origin может лежать вне видимого объекта. Одна development-сцена и AI review contact sheets не дают human-gold, identity или качества советов.
+
+[Применённое уточнение notices](../setos-backend/local-data/SETOS/verification/model-quality-next-local-w29enczq/qualification-v1/root-notice-applied.json) подтверждает 8 main checks и наличие обоих точных документов в source/bundle архивного snapshot. Исправлены только устаревшие формулировки и pin provenance record; веса, gates и archive не заменены. Четыре Release blockers остаются. EV/CL-CA-DETR-ORIGIN-20260917 и EV/CL-REL-DETR-NOTICES-20260917 синхронизированы; главы 4/5 остаются `needs_update`, тексты глав/litreview и исторические commit-метаданные сохранены.
+
+### 2026-09-17 — неполное покрытие, диагностика измерений и спокойный разбор кадра
+
+Фактически выполнены отдельные контрольные точки: 38 contract/pipeline проверок, 10 проверок диагностики потреблённых пиксельных измерений, 2 прежних тестовых метода для кадров 180/188/204 и 14 presentation/UI проверок. [Общий отчёт с точными receipt и границами доказательств](../setos-backend/local-data/SETOS/verification/camera-review-uncertainty-oks7cmxc/QUALIFICATION.md) разделяет их исходники и результаты. Исходные два падения сохранены. В текущем прогоне те же тела методов проходят, поскольку partial coverage убирает необоснованный KEEP: good меняется на mixed, список исполняемых semantic actions пуст. Результаты моделей и прежние численные поля, кроме verdict confidence, совпадают; это не доказательство качества нового совета. Дополнительная DEBUG-диагностика фиксирует реальные операнды уже выполненного измерения, не пересканирует кадр ради объяснения результата.
+
+Первоначальные два UI-теста прошли, но визуальная проверка выявила повтор причины неполной оценки и сообщение о сравнении при verification=none. После точечной правки фактические 14 проверок проходят; [независимая проверка сохранённых результатов](../setos-backend/local-data/SETOS/verification/camera-review-uncertainty-oks7cmxc/final-ui-qualification.json) связывает 85 attachments, четыре исходных файла, owner-state и compiled/installed binaries. В EN/RU XXL остаётся одна нейтральная причина и видимая кнопка следующего дубля; исчезли дубли и непрошеное предупреждение о сравнении. Отдельный результат сравнения не подменяется пользовательской оценкой. Полная достижимость нижнего human-input текста в RU ещё требует подготовленного scroll-контроля; вся геометрия интерфейса не объявляется проверенной.
+
+Статическая [карта production owners](../setos-backend/local-data/SETOS/verification/camera-review-uncertainty-oks7cmxc/verification-ui-path.md) подтверждает действующий live-путь ActionVerifier → episode-bound result → command band. Pause-разбор отдельного снимка не получает старый live result после stop/cancel; безопасный адаптер потребовал бы точного совпадения кадра, поколения и контекста. EV/CL-CA-PARTIAL-20260917, EV/CL-CA-CONSUMED-20260917 и EV/CL-CA-REVIEW-20260917 синхронизированы. Positive blur, субъективная полезность, калибровка и физические проверки остаются открытыми. Архив 050524/source `d974816b…` и четыре Release blockers не изменены; главы 4/5 остаются `needs_update`, главы/litreview не переписаны.
+
+### 2026-09-17 — фиксация рабочего дерева: четыре коммита, пустой diff
+
+Владелец отдельно разрешил коммиты ранее незакоммиченных изменений. Рабочее дерево, остававшееся поверх `c5eb957975cb4f2ee1beb98df49572ec806dd520` (172 пути: 106 изменённых файлов и 66 новых), зафиксировано четырьмя пакетами; содержимое файлов при этом не редактировалось.
+
+- `d4815f3` — приложение, 120 путей: согласованный cloud pause review (`CameraCloudAnalysisClient`/wire/preprocessor/pause-context/consent и inert `CameraCloudServiceBootstrap`), удаление установки, `BoundedServiceHTTPTransport`, локальные pause/placement/scene-control поверхности, native iPad windowing (`UIRequiresFullScreen=NO` во всех конфигурациях), DETR и procedural legal ресурсы, расширенные unit/UI-наборы.
+- `b6b42b5` — релизный инструментарий и провенанс, 29 путей: процедурный AR-гейт вместо Circle rcproject-корреляции, DETR legal, локализационная целостность source-vs-compiled, измеряемые camera-gate метрики, обновлённые provenance/release записи и notices.
+- `25460d6` — разметчик, 8 путей: research-only `spatial_request_intake.py`, исправления review/revision и очереди, тесты идентичности записей.
+- Настоящий docs-пакет, 15 путей: данная запись, release execution plan, EXECUTION_STATE, cameraanalysis 03/25/27/30/32, thesis evidence map/claim registry и snapshots.
+
+После фиксации обычный/staged diff и untracked status пусты. Ничего не отправлено: push, PR, reset, stash и действия в App Store Connect не выполнялись. Cloud-путь остаётся выключенным без `SETOSSceneBaseURL` и публичной policy; четыре Release blockers, PENDING-компоненты и открытые физические/человеческие/hosting-гейты этим коммитом не изменены и не закрыты.

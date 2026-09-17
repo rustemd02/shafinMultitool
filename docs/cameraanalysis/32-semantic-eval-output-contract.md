@@ -35,7 +35,10 @@ Each output row represents what a candidate system would show for one labeled im
 - `shown`: whether a user-facing tip would be shown.
 - `semantic_actions`: closed catalog actions currently expressible by the app.
 - `future_actions`: technical/IQA actions that are tracked by eval but not yet part of the current live semantic UI.
-- `confidence`: number in `[0, 1]`.
+- `confidence`: number in `[0, 1]`. For Swift rows this is the normalized
+  numeric score attached to the supplied presentation, not an independently
+  adjusted evaluation score, established probability or proof of a visible
+  percentage on the current product screen.
 - `source`: candidate id, for example `proxy_current_limitations`.
 - `runtime_claim`: whether this is a real runtime result or proxy/oracle data.
 
@@ -79,7 +82,77 @@ Current mapping:
 - `LiveHintPresentation.actionType` -> closed `SemanticActionType` raw values.
 - `PauseActionRow.semanticActionType` -> closed `SemanticActionType` raw values.
 - `PauseActionRow.actionType` remains the coarse transport/UI action and must not be used as the only source for semantic eval scoring.
-- hidden/no-tip state -> `shown = false`, empty action lists.
+- hidden/no-tip state -> `shown = false`, empty `semantic_actions`; separately tracked `future_actions` may remain and do not imply a visible instruction.
+
+### Confidence observations
+
+For Swift presentation rows, canonical `confidence` uses the existing
+`ConfidencePresentation.make(...).value` conversion shared with numeric
+confidence consumers such as Decision Trace:
+
+- live: `LiveHintPresentation.confidence`;
+- pause: `PauseCritiquePresentation.verdictConfidence`;
+- no presentation: zero by the existing hidden-row convention. Zero in this
+  case does not mean that an observed advice confidence was zero.
+
+The exporter must not add a technical floor, apply scene-specific caps or
+promote a score into a target band. Any policy already applied by the
+presentation builder remains part of the presentation; exporting it does not
+validate that policy or establish probability calibration.
+
+New Swift rows include optional `confidence_evidence`:
+
+| Field | Meaning |
+| --- | --- |
+| `source` | Exact presentation property above, or `no_presentation`. |
+| `context` | `supplied_presentation` or `still_replay_candidate`. |
+| `presentation_frame_id` | Frame belonging to the supplied presentation, when present. |
+| `critique_verdict_confidence` | Finite post-fusion `CritiqueReport.verdictConfidence`, only when supplied by the producer. |
+| `presentation_confidence` | Finite presentation score before the UI's bounded conversion; absent for hidden rows or non-finite input. |
+
+Absent evidence in a historical row is unknown. An absent optional score is
+unknown or invalid, never an observed zero. Non-finite observations are omitted
+while source/context are retained; finite out-of-range raw scores remain
+observable. Canonical confidence still uses the original presentation score
+through the existing UI conversion. Non-finite entries in the diagnostic
+numeric-feature map are omitted so one invalid debug score cannot break JSON
+encoding for the whole row. These fields never infer
+critique confidence from an arbitrary debug-feature map. The existing
+`debug_numeric_features.verdict_confidence` remains a legacy diagnostic of
+the critique stage; it is not the UI score.
+
+`still_replay_candidate` explicitly identifies a presentation produced by
+the still-image builders. Live replay bypasses production frame admission,
+temporal confirmation, publication and retention; the row is not proof that
+the same hint was accepted or displayed during live capture. A caller testing
+pipeline retention must export the retained `currentLiveHint`, not a pending
+replacement. A caller testing the user's presentation must observe the
+selected UI route after its own publication and readiness gates:
+
+- The primary Camera Coach route is `CameraViewModel` →
+  `SETCameraCoachProductionView`. Live hints pass through the view model's
+  `applyLiveHint`, which can suppress them for analysis/performance state.
+  Pause UI requires `isPauseProjectionReady` and an accepted snapshot. Its
+  selected critique prefers the value in `pausePresentationState.success`,
+  then falls back to `CameraViewModel.pauseCritique`; that selected value feeds
+  `CameraReviewPresentation.make`. The review projection does not expose a
+  confidence percentage.
+- The additional Scene Generator route reads
+  `SceneGeneratorViewModel.liveHint` / `hintPauseCritique` through
+  `makeHintDecisionTrace()`. Its pause critique is applied only when the
+  accepted snapshot has a display image; Decision Trace uses the numeric
+  confidence converter above.
+
+A pipeline publication or exported numeric score alone establishes neither
+UI acceptance nor that a percentage was rendered on the primary camera screen.
+
+The scorer's multi-mode merge selects the maximum confidence from shown rows
+with semantic actions, otherwise shown rows, otherwise all rows. That is an
+evaluation aggregation across modes, not one observed UI confidence. Its
+existing high/medium/low thresholds and labels remain separate from the UI's
+display tones and are unchanged by this producer correction. Historical
+exports that used exporter-only floors/caps cannot be interpreted as recorded
+UI confidence without the corresponding presentation evidence.
 
 DEBUG replay API:
 
