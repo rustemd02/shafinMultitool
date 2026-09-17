@@ -1583,6 +1583,167 @@ final class VLMVisualEvidenceContractTests: XCTestCase {
         XCTAssertEqual(decoded, response)
     }
 
+    func testSelectedStillAcceptsExplicitUnredactedMetadataWithinBounds() {
+        for edge in [1, 768, 1_024] {
+            let input = selectedStillInput(longEdgePx: edge)
+            let request = selectedStillRequest(visualInput: input)
+            XCTAssertTrue(request.validate().isEmpty, "Valid metadata edge=\(edge)")
+            XCTAssertEqual(request.trigger, .explicitUserRequest)
+            XCTAssertEqual(request.visualInput?.attachmentKind, .userSelectedStill)
+            XCTAssertEqual(request.visualInput?.exifStripped, true)
+            XCTAssertEqual(request.visualInput?.redactionApplied, false)
+            let response = makeProblemResponse(privacyTier: .authorizedSelectedStill)
+            XCTAssertTrue(response.validate(against: request).accepted)
+        }
+    }
+
+    func testSelectedStillRejectsMissingOrAmbientTriggerAndLiveMode() {
+        let input = selectedStillInput()
+        let triggers: [VLMTrigger?] = [nil] + VLMTrigger.allCases
+            .filter { $0 != .explicitUserRequest }.map { Optional($0) }
+        for trigger in triggers {
+            let request = selectedStillRequest(trigger: trigger, visualInput: input)
+            XCTAssertTrue(request.validate().contains(.privacyTierMismatch), "\(String(describing: trigger))")
+        }
+        XCTAssertTrue(selectedStillRequest(visualInput: nil).validate().contains(.privacyTierMismatch))
+        XCTAssertTrue(selectedStillRequest(mode: .live, visualInput: input).validate().contains(.modeNotPause))
+    }
+
+    func testSelectedStillRejectsMalformedDigestIncorrectFlagsAndAttachmentKinds() {
+        let digest = String(repeating: "a", count: 64)
+        let invalidReferences = [
+            "", digest, "SHA256:" + digest, "sha256:" + String(repeating: "A", count: 64),
+            "sha256:" + String(repeating: "a", count: 63), "sha256:" + String(repeating: "a", count: 65),
+            "sha256:" + String(repeating: "g", count: 64), "sha256:" + digest + "\n",
+            "sha256: " + digest, "sha256:" + String(repeating: "é", count: 64)
+        ]
+        for reference in invalidReferences {
+            let request = selectedStillRequest(visualInput: selectedStillInput(mediaRef: reference))
+            XCTAssertTrue(request.validate().contains(.privacyTierMismatch), reference)
+        }
+        let invalidInputs = [
+            selectedStillInput(longEdgePx: -1), selectedStillInput(longEdgePx: 0),
+            selectedStillInput(longEdgePx: 1_025), selectedStillInput(exifStripped: false),
+            selectedStillInput(redactionApplied: true),
+            selectedStillInput(attachmentKind: .redactedStill),
+            selectedStillInput(attachmentKind: .redactedSubjectCrop)
+        ]
+        for input in invalidInputs {
+            XCTAssertTrue(selectedStillRequest(visualInput: input).validate().contains(.privacyTierMismatch))
+        }
+    }
+
+    func testSelectedStillDoesNotRelaxExistingRedactedOrStructuredPrivacyContracts() {
+        let selected = selectedStillInput()
+        XCTAssertTrue(makeRequest(privacyTier: .structuredOnly, visualInput: selected)
+            .validate().contains(.privacyTierMismatch))
+        XCTAssertTrue(makeRequest(privacyTier: .redactedVisual, visualInput: selected)
+            .validate().contains(.privacyTierMismatch))
+        // Relabelling selected pixels as redacted is insufficient even with a true flag.
+        let falseRedactedKind = selectedStillInput(redactionApplied: true)
+        XCTAssertTrue(makeRequest(privacyTier: .redactedVisual, visualInput: falseRedactedKind)
+            .validate().contains(.privacyTierMismatch))
+        for kind in [VLMVisualInputAttachmentKind.redactedStill, .redactedSubjectCrop] {
+            let unredacted = selectedStillInput(attachmentKind: kind, redactionApplied: false)
+            XCTAssertTrue(makeRequest(privacyTier: .redactedVisual, visualInput: unredacted)
+                .validate().contains(.privacyTierMismatch))
+            let redacted = selectedStillInput(attachmentKind: kind, redactionApplied: true)
+            XCTAssertTrue(makeRequest(privacyTier: .redactedVisual, visualInput: redacted).validate().isEmpty)
+        }
+    }
+
+    func testSelectedStillRoundTripPreservesHonestFlagsWithoutClaimingPixelVerification() throws {
+        let request = selectedStillRequest(visualInput: selectedStillInput())
+        let encoded = try JSONEncoder().encode(request)
+        let decoded = try JSONDecoder().decode(VLMVisualEvidenceRequest.self, from: encoded)
+        XCTAssertEqual(decoded, request)
+        XCTAssertEqual(decoded.privacyTier.rawValue, "authorized_selected_still")
+        XCTAssertEqual(decoded.visualInput?.attachmentKind.rawValue, "user_selected_still")
+        XCTAssertEqual(decoded.visualInput?.redactionApplied, false)
+        // This DTO has no bytes. A different, well-formed digest is structurally valid;
+        // the prepared-media/request owner must verify actual bytes and dimensions.
+        let other = selectedStillRequest(visualInput: selectedStillInput(
+            mediaRef: "sha256:" + String(repeating: "b", count: 64)
+        ))
+        XCTAssertNotEqual(other.visualInput?.mediaRef, request.visualInput?.mediaRef)
+        XCTAssertTrue(other.validate().isEmpty)
+    }
+
+    func testSelectedStillPrivacyTierDoesNotGrantCoordinatorConsent() async {
+        let request = selectedStillRequest(visualInput: selectedStillInput())
+        XCTAssertTrue(request.validate().isEmpty)
+        for remoteCapable in [false, true] {
+            // The offline case isolates the selected-tier guard from the generic
+            // remote-provider consent guard; the remote case covers their composition.
+            let provider = SelectedStillConsentSpyProvider(
+                response: makeProblemResponse(privacyTier: .authorizedSelectedStill),
+                remoteCapable: remoteCapable
+            )
+            let withoutApproval = VisualSemanticEvidenceCoordinator(provider: provider)
+            let blocked = await withoutApproval.fetchEvidence(request: request)
+            guard case let .skipped(reason, diagnostics) = blocked else {
+                XCTFail("A valid selected-still DTO must not itself authorize a provider call")
+                return
+            }
+            XCTAssertEqual(reason, "consent_revoked")
+            XCTAssertEqual(diagnostics.fallbackReason, "consent_revoked")
+            let callsBeforeApproval = await provider.invocations
+            XCTAssertEqual(callsBeforeApproval, 0)
+
+            // Positive control: the exact same candidate reaches this in-memory provider
+            // once when the separate coordinator consent callback grants it. This callback
+            // is not transport approval or proof of real JPEG/policy/body binding.
+            let withApproval = VisualSemanticEvidenceCoordinator(provider: provider, isConsentGranted: { true })
+            let admitted = await withApproval.fetchEvidence(request: request)
+            guard case let .accepted(validation, _) = admitted else {
+                XCTFail("Expected the otherwise-identical, explicitly granted control to reach validation")
+                return
+            }
+            XCTAssertTrue(validation.accepted)
+            let callsAfterApproval = await provider.invocations
+            XCTAssertEqual(callsAfterApproval, 1)
+        }
+    }
+
+    private func selectedStillInput(
+        attachmentKind: VLMVisualInputAttachmentKind = .userSelectedStill,
+        mediaRef: String = "sha256:" + String(repeating: "a", count: 64),
+        longEdgePx: Int = 768, exifStripped: Bool = true, redactionApplied: Bool = false
+    ) -> VLMVisualInput {
+        .init(attachmentKind: attachmentKind, mediaRef: mediaRef, longEdgePx: longEdgePx,
+              exifStripped: exifStripped, redactionApplied: redactionApplied, redactionNotes: [])
+    }
+
+    private func selectedStillRequest(
+        mode: AnalysisMode = .pause, trigger: VLMTrigger? = .explicitUserRequest,
+        visualInput: VLMVisualInput?
+    ) -> VLMVisualEvidenceRequest {
+        let base = makeRequest(mode: mode, privacyTier: .authorizedSelectedStill, visualInput: visualInput)
+        return .init(schemaVersion: base.schemaVersion, requestId: base.requestId,
+                     frameId: base.frameId, mode: base.mode, locale: base.locale,
+                     privacyTier: base.privacyTier, trigger: trigger, visualInput: base.visualInput,
+                     localContext: base.localContext, allowedCatalog: base.allowedCatalog,
+                     constraints: base.constraints, correlation: base.correlation)
+    }
+
+    private actor SelectedStillConsentSpyProvider: VisualSemanticEvidenceProvider {
+        nonisolated let providerId = "mock-vlm-semantic-v1"
+        nonisolated let capabilities: VisualSemanticEvidenceCapabilities
+        private let response: VLMVisualEvidenceResponse
+        private(set) var invocations = 0
+
+        init(response: VLMVisualEvidenceResponse, remoteCapable: Bool) {
+            self.response = response
+            self.capabilities = .init(supportsOffline: !remoteCapable, supportsRemote: remoteCapable,
+                                      supportsPrivacyTiers: [.authorizedSelectedStill])
+        }
+
+        func fetchVisualEvidence(request: VLMVisualEvidenceRequest) async throws -> VLMVisualEvidenceResponse {
+            invocations += 1
+            return response
+        }
+    }
+
     private func makeRequest(mode: AnalysisMode = .pause,
                              privacyTier: VLMPrivacyTier = .redactedVisual,
                              visualInput: VLMVisualInput? = VLMVisualInput(
@@ -2372,6 +2533,71 @@ private extension CameraAnalysisExplainabilityContractTests {
 }
 
 final class FeatureSnapshotAggregatorTests: XCTestCase {
+    func testDetrRegionDoesNotInheritDisjointVisionPersonKind() throws {
+        let snapshot = makeSourceKindSnapshot(visionConfidence: 0.60, isFace: false)
+        let objectRegion = try XCTUnwrap(snapshot.subjectSignals.topObjectRegion)
+        XCTAssertEqual(snapshot.subjectSignals.primaryCandidateSource, .detr)
+        XCTAssertTrue(snapshot.subjectSignals.personDetected)
+
+        let resolved = PrimarySubjectResolver().resolve(snapshot: snapshot).primarySubject
+        XCTAssertEqual(resolved.kind, .object)
+        XCTAssertEqual(resolved.label, "curtain")
+        XCTAssertEqual(resolved.region, objectRegion)
+        XCTAssertNotEqual(resolved.region, NormalizedRect(x: 0.1, y: 0.2, width: 0.2, height: 0.5))
+    }
+
+    func testDetrRegionDoesNotInheritOverlappingVisionFaceKind() {
+        let snapshot = makeSourceKindSnapshot(visionConfidence: 0.60, isFace: true, overlapsObject: true)
+        XCTAssertEqual(snapshot.subjectSignals.primaryCandidateSource, .detr)
+        XCTAssertTrue(snapshot.subjectSignals.faceDetected)
+
+        let resolved = PrimarySubjectResolver().resolve(snapshot: snapshot).primarySubject
+        XCTAssertEqual(resolved.kind, .object)
+        XCTAssertEqual(resolved.label, "curtain")
+        XCTAssertEqual(resolved.region, snapshot.subjectSignals.topObjectRegion)
+    }
+
+    func testVisionPrimaryKeepsItsOwnPersonRegionWithDetrPresent() {
+        let snapshot = makeSourceKindSnapshot(visionConfidence: 0.95, isFace: false)
+        XCTAssertEqual(snapshot.subjectSignals.primaryCandidateSource, .vision)
+        let resolved = PrimarySubjectResolver().resolve(snapshot: snapshot).primarySubject
+        XCTAssertEqual(resolved.kind, .person)
+        XCTAssertEqual(resolved.region, NormalizedRect(x: 0.1, y: 0.2, width: 0.2, height: 0.5))
+        XCTAssertNotEqual(resolved.region, snapshot.subjectSignals.topObjectRegion)
+    }
+
+    func testDetrOnlyObjectRetainsItsLabelAndRegion() {
+        let snapshot = makeSourceKindSnapshot(visionConfidence: nil, isFace: false)
+        XCTAssertEqual(snapshot.subjectSignals.primaryCandidateSource, .detr)
+        let resolved = PrimarySubjectResolver().resolve(snapshot: snapshot).primarySubject
+        XCTAssertEqual(resolved.kind, .object)
+        XCTAssertEqual(resolved.label, "curtain")
+        XCTAssertEqual(resolved.region, snapshot.subjectSignals.topObjectRegion)
+    }
+
+    private func makeSourceKindSnapshot(visionConfidence: Double?, isFace: Bool,
+                                        overlapsObject: Bool = false) -> FrameFeatureSnapshot {
+        let capturedAt = Date(timeIntervalSince1970: 1_789_624_800)
+        // Exact saved native component from development probe image19b9a976...
+        // The accompanying Vision observation is an explicit synthetic control.
+        let objectBox = CGRect(x: 0.9241071428571429, y: 0.1808035714285714,
+                               width: 0.07589285714285714, height: 0.6294642857142857)
+        let support = 0.6272919178009033
+        let vision = visionConfidence.map { confidence in
+            makeVisionSample(
+                measuredAt: capturedAt, baseConfidence: confidence,
+                subjects: [.init(
+                    boundingBox: overlapsObject ? objectBox : CGRect(x: 0.1, y: 0.2, width: 0.2, height: 0.5),
+                    confidence: confidence, isFace: isFace)],
+                saliencyCenter: nil, faceCount: isFace ? 1 : 0, personCount: 1)
+        }
+        return FeatureSnapshotAggregator().makeSnapshot(from: makeInput(
+            capturedAt: capturedAt, evaluatedAt: capturedAt, vision: vision,
+            detr: makeDetrSample(
+                measuredAt: capturedAt, baseConfidence: support,
+                detections: [.init(boundingBox: objectBox, label: "curtain", confidence: support)])))
+    }
+
     func testAggregatorIsDeterministicForSameInput() {
         let aggregator = FeatureSnapshotAggregator()
         let capturedAt = Date(timeIntervalSince1970: 1_776_000_000)

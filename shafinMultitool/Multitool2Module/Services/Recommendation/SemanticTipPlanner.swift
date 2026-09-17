@@ -8,6 +8,7 @@ struct SemanticTipPlannerInput: Sendable {
     let semantics: SceneSemanticsReport
     let validatedEvidence: VLMEvidenceValidationResult?
     let currentLiveTipKey: String?
+    let sceneControlFacts: PauseSceneControlFacts
 
     init(frameId: String,
          mode: AnalysisMode,
@@ -15,7 +16,8 @@ struct SemanticTipPlannerInput: Sendable {
          recommendationPlan: RecommendationPlan,
          semantics: SceneSemanticsReport,
          validatedEvidence: VLMEvidenceValidationResult? = nil,
-         currentLiveTipKey: String? = nil) {
+         currentLiveTipKey: String? = nil,
+         sceneControlFacts: PauseSceneControlFacts = .unknown) {
         self.frameId = frameId
         self.mode = mode
         self.critique = critique
@@ -23,6 +25,7 @@ struct SemanticTipPlannerInput: Sendable {
         self.semantics = semantics
         self.validatedEvidence = validatedEvidence
         self.currentLiveTipKey = currentLiveTipKey
+        self.sceneControlFacts = sceneControlFacts
     }
 }
 
@@ -238,13 +241,27 @@ struct SemanticTipPlanner {
         var usedGenericFallback = false
 
         let rankedCandidates: [RankedSemanticTipCandidate]
-        if input.critique.verdict == .good || input.critique.issues.isEmpty {
+        if input.critique.verdict == .good {
             rankedCandidates = makePositiveCandidates(input: input, evidence: evidence, usedGenericFallback: &usedGenericFallback)
+        } else if input.critique.issues.isEmpty {
+            // No detected defect is not proof that the frame was assessed as
+            // good. Unavailable measurements must not create a synthetic
+            // frame-ready strength or a keep-current-setup action.
+            rankedCandidates = []
+            notes.append("no_supported_correction_for_non_good_frame")
         } else {
             rankedCandidates = makeCorrectiveCandidates(input: input, evidence: evidence, notes: &notes, usedGenericFallback: &usedGenericFallback)
         }
 
-        let deduped = deduplicateAndSort(rankedCandidates)
+        // Filter before pause selection so an unowned physical operation cannot
+        // displace an available camera alternative from the bounded tip list.
+        let admissibleCandidates = rankedCandidates.filter {
+            input.mode != .pause || input.sceneControlFacts.permits($0.candidate.actionType, forFrameID: input.frameId)
+        }
+        if admissibleCandidates.count != rankedCandidates.count {
+            notes.append("pause_physical_action_requires_explicit_scene_control")
+        }
+        let deduped = deduplicateAndSort(admissibleCandidates)
         let allCandidates = deduped.map(\.candidate)
 
         let livePrimaryTip: SemanticTipCandidate?

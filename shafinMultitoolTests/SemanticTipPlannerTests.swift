@@ -279,7 +279,10 @@ final class SemanticTipPlannerTests: XCTestCase {
                 critique: critique,
                 recommendationPlan: plan,
                 semantics: makeSemantics(frameId: critique.frameId, mode: .pause, subjectKind: .person),
-                validatedEvidence: evidence
+                validatedEvidence: evidence,
+                // Controlled prop fixture: the photographer may move this vase.
+                // The VLM entity itself does not grant this separate fact.
+                sceneControlFacts: .init(frameID: critique.frameId, objects: .allowed)
             )
         )
 
@@ -335,7 +338,10 @@ final class SemanticTipPlannerTests: XCTestCase {
                 mode: .pause,
                 critique: critique,
                 recommendationPlan: plan,
-                semantics: makeSemantics(frameId: critique.frameId, mode: .pause, subjectKind: .object)
+                semantics: makeSemantics(frameId: critique.frameId, mode: .pause, subjectKind: .object),
+                // Controlled tabletop fixture; this test isolates label fallback,
+                // and deliberately supplies no additional grounding evidence.
+                sceneControlFacts: .init(frameID: critique.frameId, objects: .allowed)
             )
         )
 
@@ -392,7 +398,10 @@ final class SemanticTipPlannerTests: XCTestCase {
                 mode: .pause,
                 critique: critique,
                 recommendationPlan: plan,
-                semantics: makeSemantics(frameId: critique.frameId, mode: .pause, subjectKind: .object)
+                semantics: makeSemantics(frameId: critique.frameId, mode: .pause, subjectKind: .object),
+                // The photographer controls this staged object; direction still
+                // comes from the observed edge and the existing action catalog.
+                sceneControlFacts: .init(frameID: critique.frameId, objects: .allowed)
             )
         )
 
@@ -449,6 +458,30 @@ final class SemanticTipPlannerTests: XCTestCase {
         XCTAssertEqual(output.livePrimaryTip?.tipType, .keepFocusHierarchy)
         XCTAssertEqual(output.livePrimaryTip?.actionType, .keepCurrentSetup)
         XCTAssertEqual(output.livePrimaryTip?.summaryId, critique.summary.id)
+    }
+
+    func testNonGoodFrameWithoutIssuesCannotCreatePositiveCandidateInEitherMode() {
+        for mode in [AnalysisMode.live, .pause] {
+            for verdict in [FrameVerdict.mixed, .needsFix] {
+                let critique = makeCritique(
+                    frameId: "no-measurement", mode: mode, verdict: verdict, issues: []
+                )
+                let plan = RecommendationPlan(
+                    frameId: critique.frameId, mode: mode, inputVerdict: verdict,
+                    primaryAction: nil, secondaryActions: [], deferredActions: [],
+                    noChangeRationale: nil, planConfidence: 0.9
+                )
+                let output = planner.plan(input: SemanticTipPlannerInput(
+                    frameId: critique.frameId, mode: mode, critique: critique,
+                    recommendationPlan: plan,
+                    semantics: makeSemantics(frameId: critique.frameId, mode: mode, subjectKind: .person)
+                ))
+                XCTAssertNil(output.livePrimaryTip)
+                XCTAssertTrue(output.pauseExpandedTips.isEmpty)
+                XCTAssertTrue(output.allRankedCandidates.isEmpty)
+                XCTAssertTrue(output.selectionTraceNotes.contains("no_supported_correction_for_non_good_frame"))
+            }
+        }
     }
 
     func testWeakNoClearFocusDoesNotInventStepCloserOrSimplifyBackground() {
@@ -1485,7 +1518,7 @@ final class SemanticTipPlannerTests: XCTestCase {
         )
         let snapshot = FeatureSnapshotAggregator().makeSnapshot(from: input)
         let semantics = SceneSemanticsAnalyzer().analyze(snapshot: snapshot)
-        let critique = FrameCritiqueEngine().analyze(snapshot: snapshot, semantics: semantics)
+        let critique = CameraMeasuredPixelCritiqueFixture.analyze(snapshot: snapshot, semantics: semantics)
         let plan = RecommendationPlanner().makePlan(snapshot: snapshot, critique: critique)
         return LiveProductionFixture(
             snapshot: snapshot,

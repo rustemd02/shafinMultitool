@@ -141,10 +141,14 @@ private struct SETCameraCoachRuntimeSurface: View {
     @Environment(\.scenePhase) private var scenePhase
 #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.setReduceMotionOverride) private var reduceMotionOverride
+    @Environment(\.setReduceTransparencyOverride) private var reduceTransparencyOverride
     @Environment(\.locale) private var locale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @StateObject private var previewTransformStore = CameraPreviewTransformStore()
     @State private var isProControlsPresented = false
+    @State private var sceneControlSnapshotID: String?
+    @State private var imagePlacementSnapshotID: String?
 
     var body: some View {
         GeometryReader { available in
@@ -155,12 +159,16 @@ private struct SETCameraCoachRuntimeSurface: View {
                 if viewModel.isPauseProjectionReady,
                    let acceptedSnapshot = viewModel.acceptedPauseSnapshot {
                     SETPauseSnapshotFrame(snapshot: acceptedSnapshot)
+                        .frame(width: canvasSize.width, height: canvasSize.height)
+                        .clipped()
                         .ignoresSafeArea()
                     SETPauseReviewOverlay(
                         mode: pauseMode,
                         timecode: viewModel.nominalTimecode,
                         critique: pauseCritique,
                         review: reviewPresentation,
+                        imagePlacementReview: imagePlacementReview,
+                        acceptedFrameImage: acceptedSnapshot.displayImage,
                         eventLedger: viewModel.motionEventLedger,
                         reduceMotion: reduceMotion,
                         markerRegion: pauseMarkerRegion,
@@ -334,10 +342,31 @@ private struct SETCameraCoachRuntimeSurface: View {
                 }
 
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(width: canvasSize.width, height: canvasSize.height, alignment: .topLeading)
+            .clipped()
         }
                 // Allocate real layout space for recording. The live overlay
                 // and preview projection observe the remaining camera canvas.
+                if viewModel.isPauseProjectionReady, let cue = viewModel.pendingIntentClarificationCue {
+                    SETCameraIntentClarificationPrompt(
+                        cue: cue,
+                        onAnswer: { viewModel.answerIntentClarification(intended: $0) }
+                    )
+                    .padding(.horizontal, SETSpacing.x3)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                if viewModel.canClarifyPauseSceneControl {
+                    pauseClarificationControls
+                }
+                if viewModel.isPauseProjectionReady && viewModel.isCameraCloudConfigured {
+                    CameraCloudReviewControls(
+                        state: viewModel.cloudReviewState,
+                        canRequest: viewModel.canRequestCloudPauseAnalysis,
+                        onRequest: { viewModel.requestCloudPauseAnalysis(locale: locale.identifier) },
+                        onCancel: { viewModel.cancelCloudPauseAnalysis() }
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                }
                 if let coordinator = viewModel.recordingCoordinator {
                     CameraRecordingControlsView(
                         coordinator: coordinator,
@@ -352,6 +381,57 @@ private struct SETCameraCoachRuntimeSurface: View {
         }
         .background(.setInk)
         .accessibilityElement(children: .contain)
+        .sheet(isPresented: Binding(
+            get: { sceneControlSnapshotID != nil },
+            set: { if !$0 { sceneControlSnapshotID = nil } }
+        )) {
+            if let snapshotID = sceneControlSnapshotID,
+               viewModel.acceptedPauseSnapshot?.snapshotID == snapshotID {
+                PauseSceneControlSheet(
+                    facts: viewModel.pauseSceneControlFacts,
+                    onAnswer: { category, state in
+                        viewModel.answerPauseSceneControl(category: category, state: state,
+                                                          expectedSnapshotID: snapshotID)
+                    },
+                    onReset: { viewModel.resetPauseSceneControl(expectedSnapshotID: snapshotID) },
+                    onClose: { sceneControlSnapshotID = nil }
+                )
+                .environment(\.locale, locale)
+                .environment(\.dynamicTypeSize, dynamicTypeSize)
+                .environment(\.setReduceMotionOverride, reduceMotionOverride)
+                .environment(\.setReduceTransparencyOverride, reduceTransparencyOverride)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+        }
+        .onChange(of: viewModel.acceptedPauseSnapshot?.snapshotID) { _, newID in
+            if sceneControlSnapshotID != newID { sceneControlSnapshotID = nil }
+            if imagePlacementSnapshotID != newID { imagePlacementSnapshotID = nil }
+        }
+        .onChange(of: viewModel.isPaused) { _, isPaused in
+            if !isPaused { sceneControlSnapshotID = nil }
+            if !isPaused { imagePlacementSnapshotID = nil }
+        }
+        .sheet(isPresented: Binding(
+            get: { imagePlacementSnapshotID != nil },
+            set: { if !$0 { imagePlacementSnapshotID = nil } }
+        )) {
+            if let snapshotID = imagePlacementSnapshotID,
+               let snapshot = viewModel.acceptedPauseSnapshot, snapshot.snapshotID == snapshotID {
+                PauseImagePlacementSheet(
+                    snapshot: snapshot, candidates: viewModel.pauseImagePlacementCandidates,
+                    initialGoal: viewModel.pauseImagePlacementProposal?.goal,
+                    initialGoalIsActive: viewModel.pauseImagePlacementProposal?.isActiveReviewSuggestion == true,
+                    onApply: { viewModel.setPauseImagePlacement($0, expectedSnapshotID: snapshotID) },
+                    onClose: { imagePlacementSnapshotID = nil }
+                )
+                .environment(\.locale, locale)
+                .environment(\.dynamicTypeSize, dynamicTypeSize)
+                .environment(\.setReduceMotionOverride, reduceMotionOverride)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+        }
         .sheet(isPresented: $isProControlsPresented) {
             // Present above the UIKit shell so its mode control cannot cover
             // or intercept this surface. The existing capture owner continues.
@@ -371,6 +451,23 @@ private struct SETCameraCoachRuntimeSurface: View {
             .presentationBackground(Color.setInk)
             .preferredColorScheme(.dark)
         }
+        .sheet(item: Binding(
+            get: { viewModel.pendingCloudTransfer },
+            set: { value in
+                if value == nil, let pending = viewModel.pendingCloudTransfer {
+                    viewModel.cancelCloudPauseAnalysis(requestID: pending.requestID)
+                }
+            }
+        )) { transfer in
+            CameraCloudTransferConsentSheet(
+                request: transfer,
+                onApprove: { viewModel.approveCloudPauseAnalysis($0) },
+                onCancel: { viewModel.cancelCloudPauseAnalysis(requestID: transfer.requestID) }
+            )
+            .presentationDetents([.large])
+            .presentationBackground(Color.setInk)
+            .preferredColorScheme(.dark)
+        }
 #if DEBUG
         .background(alignment: .topLeading) {
             if ProcessInfo.processInfo.environment["SHAFIN_UI_TESTING"] == "1" {
@@ -384,6 +481,61 @@ private struct SETCameraCoachRuntimeSurface: View {
             }
         }
 #endif
+    }
+
+    @ViewBuilder
+    private var pauseClarificationControls: some View {
+        if viewModel.acceptedPauseSnapshot?.displayImage != nil {
+            // Wide layouts retain one row of controls. When their full titles
+            // do not fit, use two rows instead of truncating or shrinking text.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: SETSpacing.x3) {
+                    sceneControlButton
+                    imagePlacementButton
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: 0) {
+                    sceneControlButton
+                    imagePlacementButton
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+        } else {
+            sceneControlButton
+        }
+    }
+
+    private var sceneControlButton: some View {
+        pauseClarificationButton(.cameraSceneControlTitle, id: "camera_scene_control_open") {
+            sceneControlSnapshotID = viewModel.acceptedPauseSnapshot?.snapshotID
+        }
+    }
+
+    private var imagePlacementButton: some View {
+        pauseClarificationButton(.cameraPlacementTitle, id: "camera_placement_open") {
+            imagePlacementSnapshotID = viewModel.acceptedPauseSnapshot?.snapshotID
+        }
+        .accessibilityValue(Text(viewModel.pauseImagePlacementProposal == nil
+                                 ? "" : SETCopyKey.cameraPlacementSaved.localizedString(locale: locale)))
+    }
+
+    private func pauseClarificationButton(
+        _ key: SETCopyKey, id: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(key.localizedTextKey)
+                .font(SETTypography.uiBodyFont(weight: .semibold))
+                .underline()
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, SETSpacing.x3)
+                .frame(maxWidth: .infinity, minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .fixedSize(horizontal: false, vertical: true)
+        .foregroundStyle(.setOrange)
+        .accessibilityIdentifier(id)
     }
 
     private var proControlOverlayCopy: SETCopyKey {
@@ -426,28 +578,22 @@ private struct SETCameraCoachRuntimeSurface: View {
     }
 
     private var pauseMarkerRegion: NormalizedRect? {
-        guard let acceptedSnapshot = viewModel.acceptedPauseSnapshot,
-              let critique = pauseCritique,
-              critique.frameId == acceptedSnapshot.snapshotID,
-              let projection = critique.linkedEvidence,
-              projection.frameID == acceptedSnapshot.snapshotID,
-              let action = critique.actions.first,
-              action.actionId == projection.actionID,
-              action.actionType == projection.actionType,
-              action.semanticActionType == projection.semanticActionType,
-              action.linkedIssueIds.count == 1,
-              action.linkedIssueIds.first == projection.issueID,
-              let issue = critique.issues.first(where: {
-                  $0.issueId == projection.issueID
-                      && $0.type == projection.issueType
-              }),
-              DeterministicCritiqueSummaryBuilder().makeExplanation(
-                  for: projection,
-                  locale: locale
-              ) != nil else {
-            return nil
-        }
-        return action.targetRegion ?? issue.affectedRegion
+        guard let acceptedSnapshot = viewModel.acceptedPauseSnapshot else { return nil }
+        if let imagePlacementReview { return imagePlacementReview.observedRegion }
+        return CameraPauseMarkerPresentation.observedRegion(
+            in: pauseCritique,
+            acceptedSnapshotID: acceptedSnapshot.snapshotID,
+            locale: locale
+        )
+    }
+
+    private var imagePlacementReview: PauseImagePlacementReviewProjection? {
+        guard let accepted = viewModel.acceptedPauseSnapshot else { return nil }
+        return PauseImagePlacementReviewProjection.make(
+            proposal: viewModel.pauseImagePlacementProposal,
+            snapshotID: accepted.snapshotID, frameID: accepted.sourceFrameId,
+            critique: pauseCritique
+        )
     }
 
     private var previewSubjectRegions: [NormalizedRect] {
@@ -2093,17 +2239,24 @@ enum SETLocalizedPauseCopy {
 
     static func summary(for critique: PauseCritiquePresentation?, locale: Locale) -> String {
         guard let critique else {
-            return SETLocalizedCopy.string(.pauseNote, locale: locale)
+            return SETLocalizedCopy.string(.pauseAssessmentUnavailable, locale: locale)
         }
-        if let action = critique.actions.first {
+        if let action = critique.actions.first,
+           action.semanticActionType != .keepCurrentSetup {
             return SETLocalizedCopy.string(
                 SETCameraCopy.actionKey(for: action.semanticActionType),
                 locale: locale
             )
         }
+        if critique.intentionalStylePreserved {
+            return SETLocalizedCopy.string(.pauseIntentPreserved, locale: locale)
+        }
+        guard critique.technicalQualityMeasurement.supportsPositiveConfirmation else {
+            return SETLocalizedCopy.string(.pauseAssessmentUnavailable, locale: locale)
+        }
         let fallbackKey: SETCopyKey = switch critique.verdict {
         case .good: .cameraKeep
-        case .mixed, .needsFix: .pauseNoAction
+        case .mixed, .needsFix: .pauseNoSupportedAction
         }
         return SETLocalizedCopy.string(fallbackKey, locale: locale)
     }
@@ -2122,6 +2275,8 @@ private struct SETPauseReviewOverlay: View {
     /// C09.3 review-only details. Optional so the failure surface keeps its
     /// existing single-line recovery band.
     let review: CameraReviewPresentation?
+    let imagePlacementReview: PauseImagePlacementReviewProjection?
+    let acceptedFrameImage: CGImage?
     let eventLedger: SETMotionEventLedger
     let reduceMotion: Bool
     let markerRegion: NormalizedRect?
@@ -2143,6 +2298,8 @@ private struct SETPauseReviewOverlay: View {
         timecode: String,
         critique: PauseCritiquePresentation?,
         review: CameraReviewPresentation? = nil,
+        imagePlacementReview: PauseImagePlacementReviewProjection? = nil,
+        acceptedFrameImage: CGImage? = nil,
         eventLedger: SETMotionEventLedger,
         reduceMotion: Bool,
         markerRegion: NormalizedRect?,
@@ -2161,6 +2318,8 @@ private struct SETPauseReviewOverlay: View {
         self.timecode = timecode
         self.critique = critique
         self.review = review
+        self.imagePlacementReview = imagePlacementReview
+        self.acceptedFrameImage = acceptedFrameImage
         self.eventLedger = eventLedger
         self.reduceMotion = reduceMotion
         self.markerRegion = markerRegion
@@ -2178,6 +2337,14 @@ private struct SETPauseReviewOverlay: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let bandHeight = reviewBandHeight(in: proxy.size)
+            let markerArea = CGRect(
+                x: 0,
+                y: SETCameraCoachMetric.topControlRowHeight + SETCameraCoachMetric.pauseHeaderHeight,
+                width: proxy.size.width,
+                height: max(0, proxy.size.height - bandHeight
+                    - SETCameraCoachMetric.topControlRowHeight - SETCameraCoachMetric.pauseHeaderHeight)
+            )
             ZStack {
                 VStack(spacing: 0) {
                     Color.clear
@@ -2188,13 +2355,17 @@ private struct SETPauseReviewOverlay: View {
 
                     Spacer(minLength: 0)
 
-                    reviewBand
-                        .frame(minHeight: SETCameraCoachMetric.pauseBandMinimumHeight,
-                               maxHeight: SETCameraCoachMetric.pauseBandMaximumHeight)
+                    ScrollView {
+                        reviewBand(availableHeight: bandHeight)
+                            .frame(width: proxy.size.width, alignment: .leading)
+                    }
+                    .frame(width: proxy.size.width, height: bandHeight)
+                    .background(.setInk)
+                    .accessibilityIdentifier("camera_coach_review_scroll")
                 }
 
                 if mode == .success,
-                   let markerFrame = markerFrame(in: proxy.size) {
+                   let markerFrame = markerFrame(in: proxy.size, unobscuredArea: markerArea) {
                     SETMarkerDrawGuide(
                         kind: .outline,
                         eventID: "\(snapshotID).pause-marker",
@@ -2209,8 +2380,20 @@ private struct SETPauseReviewOverlay: View {
 
                 SETAccessibilityIdentifierProbe(identifier: "camera_coach_pause_review")
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private func reviewBandHeight(in canvasSize: CGSize) -> CGFloat {
+        // Review content scrolls inside its allocated band. It must not enlarge
+        // the accepted-image canvas or draw over the separate pause footer.
+        let reservedPreviewHeight = min(SETCameraCoachMetric.pauseMarkerHeight, canvasSize.height * 0.25)
+        let available = max(0, canvasSize.height - SETCameraCoachMetric.topControlRowHeight
+            - SETCameraCoachMetric.pauseHeaderHeight - reservedPreviewHeight)
+        let preferred = max(SETCameraCoachMetric.pauseBandMinimumHeight, canvasSize.height * 0.42)
+        return min(SETCameraCoachMetric.pauseBandMaximumHeight, preferred, available)
     }
 
     private var pauseHeader: some View {
@@ -2261,7 +2444,7 @@ private struct SETPauseReviewOverlay: View {
         .background(.setInk.opacity(SETProductionPauseReviewMetric.headerOpacity))
     }
 
-    private var reviewBand: some View {
+    private func reviewBand(availableHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             SETPauseReviewBand(
                 title: titleText,
@@ -2272,12 +2455,67 @@ private struct SETPauseReviewOverlay: View {
                 eventLedger: eventLedger,
                 reduceMotion: reduceMotion,
                 actionAccessibilityIdentifier: "camera_coach_pause_action",
+                detailLineLimit: nil,
                 onAction: onResume
             )
 
-            if mode == .success, let review {
-                SETPauseReviewDetails(review: review)
+            if mode == .success, imagePlacementReview != nil {
+                placementReference(availableHeight: availableHeight)
             }
+            if mode == .success, let review {
+                SETPauseReviewDetails(review: review, primarySummary: detailText)
+            }
+        }
+    }
+
+    /// A complete accepted-image reference remains inspectable when the main
+    /// aspect-fill preview crops or obscures the selected ROI. Only observed
+    /// bounds are drawn here; the desired centre is expressed by the instruction.
+    @ViewBuilder
+    private func placementReference(availableHeight: CGFloat) -> some View {
+        if let projection = imagePlacementReview,
+           let image = acceptedFrameImage,
+           let sourcePixelSize = acceptedFramePixelSize {
+            let imageHeight = min(160, max(1, availableHeight - SETSpacing.x2 * 2))
+            GeometryReader { geometry in
+                if let fit = SETAcceptedFrameRegionMapper.imageFrame(
+                    sourcePixelSize: sourcePixelSize, orientation: acceptedFrameOrientation,
+                    canvasSize: geometry.size, contentMode: .fit
+                ) {
+                    ZStack(alignment: .topLeading) {
+                        Image(decorative: image, scale: 1, orientation: .up)
+                            .resizable()
+                            .frame(width: fit.width, height: fit.height)
+                            .offset(x: fit.minX, y: fit.minY)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(SETCopyKey.cameraPlacementTitle.localizedTextKey)
+                            .accessibilityAddTraits(.isImage)
+                            .accessibilityIdentifier("camera_placement_review_image")
+                        if let observed = SETAcceptedFrameRegionMapper.map(
+                            projection.observedRegion, sourcePixelSize: sourcePixelSize,
+                            orientation: acceptedFrameOrientation, canvasSize: geometry.size,
+                            isMirrored: acceptedFrameIsMirrored, contentMode: .fit
+                        ) {
+                            // A dark edge keeps the observed boundary visible
+                            // against bright pixels as well as dark ones.
+                            Rectangle().stroke(Color.black.opacity(0.9), lineWidth: 4)
+                                .overlay {
+                                    Rectangle().stroke(Color.setWarmWhite, lineWidth: 2)
+                                }
+                                .frame(width: observed.width, height: observed.height)
+                                .offset(x: observed.minX, y: observed.minY)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(SETCopyKey.cameraPlacementObserved.localizedTextKey)
+                                .accessibilityAddTraits(.isImage)
+                                .accessibilityIdentifier("camera_placement_review_marker")
+                        }
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+                }
+            }
+            .frame(height: imageHeight)
+            .padding(.horizontal, SETSpacing.x4)
+            .padding(.vertical, SETSpacing.x2)
         }
     }
 
@@ -2294,6 +2532,9 @@ private struct SETPauseReviewOverlay: View {
         guard mode == .success else {
             return SETLocalizedCopy.string(titleKey, locale: locale)
         }
+        if let imagePlacementReview {
+            return SETLocalizedCopy.string(imagePlacementReview.labelKey, locale: locale)
+        }
         return SETLocalizedPauseCopy.title(number: takeNumber, locale: locale)
     }
 
@@ -2302,6 +2543,9 @@ private struct SETPauseReviewOverlay: View {
         case .loading:
             return nil
         case .success:
+            if let imagePlacementReview {
+                return SETLocalizedCopy.string(imagePlacementReview.instructionKey, locale: locale)
+            }
             return SETLocalizedPauseCopy.summary(for: critique, locale: locale)
         case .empty:
             return nil
@@ -2344,41 +2588,28 @@ private struct SETPauseReviewOverlay: View {
         resumeStartFailure ? .retry : .pauseFailureRecovery
     }
 
-    private func markerFrame(in canvasSize: CGSize) -> CGRect? {
+    private func markerFrame(in canvasSize: CGSize, unobscuredArea: CGRect) -> CGRect? {
         guard let region = markerRegion else { return nil }
         if let acceptedFramePixelSize {
-            guard let mapped = SETAcceptedFrameRegionMapper.map(
-                region,
+            return CameraPauseMarkerPresentation.mappedFrame(
+                for: region,
                 sourcePixelSize: acceptedFramePixelSize,
                 orientation: acceptedFrameOrientation,
                 canvasSize: canvasSize,
-                isMirrored: acceptedFrameIsMirrored
-            ) else { return nil }
-            return centeredMarkerFrame(at: mapped.midX, y: mapped.midY, in: canvasSize)
+                isMirrored: acceptedFrameIsMirrored,
+                unobscuredArea: unobscuredArea
+            )
         }
 
         // Deterministic DEBUG fixtures have no accepted image envelope. Keep
         // their explicit normalized geometry isolated from the runtime path.
-        let centerX = (region.x + region.width * 0.5) * canvasSize.width
-        let centerY = (region.y + region.height * 0.5) * canvasSize.height
-        return centeredMarkerFrame(at: centerX, y: centerY, in: canvasSize)
-    }
-
-    private func centeredMarkerFrame(at centerX: CGFloat,
-                                     y centerY: CGFloat,
-                                     in canvasSize: CGSize) -> CGRect {
-        let halfWidth = SETCameraCoachMetric.pauseMarkerWidth * 0.5
-        let halfHeight = SETCameraCoachMetric.pauseMarkerHeight * 0.5
-        let clampedCenter = CGPoint(
-            x: min(max(centerX, halfWidth), max(halfWidth, canvasSize.width - halfWidth)),
-            y: min(max(centerY, halfHeight), max(halfHeight, canvasSize.height - halfHeight))
+        let frame = CGRect(
+            x: region.x * canvasSize.width,
+            y: region.y * canvasSize.height,
+            width: region.width * canvasSize.width,
+            height: region.height * canvasSize.height
         )
-        return CGRect(
-            x: clampedCenter.x - halfWidth,
-            y: clampedCenter.y - halfHeight,
-            width: SETCameraCoachMetric.pauseMarkerWidth,
-            height: SETCameraCoachMetric.pauseMarkerHeight
-        )
+        return !frame.isEmpty && unobscuredArea.contains(frame) ? frame : nil
     }
 }
 
@@ -2387,16 +2618,19 @@ private struct SETPauseReviewOverlay: View {
 /// control: a review explains and compares, it never issues a live command.
 private struct SETPauseReviewDetails: View {
     let review: CameraReviewPresentation
+    let primarySummary: String?
 
     @Environment(\.locale) private var locale
 
     var body: some View {
         VStack(alignment: .leading, spacing: SETSpacing.x3) {
-            Text(verbatim: review.status.label(locale: locale))
-                .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
-                .fontWeight(.semibold)
-                .foregroundStyle(.setTextPrimary)
-                .accessibilityIdentifier("camera_coach_review_status")
+            if let status = review.verificationStatusLabel(locale: locale) {
+                Text(verbatim: status)
+                    .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.setTextPrimary)
+                    .accessibilityIdentifier("camera_coach_review_status")
+            }
 
             if !review.findings.isEmpty {
                 findingsSection
@@ -2404,21 +2638,21 @@ private struct SETPauseReviewDetails: View {
             if !review.evidence.isEmpty {
                 section(header: .traceEvidence, identifier: "camera_coach_review_evidence") {
                     ForEach(Array(review.evidence.enumerated()), id: \.offset) { _, item in
-                        reviewRow(item.summary, detail: nil, identifier: nil)
+                        reviewRow(item.summary)
                     }
                 }
             }
-            if !review.uncertainties.isEmpty {
+            if !uncertaintyDetails.isEmpty {
                 section(header: .traceLimitations, identifier: "camera_coach_review_uncertainty") {
-                    ForEach(Array(review.uncertainties.enumerated()), id: \.offset) { _, item in
-                        reviewRow(item.detail(locale: locale), detail: nil, identifier: nil)
+                    ForEach(Array(uncertaintyDetails.enumerated()), id: \.offset) { _, detail in
+                        reviewRow(detail)
                     }
                 }
             }
             alternativesSection
             assessmentSection
         }
-        .padding(.horizontal, SETCameraCoachMetric.headerControlHorizontalInset)
+        .padding(.horizontal, SETSpacing.x4)
         .padding(.vertical, SETSpacing.x3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.setInk)
@@ -2429,6 +2663,10 @@ private struct SETPauseReviewDetails: View {
         .accessibilityIdentifier("camera_coach_review_details")
     }
 
+    private var uncertaintyDetails: [String] {
+        review.visibleUncertaintyDetails(primarySummary: primarySummary, locale: locale)
+    }
+
     private var findingsSection: some View {
         let issues = review.findings.filter { $0.kind == .issue }
         let strengths = review.findings.filter { $0.kind == .strength }
@@ -2436,18 +2674,14 @@ private struct SETPauseReviewDetails: View {
             if !issues.isEmpty {
                 section(header: .traceReasonProblematic, identifier: "camera_coach_review_findings") {
                     ForEach(issues, id: \.id) { finding in
-                        reviewRow(finding.title,
-                                  detail: regionDescription(finding.area),
-                                  identifier: nil)
+                        reviewRow(finding.title)
                     }
                 }
             }
             if !strengths.isEmpty {
                 section(header: .traceReasonWorked, identifier: nil) {
                     ForEach(strengths, id: \.id) { finding in
-                        reviewRow(finding.title,
-                                  detail: regionDescription(finding.area),
-                                  identifier: nil)
+                        reviewRow(finding.title)
                     }
                 }
             }
@@ -2502,36 +2736,11 @@ private struct SETPauseReviewDetails: View {
         }
     }
 
-    private func reviewRow(_ title: String, detail: String?, identifier: String?) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(verbatim: title)
-                .font(SETTypography.uiBodyFont())
-                .foregroundStyle(.setTextPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-            if let detail {
-                Text(verbatim: detail)
-                    .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
-                    .foregroundStyle(.setTextSecondary)
-            }
-        }
-        .accessibilityIdentifier(identifier ?? "")
-    }
-
-    private func regionDescription(_ region: NormalizedRect?) -> String? {
-        guard let region else { return nil }
-        return SETCopyKey.traceRegionCoordinates.localizedFormat(
-            locale: locale,
-            arguments: [
-                percentString(region.x),
-                percentString(region.y),
-                percentString(region.width),
-                percentString(region.height)
-            ]
-        )
-    }
-
-    private func percentString(_ value: CGFloat) -> String {
-        String(format: "%.0f%%", Double(value) * 100)
+    private func reviewRow(_ title: String) -> some View {
+        Text(verbatim: title)
+            .font(SETTypography.uiBodyFont())
+            .foregroundStyle(.setTextPrimary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

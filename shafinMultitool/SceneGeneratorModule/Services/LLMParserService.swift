@@ -102,7 +102,7 @@ final class LLMParserService: LocalScenePlanProvider {
                 let error = availableGGUF.isEmpty
                     ? "GGUF модель Scene Generator не найдена в приложении"
                     : "Подходящая GGUF модель Scene Generator не найдена. Доступные GGUF: [\(availableGGUF)]"
-                print("❌ [LLM] \(error)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[LLM] model discovery failed")
                 self.withStateLock {
                     self.loadingState = .failed(error)
                 }
@@ -110,7 +110,7 @@ final class LLMParserService: LocalScenePlanProvider {
                 return
             }
 
-            print("🤖 [LLM] Путь к модели: \(modelPath)")
+            SceneGeneratorDiagnosticsLogger.shared.log("[LLM] model path resolved")
 
             do {
                 let context = try LlamaContext.create(
@@ -123,11 +123,10 @@ final class LLMParserService: LocalScenePlanProvider {
                     self.loadingState = .loaded
                 }
 
-                let info = await context.modelInfo()
-                print("✅ [LLM] Модель загружена: \(info)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[LLM] model loaded")
             } catch {
                 let errorMsg = "Ошибка загрузки модели: \(error.localizedDescription)"
-                print("❌ [LLM] \(errorMsg)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[LLM] model load failed code=\((error as NSError).code)")
                 self.withStateLock {
                     self.loadingState = .failed(errorMsg)
                 }
@@ -193,7 +192,7 @@ final class LLMParserService: LocalScenePlanProvider {
             print("✅ [LLM][V9] Загружен отдельный context: \(kind == .eventTable ? "event_table" : "patch_ops")")
             return context
         } catch {
-            print("⚠️ [LLM][V9] Не удалось загрузить \(kind == .eventTable ? "event_table" : "patch_ops") context: \(error.localizedDescription)")
+            SceneGeneratorDiagnosticsLogger.shared.log("[LLM][V9] context load failed kind=\(kind == .eventTable ? "event_table" : "patch_ops"), code=\((error as NSError).code)")
             return nil
         }
     }
@@ -209,9 +208,7 @@ final class LLMParserService: LocalScenePlanProvider {
             return hadResources
         }
         guard hadResources else { return }
-        let message = "🤖 [LLM] Resources released: reason=\(reason)"
-        print(message)
-        SceneGeneratorDiagnosticsLogger.shared.log(message)
+        SceneGeneratorDiagnosticsLogger.shared.log("[LLM] resources released")
     }
 
     private static func isV9PatchRetryEnabled() -> Bool {
@@ -253,7 +250,7 @@ final class LLMParserService: LocalScenePlanProvider {
         }
 
 #if DEBUG
-        print("🤖 [LLM] Начало LLM парсинга для: '\(description)'")
+        SceneGeneratorDiagnosticsLogger.shared.log("[LLM] parsing started inputChars=\(description.count)")
 #endif
         let canonicalization = buildScenePlanCanonicalization(
             description: description,
@@ -290,7 +287,7 @@ final class LLMParserService: LocalScenePlanProvider {
             print("🤖 [LLM] Генерация\(attemptSuffix) заняла: \(String(format: "%.2f", elapsed)) сек")
             print("🤖 [LLM] stopReason=\(generationOutput.stopReason.rawValue), generatedTokens=\(generationOutput.generatedTokenCount)/\(generationOutput.maxTokens)")
             #if DEBUG
-            print("🤖 [LLM] Ответ модели\(attemptSuffix):\n\(generatedText)")
+            SceneGeneratorDiagnosticsLogger.shared.log("[LLM] generation completed responseChars=\(generatedText.count)")
             #endif
 
             // Парсим JSON из ответа
@@ -362,10 +359,7 @@ final class LLMParserService: LocalScenePlanProvider {
                     }
 
                     let nextBudget = budgets[attemptIndex + 1]
-                    let reason = hitTokenLimit
-                        ? "обрезано по maxTokens"
-                        : "план выглядит неполным"
-                    print("⚠️ [LLM] План распознан, но \(reason). Повторяем с maxTokens=\(nextBudget)")
+                    SceneGeneratorDiagnosticsLogger.shared.log("[LLM] incomplete plan retry maxTokens=\(nextBudget)")
                     if hitTokenLimit, !reasonCodes.contains("llm.retry_after_max_tokens") {
                         reasonCodes.append("llm.retry_after_max_tokens")
                     } else if !reasonCodes.contains("llm.retry_after_possible_truncation") {
@@ -1193,7 +1187,7 @@ final class LLMParserService: LocalScenePlanProvider {
         let candidates = makeJSONCandidates(from: extractedJSON)
 
         for (index, candidate) in candidates.enumerated() {
-            print("🔧 [LLM] JSON после починки [вариант \(index + 1)/\(candidates.count)]: \(candidate.prefix(200))...")
+            SceneGeneratorDiagnosticsLogger.shared.log("[LLM] repaired JSON candidate=\(index + 1)/\(candidates.count), bytes=\(candidate.utf8.count)")
 
             do {
                 let decoded = try decodeScenePlan(from: candidate)
@@ -1201,7 +1195,7 @@ final class LLMParserService: LocalScenePlanProvider {
                 print("✅ [LLM] Декодирован ScenePlanIR: actors=\(plan.actors.count), objects=\(plan.objects.count), beats=\(plan.beats.count)")
                 return ScenePlanProviderResult(plan: plan, usedLegacySceneScriptBridge: false)
             } catch {
-                print("⚠️ [LLM] ScenePlanIR decode failed [вариант \(index + 1)/\(candidates.count)]: \(error)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[LLM] ScenePlanIR decode failed candidate=\(index + 1)/\(candidates.count)")
             }
 
             do {
@@ -1211,8 +1205,7 @@ final class LLMParserService: LocalScenePlanProvider {
                 print("✅ [LLM] Legacy SceneScript bridged to ScenePlanIR")
                 return ScenePlanProviderResult(plan: bridgedPlan, usedLegacySceneScriptBridge: true)
             } catch {
-                print("❌ [LLM] Legacy SceneScript decode failed [вариант \(index + 1)/\(candidates.count)]: \(error)")
-                print("   JSON: \(candidate.prefix(300))")
+                SceneGeneratorDiagnosticsLogger.shared.log("[LLM] legacy SceneScript decode failed candidate=\(index + 1)/\(candidates.count)")
             }
         }
 
@@ -1234,7 +1227,7 @@ final class LLMParserService: LocalScenePlanProvider {
                 print("✅ [LLM][V9] EventTable decoded [вариант \(index + 1)/\(candidates.count)], rows=\(decoded.rows.count)")
                 return decoded
             } catch {
-                print("⚠️ [LLM][V9] EventTable decode failed [вариант \(index + 1)/\(candidates.count)]: \(error)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[LLM][V9] EventTable decode failed candidate=\(index + 1)/\(candidates.count)")
             }
         }
         return nil
@@ -1252,7 +1245,7 @@ final class LLMParserService: LocalScenePlanProvider {
                 print("✅ [LLM][V9] PatchOps decoded [вариант \(index + 1)/\(candidates.count)], ops=\(decoded.ops.count)")
                 return decoded
             } catch {
-                print("⚠️ [LLM][V9] PatchOps decode failed [вариант \(index + 1)/\(candidates.count)]: \(error)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[LLM][V9] PatchOps decode failed candidate=\(index + 1)/\(candidates.count)")
             }
         }
         return nil
@@ -1596,7 +1589,7 @@ final class LLMParserService: LocalScenePlanProvider {
         print("🩹 [LLM] Semantic repair pass занял: \(String(format: "%.2f", elapsed)) сек")
         print("🩹 [LLM] stopReason=\(output.stopReason.rawValue), generatedTokens=\(output.generatedTokenCount)/\(output.maxTokens)")
 #if DEBUG
-        print("🩹 [LLM] Ответ repair pass:\n\(output.text)")
+        SceneGeneratorDiagnosticsLogger.shared.log("[LLM] repair completed responseChars=\(output.text.count)")
 #endif
 
         guard output.stopReason != .maxTokensReached else {
@@ -1945,7 +1938,7 @@ final class LLMParserService: LocalScenePlanProvider {
         for marker in mentionedMarkers {
             let objectId = marker.canonicalMarkedObjectID
             if !objects.contains(where: { $0.id == objectId }) {
-                print("🔧 [LLM] Восстанавливаем размеченный объект '\(marker.name)' как \(objectId)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[LLM] marked object restored")
                 objects.append(SceneObject(
                     id: objectId,
                     type: marker.type,
@@ -2363,7 +2356,7 @@ final class LLMParserService: LocalScenePlanProvider {
     private func resolvePreferredModelPath() -> String? {
         if let overridePath = UserDefaults.standard.string(forKey: Self.modelPathOverrideDefaultsKey),
            FileManager.default.fileExists(atPath: overridePath) {
-            print("🤖 [LLM] Используем модель из override path: \(overridePath)")
+            SceneGeneratorDiagnosticsLogger.shared.log("[LLM] model override selected")
             return overridePath
         }
 
@@ -2381,7 +2374,7 @@ final class LLMParserService: LocalScenePlanProvider {
             return nil
         }
 
-        print("🤖 [LLM] Автовыбор модели: \(selected.0.lastPathComponent)")
+        SceneGeneratorDiagnosticsLogger.shared.log("[LLM] bundled model selected")
         return selected.0.path
     }
 

@@ -816,12 +816,17 @@ struct ARSceneContainer: UIViewRepresentable {
         }
         
         func session(_ session: ARSession, didFailWithError error: Error) {
-            guard let generation = callbackGeneration(for: session) else { return }
+            guard callbackGeneration(for: session) != nil else { return }
+            let generation = advanceFrameGeneration()
             let sessionIdentifier = ObjectIdentifier(session)
-            SceneGeneratorDiagnosticsLogger.shared.log("[AR] session failed: \(error.localizedDescription)")
+            SceneGeneratorDiagnosticsLogger.shared.log("[AR] session failed code=\((error as NSError).code)")
             Task { @MainActor [weak self] in
                 guard let self,
                       self.acceptsSessionCallback(sessionIdentifier: sessionIdentifier, generation: generation) else { return }
+                // A hard failure needs the same take finalization boundary as
+                // interruption, before retiring the source fact. Never detach
+                // or discard a take here; the existing stop/persist owner joins it.
+                self.applyInterruptionSafetyIfNeeded(generation: generation)
                 self.releaseRecordingSource()
                 let prefix = self.viewModel.localizedCopy(.arErrorPrefix)
                 self.viewModel.errorMessage = "\(prefix): \(error.localizedDescription)"
@@ -1066,7 +1071,7 @@ struct ARSceneContainer: UIViewRepresentable {
             
             Task { @MainActor in
                 SceneGeneratorDiagnosticsLogger.shared.log(
-                    "[TOUCH_TRACE] arView tap state=\(Self.gestureStateDescription(gesture.state)) point=(\(Self.format(Double(location.x))), \(Self.format(Double(location.y)))), marking=\(viewModel.isMarkingMode), activeEditor=\(viewModel.activeStoryboardEditDraft?.beatID ?? "nil")"
+                    "[TOUCH_TRACE] arView tap state=\(Self.gestureStateDescription(gesture.state)), marking=\(viewModel.isMarkingMode), hasActiveEditor=\(viewModel.activeStoryboardEditDraft != nil)"
                 )
                 // Если включен режим разметки - создаём маркер
                 if viewModel.isMarkingMode {
@@ -1084,19 +1089,20 @@ struct ARSceneContainer: UIViewRepresentable {
         @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
             guard let arView = gesture.view as? ARView else { return }
             let location = gesture.location(in: arView)
-            if Self.shouldLogLongPressState(gesture.state) {
+            let state = gesture.state
+            if Self.shouldLogLongPressState(state) {
                 SceneGeneratorDiagnosticsLogger.shared.log(
-                    "[AR_GESTURE] longPress state=\(Self.gestureStateDescription(gesture.state)) point=(\(Self.format(Double(location.x))), \(Self.format(Double(location.y))))"
+                    "[AR_GESTURE] longPress state=\(Self.gestureStateDescription(state)) point=(\(Self.format(Double(location.x))), \(Self.format(Double(location.y))))"
                 )
             }
 
             Task { @MainActor in
-                if Self.shouldLogLongPressState(gesture.state) {
+                if Self.shouldLogLongPressState(state) {
                     SceneGeneratorDiagnosticsLogger.shared.log(
-                        "[TOUCH_TRACE] arView longPress routed state=\(Self.gestureStateDescription(gesture.state)) point=(\(Self.format(Double(location.x))), \(Self.format(Double(location.y)))), marking=\(viewModel.isMarkingMode), activeEditor=\(viewModel.activeStoryboardEditDraft?.beatID ?? "nil")"
+                        "[TOUCH_TRACE] arView longPress routed state=\(Self.gestureStateDescription(state)), marking=\(viewModel.isMarkingMode), hasActiveEditor=\(viewModel.activeStoryboardEditDraft != nil)"
                     )
                 }
-                viewModel.handleStoryboardActorDragGesture(state: gesture.state, at: location)
+                viewModel.handleStoryboardActorDragGesture(state: state, at: location)
             }
         }
 

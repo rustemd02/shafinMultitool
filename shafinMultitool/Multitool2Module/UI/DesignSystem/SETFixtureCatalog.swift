@@ -119,6 +119,8 @@ struct SETGalleryLaunchConfiguration: Equatable, Sendable {
     static let reduceMotionArgument = "-SHAFIN_SET_REDUCE_MOTION"
     static let reduceTransparencyArgument = "-SHAFIN_SET_REDUCE_TRANSPARENCY"
     static let dynamicTypeArgument = "-SHAFIN_SET_DYNAMIC_TYPE"
+    /// Explicit UIKit layout qualification, not simulated sensor rotation.
+    static let interfaceGeometryArgument = "-SHAFIN_SET_INTERFACE_GEOMETRY"
     static let generatorStoryboardFixtureArgument = "-SHAFIN_GENERATOR_STORYBOARD_FIXTURE"
     static let decisionTraceFixtureArgument = "-SHAFIN_DECISION_TRACE_FIXTURE"
 
@@ -127,6 +129,7 @@ struct SETGalleryLaunchConfiguration: Equatable, Sendable {
     let reduceMotion: Bool
     let reduceTransparency: Bool
     let dynamicTypeSize: DynamicTypeSize
+    let interfaceGeometry: SETFixtureOrientation?
 
     init(arguments: [String]) {
         fixtureID = Self.value(after: Self.fixtureArgument, in: arguments)
@@ -138,6 +141,9 @@ struct SETGalleryLaunchConfiguration: Equatable, Sendable {
         dynamicTypeSize = Self.value(after: Self.dynamicTypeArgument, in: arguments)?.lowercased() == "xxl"
             ? .accessibility2
             : .large
+        interfaceGeometry = Self.value(after: Self.interfaceGeometryArgument, in: arguments)
+            .flatMap(SETFixtureOrientation.init(rawValue:))
+            .flatMap { $0 == .adaptive ? nil : $0 }
     }
 
     init(
@@ -145,13 +151,15 @@ struct SETGalleryLaunchConfiguration: Equatable, Sendable {
         locale: SETGalleryLocale = .ru,
         reduceMotion: Bool = false,
         reduceTransparency: Bool = false,
-        dynamicTypeSize: DynamicTypeSize = .large
+        dynamicTypeSize: DynamicTypeSize = .large,
+        interfaceGeometry: SETFixtureOrientation? = nil
     ) {
         self.fixtureID = fixtureID
         self.locale = locale
         self.reduceMotion = reduceMotion
         self.reduceTransparency = reduceTransparency
         self.dynamicTypeSize = dynamicTypeSize
+        self.interfaceGeometry = interfaceGeometry == .adaptive ? nil : interfaceGeometry
     }
 
     private static func value(after flag: String, in arguments: [String]) -> String? {

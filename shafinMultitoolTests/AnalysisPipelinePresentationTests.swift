@@ -3,7 +3,73 @@ import CoreMedia
 import CoreGraphics
 import CoreVideo
 import ImageIO
+import CryptoKit
 @testable import shafinMultitool
+
+
+/// Test-only, SHA-pinned supplement for recovered legacy references.
+/// It never admits labels, substitutes unknown IDs or changes the current bundle pack.
+private enum LegacyCameraReferenceFixture {
+    static let manifestSHA = "ed652addfd2c661060bb6dfbcab8c9c7f7be1d02a50c1b9a8e518068153e9894"
+    static let imageSHA = [
+        "180.jpg": "d4fd4650d67d33d00bee6dff16b0b15735103c358606d5f16a8e5c715e180041",
+        "181.jpg": "709534a20cd899594b9f098aa6f3bf11a55951d791c8a04ef997baae1946c58a",
+        "182.jpg": "c52136afc39e4ca1efc44f950efba4fe05b583f9935c28529df93925e42efedd",
+        "183.jpg": "9e18ae51b29013ecf6b4f53e7da67f0d9f0ade69dd0e83e86f8819fff9fb5c7f",
+        "184.jpg": "34bbf042c8a8dfd30ad4d48128bbefed9787b4e1692f4273cbc406ff28301a3e",
+        "188.jpg": "f4607fc1fa5f614ecf0f0fc82179b1b915abd091159b69fb6aa6f71ed9d89f8f",
+        "194.jpg": "fad2f5421aa03a3090525a07fc7c5e30fb8be14dc17422cfe6b8e185a9fcced9",
+        "204.jpg": "d0830a08edc1e6b2b5c79c9b249840949f88f0bb882659ec3a43c817d17c5a13",
+        "206.jpg": "2c035b5bf9aed85f3aa5fbcd977513ba88e2a83700bd00423853f5c30775c680"
+    ]
+
+    private struct Manifest: Decodable {
+        let schema: String
+        let images: [String: String]
+    }
+
+    private static func require(_ condition: Bool, _ message: String) throws {
+        guard condition else {
+            throw NSError(domain: "AnalysisPipelinePresentationTests", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: message])
+        }
+    }
+
+    private static func sha(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func imageData(named filename: String, caches: URL) throws -> Data {
+        guard let expected = imageSHA[filename] else {
+            throw NSError(domain: "AnalysisPipelinePresentationTests", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey:
+                            "Missing required benchmark image; no authenticated external reference: \(filename)"])
+        }
+        let root = caches.standardizedFileURL
+            .appendingPathComponent("SETOSLegacyCameraReferences", isDirectory: true)
+            .appendingPathComponent(manifestSHA, isDirectory: true)
+        try require(root.resolvingSymlinksInPath().path == root.path,
+                    "Legacy reference cache must not traverse a symlink.")
+        let members = try FileManager.default.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        try require(Set(members.map(\.lastPathComponent)) == Set(imageSHA.keys).union(["manifest.json"]),
+                    "Legacy reference payload has missing or unexpected files.")
+        for member in members {
+            let values = try member.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            try require(values.isRegularFile == true && values.isSymbolicLink != true,
+                        "Legacy reference payload contains a non-regular file.")
+        }
+        let manifestData = try Data(contentsOf: root.appendingPathComponent("manifest.json"))
+        try require(sha(manifestData) == manifestSHA, "Legacy reference manifest SHA mismatch.")
+        let manifest = try JSONDecoder().decode(Manifest.self, from: manifestData)
+        try require(manifest.schema == "setos-legacy-camera-references.v1" && manifest.images == imageSHA,
+                    "Legacy reference manifest membership differs from the historical IDs.")
+        let data = try Data(contentsOf: root.appendingPathComponent(filename))
+        try require(sha(data) == expected, "Legacy reference image SHA mismatch: \(filename)")
+        return data
+    }
+}
+
 
 final class AnalysisPipelinePauseSnapshotTests: XCTestCase {
     func testExplicitPauseSnapshotUsesFreshDetrAndAestheticOverridesWithoutMutatingSharedState() {
@@ -155,6 +221,313 @@ final class AnalysisPipelinePauseSnapshotTests: XCTestCase {
 }
 
 final class AnalysisPipelinePresentationTests: XCTestCase {
+    @MainActor
+    func testLiveRecipePositiveOutputRequiresSameAdmissionAsRegularLiveHint() {
+        let fault = TechnicalQualitySignal(issues: [.init(
+            type: .overexposure, actionType: .reduceExposure,
+            confidence: 1, severity: 1, isDominant: true
+        )])
+        let cases: [(name: String, verdict: FrameVerdict, measurement: TechnicalQualityMeasurement?,
+                     wrongFrame: Bool, wrongTime: Bool, expectsKeep: Bool)] = [
+            ("missing", .good, nil, false, false, false),
+            ("unsupported", .good, .unavailable(.unsupportedPixelFormat), false, false, false),
+            ("partial-detail", .good, .partial(.empty, reason: .sharpnessCauseUnobservable,
+                detail: .init(sampleWidth: 96, sampleHeight: 96, meanLuma: 0.5,
+                              gradientMean: 0, gradientVariance: 0)), false, false, false),
+            ("wrong-frame", .good, .measured(.empty), true, false, false),
+            ("wrong-time", .good, .measured(.empty), false, true, false),
+            ("measured-mixed", .mixed, .measured(.empty), false, false, false),
+            ("measured-fault", .good, .measured(fault), false, false, false),
+            ("measured-fault-spatial", .good, .measured(fault), false, false, false),
+            ("measured-fault-stale-gap", .good, .measured(fault), false, false, false),
+            ("measured-good", .good, .measured(.empty), false, false, true)
+        ]
+        for demoEnabled in [false, true] {
+            for item in cases {
+                let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: demoEnabled)
+                pipeline.setCameraDemoSceneMode(.object)
+                for index in 0..<3 {
+                    let frameID = "live-admission-\(item.name)-\(index)"
+                    // Technical confirmation requires a real sequence of fresh
+                    // frames. A one-second gap must not accumulate confirmation.
+                    let frameInterval = item.name == "measured-fault-stale-gap" ? 1.0 : 0.1
+                    let time = Date(timeIntervalSince1970: 1_776_000_000 + Double(index) * frameInterval)
+                    let region = NormalizedRect(
+                        x: item.name == "measured-fault-spatial" ? 0.02 : 0.40,
+                        y: 0.30, width: 0.20, height: 0.34
+                    )
+                    let source = SourceState(available: true, freshnessMs: 0, confidence: 0.9)
+                    let snapshot = FrameFeatureSnapshot(
+                        frameId: frameID, mode: .live, capturedAt: time,
+                        sources: .init(vision: source, horizon: source, lighting: source, detr: source, aesthetic: source),
+                        composition: .init(horizontalOffset: 0, verticalOffset: 0, subjectAreaRatio: 0.068,
+                                           saliencyLeftRightBalance: 0, saliencyTopBottomBalance: 0),
+                        subjectSignals: .init(faceDetected: false, personDetected: false, personCount: 0,
+                                              topObjectLabel: "cup", topObjectConfidence: 0.9, topObjectRegion: region,
+                                              primaryCandidateRegion: region, primaryCandidateConfidence: 0.9,
+                                              primaryCandidateSource: .detr),
+                        horizon: .init(angleDegrees: 0, confidence: 0.9),
+                        lighting: .init(exposureBiasHint: 0, backlightIndex: 0, keyToFillRatio: nil),
+                        motion: .init(state: .still, shakeLevel: 0),
+                        aesthetics: .init(score: item.name.hasPrefix("measured-fault") ? nil : 0.78, scoreConfidence: nil),
+                        objects: .init(totalCount: 1, topKLabels: ["cup"]), technicalFlags: []
+                    )
+                    let semantics = makeDemoSemantics(
+                        frameId: frameID,
+                        primarySubject: .init(kind: .object, label: "cup", region: region, confidence: 0.9),
+                        sceneType: .objectInsert
+                    )
+                    let critique = CritiqueReport(
+                        frameId: frameID, mode: .live, verdict: item.verdict, verdictConfidence: 0.9,
+                        strengths: [], issues: [],
+                        summary: .init(id: "summary-\(frameID)", shortVerdict: "Fixture verdict"),
+                        traceRefs: [], fallbackUsed: false
+                    )
+                    let plan = RecommendationPlanner().makePlan(snapshot: snapshot, critique: critique)
+                    let evidence = item.measurement.map {
+                        FrameTechnicalQualityEvidence(
+                            frameID: item.wrongFrame ? "other-frame" : frameID,
+                            capturedAt: item.wrongTime ? time.addingTimeInterval(-1) : time,
+                            measurement: $0
+                        )
+                    }
+                    pipeline.testingPublishLivePresentation(
+                        frameId: frameID, snapshot: snapshot, critique: critique, plan: plan,
+                        semantics: semantics, legacySuggestion: nil, structuredAvailable: true,
+                        technicalEvidence: evidence, now: time
+                    )
+                    if item.name.hasPrefix("measured-fault") && index < 2 {
+                        XCTAssertNil(pipeline.currentLiveHint, "\(item.name), recipe=\(demoEnabled): technical confirmation is pending")
+                        XCTAssertTrue(pipeline.currentOverlayAnnotations.isEmpty)
+                    }
+                }
+                if item.expectsKeep {
+                    XCTAssertEqual(pipeline.currentLiveHint?.actionType, .leaveFrameAsIs, item.name)
+                } else {
+                    XCTAssertNotEqual(pipeline.currentLiveHint?.actionType, .leaveFrameAsIs, item.name)
+                    XCTAssertFalse(pipeline.currentOverlayAnnotations.contains { $0.tone == .success }, item.name)
+                }
+                if item.name == "measured-fault" || item.name == "measured-fault-spatial" {
+                    XCTAssertEqual(pipeline.currentLiveHint?.technicalIssueType, .overexposure,
+                                   "\(item.name), recipe=\(demoEnabled)")
+                } else if item.name == "measured-fault-stale-gap" {
+                    XCTAssertNil(pipeline.currentLiveHint?.technicalIssueType)
+                }
+            }
+        }
+    }
+
+    func testPauseStylePreservationCannotReopenGoodWithoutCurrentTechnicalMeasurement() throws {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let frameID = "pause-technical-availability"
+        let capturedAt = Date(timeIntervalSince1970: 1_776_000_000)
+        let region = NormalizedRect(x: 0.42, y: 0.40, width: 0.16, height: 0.20)
+        let source = SourceState(available: true, freshnessMs: 30, confidence: 0.85)
+        let snapshot = FrameFeatureSnapshot(
+            frameId: frameID, mode: .pause, capturedAt: capturedAt,
+            sources: .init(vision: source, horizon: source, lighting: source, detr: source, aesthetic: source),
+            composition: .init(horizontalOffset: 0, verticalOffset: 0, subjectAreaRatio: 0.032,
+                               saliencyLeftRightBalance: 0, saliencyTopBottomBalance: 0),
+            subjectSignals: .init(faceDetected: false, personDetected: false, personCount: 0,
+                                  topObjectLabel: "lamp", topObjectConfidence: 0.9,
+                                  primaryCandidateRegion: region, primaryCandidateConfidence: 0.9,
+                                  primaryCandidateSource: .detr),
+            horizon: .init(angleDegrees: 0, confidence: 0.85),
+            lighting: .init(exposureBiasHint: 0, backlightIndex: 0, keyToFillRatio: nil),
+            motion: .init(state: .still, shakeLevel: 0),
+            aesthetics: .init(score: 0.7, scoreConfidence: 0.7),
+            objects: .init(totalCount: 1, topKLabels: ["lamp"]), technicalFlags: []
+        )
+        let semantics = SceneSemanticsReport(
+            frameId: frameID, mode: .pause, sceneType: .establishingLikeFrame, sceneTypeConfidence: 0.8,
+            primarySubject: .init(kind: .object, label: "lamp", region: region, confidence: 0.9),
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.1, backgroundClutterScore: 0.05),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: true, edgePressureScore: 0,
+                               separationScore: 0.8), ambiguities: [], assumptions: []
+        )
+        let critique = CritiqueReport(
+            frameId: frameID, mode: .pause, verdict: .mixed, verdictConfidence: 0.60,
+            strengths: [], issues: [],
+            summary: .init(id: "summary_\(frameID)",
+                           shortVerdict: "Недостаточно данных для полной оценки кадра.",
+                           whyGood: nil, whyProblematic: nil),
+            traceRefs: [], fallbackUsed: false
+        )
+        let plan = makeNoChangePlan(for: critique)
+        func present(_ evidence: FrameTechnicalQualityEvidence?,
+                     snapshot overrideSnapshot: FrameFeatureSnapshot? = nil,
+                     semantics overrideSemantics: SceneSemanticsReport? = nil) -> PauseCritiquePresentation {
+            pipeline.testingMakePauseCritiquePresentation(
+                critique: critique, plan: plan, snapshot: overrideSnapshot ?? snapshot,
+                semantics: overrideSemantics ?? semantics,
+                technicalEvidence: evidence
+            )
+        }
+        let measured = present(FrameTechnicalQualityEvidence(
+            frameID: frameID, capturedAt: capturedAt, measurement: .measured(.empty)
+        ))
+        XCTAssertEqual(measured.verdict, .good, "The control must reach the existing style override")
+        XCTAssertEqual(measured.technicalQualityMeasurement, .measured(.empty))
+        XCTAssertTrue(measured.traceRootIds.contains("cinematic_good_frame_action_preservation"))
+        let partialEvidence = FrameTechnicalQualityEvidence(
+            frameID: frameID, capturedAt: capturedAt,
+            measurement: .partial(.empty, reason: .sharpnessCauseUnobservable, detail: .init(
+                sampleWidth: 96, sampleHeight: 96, meanLuma: 0.5,
+                gradientMean: 0, gradientVariance: 0)))
+        let partial = present(partialEvidence)
+        XCTAssertEqual(partial.verdict, .mixed)
+        XCTAssertEqual(partial.technicalQualityMeasurement.signal, .empty)
+        XCTAssertFalse(partial.technicalQualityMeasurement.supportsPositiveConfirmation)
+        XCTAssertFalse(partial.traceRootIds.contains("cinematic_good_frame_action_preservation"))
+        XCTAssertEqual(SETLocalizedPauseCopy.summary(for: partial, locale: Locale(identifier: "en")),
+                       "Not enough information to assess this frame.")
+        // An upstream good verdict cannot bypass the same partial-evidence boundary.
+        let supportedStrength = FrameStrength(
+            id: "observed-composition", type: .clearFocusHierarchy, confidence: 0.8,
+            rationale: "Known subject hierarchy in this controlled input.", evidence: [], supportingRegion: region)
+        let goodCritique = makeGoodPauseCritique(frameId: frameID, verdictConfidence: 0.9,
+                                               strengths: [supportedStrength])
+        let incomingGood = pipeline.testingMakePauseCritiquePresentation(
+            critique: goodCritique, plan: makeNoChangePlan(for: goodCritique),
+            snapshot: snapshot, semantics: semantics, technicalEvidence: partialEvidence)
+        XCTAssertEqual(incomingGood.verdict, .mixed)
+        XCTAssertFalse(incomingGood.actions.contains { $0.semanticActionType == .keepCurrentSetup })
+        XCTAssertNil(incomingGood.noChangeRationale)
+        XCTAssertNil(incomingGood.whyGood)
+        XCTAssertLessThanOrEqual(incomingGood.verdictConfidence, 0.55)
+        XCTAssertFalse(incomingGood.fallbackUsed, "Partial pixels do not prove an extended-reasoning fallback")
+        let locale = Locale(identifier: "en")
+        let review = CameraReviewPresentation.make(critique: incomingGood, locale: locale)
+        XCTAssertTrue(review.findings.contains { $0.id == supportedStrength.id && $0.kind == .strength })
+        XCTAssertTrue(review.uncertainties.contains { $0.reason == .limitedToAvailableSignals })
+        let trace = DecisionTracePresentation.pause(critique: incomingGood, locale: locale)
+        XCTAssertNotEqual(trace.confidence.tone, .high)
+        XCTAssertFalse(trace.actionRows.contains { $0.semanticActionId == "keep_current_setup" })
+        XCTAssertTrue(trace.limitationRows.contains { $0.id == "technical_coverage" })
+        XCTAssertFalse(trace.limitationRows.contains { $0.id == "fallback" })
+        XCTAssertEqual(SETLocalizedPauseCopy.summary(for: incomingGood, locale: Locale(identifier: "en")),
+                       "Not enough information to assess this frame.")
+
+        // Actual raster measurements go through the shared planner/pause selector.
+        // The completed semantic fixture deliberately favors good; it is not a
+        // perception claim about either raster. This seam makes no model/provider requests.
+        func presentRaster(_ pixels: CVPixelBuffer) throws -> PauseCritiquePresentation {
+            let measurement = TechnicalQualityAnalyzer().measurement(pixelBuffer: pixels)
+            let result = try XCTUnwrap(pipeline.testingMakePreparedPauseReplayPresentation(
+                snapshot: snapshot, semantics: semantics, critique: goodCritique,
+                technicalEvidence: .init(frameID: frameID, capturedAt: capturedAt, measurement: measurement)))
+            XCTAssertEqual(result.technicalQualityMeasurement, measurement)
+            return result
+        }
+        let cleanPixels = makeFilledPixelBuffer(width: 96, height: 96) { x, y in
+            let luma: UInt8 = (x / 3 + y / 3) % 2 == 0 ? 70 : 190
+            return (luma, luma, luma)
+        }
+        let cleanRaster = try presentRaster(cleanPixels)
+        XCTAssertEqual(cleanRaster.technicalQualityMeasurement, .measured(.empty))
+        XCTAssertEqual(cleanRaster.verdict, .good, "Measured detail must reach the existing positive admission")
+        let darkRaster = try presentRaster(makeFilledPixelBuffer(width: 96, height: 96) { _, _ in (0, 0, 0) })
+        guard case .partial = darkRaster.technicalQualityMeasurement else {
+            return XCTFail("Removing unsupported noise must not turn dark, unobservable detail into measured clean")
+        }
+        let darkSignal = try XCTUnwrap(darkRaster.technicalQualityMeasurement.signal)
+        XCTAssertTrue(darkSignal.issues.contains { $0.type == .underexposure && !$0.isDominant })
+        XCTAssertFalse(darkSignal.issues.contains { $0.type == .noise })
+        XCTAssertFalse(darkSignal.futureActionIds.contains(TechnicalQualityActionType.reduceIsoNoise.rawValue))
+        XCTAssertNotEqual(darkRaster.verdict, .good)
+        XCTAssertFalse(darkRaster.actions.contains { $0.semanticActionType == .keepCurrentSetup })
+        XCTAssertNil(darkRaster.noChangeRationale)
+        XCTAssertNil(darkRaster.whyGood)
+        XCTAssertFalse(darkRaster.traceRootIds.contains("technical_quality_noise"))
+        XCTAssertFalse(darkRaster.actions.contains {
+            $0.expectedOutcome == CameraAcceptedActionCopy.instruction(for: TechnicalQualityIssueType.noise)
+        })
+        XCTAssertTrue(CameraReviewPresentation.make(critique: darkRaster, locale: locale)
+            .uncertainties.contains { $0.reason == .limitedToAvailableSignals })
+
+        // Measured clipping remains actionable even when this same raster has
+        // no observable detail. The partial flag must not reroute or suppress it.
+        let clippedPixels = makeFilledPixelBuffer(width: 96, height: 96) { _, _ in (255, 255, 255) }
+        let clippedMeasurement = TechnicalQualityAnalyzer().measurement(pixelBuffer: clippedPixels)
+        guard case .partial = clippedMeasurement else { return XCTFail("White raster must retain partial detail") }
+        let clipping = try XCTUnwrap(clippedMeasurement.signal)
+        _ = try XCTUnwrap(clipping.issues.first { $0.type == .overexposure && $0.isDominant })
+        // No aesthetic/style input: isolate technical selection from unrelated
+        // cinematic preservation while retaining the same current-frame identity.
+        let clippingSnapshot = FrameFeatureSnapshot(
+            frameId: frameID, mode: .pause, capturedAt: capturedAt, sources: snapshot.sources,
+            composition: snapshot.composition, subjectSignals: snapshot.subjectSignals,
+            horizon: snapshot.horizon, lighting: snapshot.lighting, motion: snapshot.motion,
+            aesthetics: .init(score: nil), objects: snapshot.objects, technicalFlags: [])
+        func presentClipping(_ measurement: TechnicalQualityMeasurement) throws -> PauseCritiquePresentation {
+            try XCTUnwrap(pipeline.testingMakePreparedPauseReplayPresentation(
+                snapshot: clippingSnapshot, semantics: semantics, critique: goodCritique,
+                technicalEvidence: .init(frameID: frameID, capturedAt: capturedAt, measurement: measurement)))
+        }
+        let corrected = try presentClipping(clippedMeasurement)
+        let measuredControl = try presentClipping(.measured(clipping))
+        XCTAssertNotEqual(corrected.verdict, .good)
+        XCTAssertFalse(corrected.actions.contains { $0.semanticActionType == .keepCurrentSetup })
+        XCTAssertTrue(corrected.traceRootIds.contains("technical_quality_overexposure"))
+        XCTAssertFalse(corrected.actions.isEmpty)
+        XCTAssertEqual(corrected.actions.map(\.semanticActionType), measuredControl.actions.map(\.semanticActionType))
+        XCTAssertEqual(corrected.actions.map(\.confidence), measuredControl.actions.map(\.confidence))
+        XCTAssertEqual(corrected.verdictConfidence, measuredControl.verdictConfidence)
+        XCTAssertFalse(corrected.fallbackUsed)
+        XCTAssertEqual(corrected.technicalQualityMeasurement.signal, clipping)
+        XCTAssertTrue(CameraReviewPresentation.make(critique: corrected, locale: locale)
+            .uncertainties.contains { $0.reason == .limitedToAvailableSignals })
+        XCTAssertNotEqual(SETLocalizedPauseCopy.summary(for: corrected, locale: locale),
+                          SETCopyKey.pauseAssessmentUnavailable.localizedString(locale: locale))
+        let unavailable: [FrameTechnicalQualityEvidence?] = [
+            nil,
+            FrameTechnicalQualityEvidence(frameID: frameID, capturedAt: capturedAt,
+                                          measurement: .unavailable(.unsupportedPixelFormat)),
+            FrameTechnicalQualityEvidence(frameID: "other-frame", capturedAt: capturedAt,
+                                          measurement: .measured(.empty)),
+            FrameTechnicalQualityEvidence(frameID: frameID, capturedAt: capturedAt.addingTimeInterval(1),
+                                          measurement: .measured(.empty))
+        ]
+        for evidence in unavailable {
+            let presentation = present(evidence)
+            XCTAssertEqual(presentation.verdict, .mixed)
+            XCTAssertLessThan(presentation.verdictConfidence, 0.75)
+            XCTAssertEqual(presentation.shortVerdict, critique.summary.shortVerdict)
+            XCTAssertNil(presentation.technicalQualityMeasurement.signal)
+            XCTAssertEqual(
+                SETLocalizedPauseCopy.summary(for: presentation, locale: Locale(identifier: "en")),
+                "Not enough information to assess this frame."
+            )
+            XCTAssertFalse(presentation.traceRootIds.contains("cinematic_good_frame_action_preservation"))
+        }
+
+        // Measured pixels and strong detector/horizon values do not restore a
+        // missing scene observation. This shape otherwise reaches the sparse
+        // establishing-frame style override with a mixed incoming critique.
+        let missingVision = FrameFeatureSnapshot(
+            frameId: snapshot.frameId, mode: snapshot.mode, capturedAt: snapshot.capturedAt,
+            sources: .init(vision: .init(available: false, freshnessMs: nil, confidence: nil),
+                           horizon: source, lighting: source, detr: source, aesthetic: source),
+            composition: snapshot.composition, subjectSignals: snapshot.subjectSignals,
+            horizon: snapshot.horizon, lighting: snapshot.lighting, motion: snapshot.motion,
+            aesthetics: snapshot.aesthetics, objects: snapshot.objects, technicalFlags: []
+        )
+        let unresolvedScene = SceneSemanticsReport(
+            frameId: frameID, mode: .pause, sceneType: .establishingLikeFrame, sceneTypeConfidence: 0,
+            primarySubject: semantics.primarySubject, dominance: semantics.dominance,
+            readability: semantics.readability, ambiguities: [], assumptions: []
+        )
+        let unavailableScene = present(
+            FrameTechnicalQualityEvidence(frameID: frameID, capturedAt: capturedAt,
+                                          measurement: .measured(.empty)),
+            snapshot: missingVision, semantics: unresolvedScene
+        )
+        XCTAssertEqual(unavailableScene.verdict, .mixed)
+        XCTAssertEqual(unavailableScene.technicalQualityMeasurement, .measured(.empty))
+        XCTAssertFalse(unavailableScene.traceRootIds.contains("cinematic_good_frame_action_preservation"))
+        XCTAssertFalse(unavailableScene.actions.contains { $0.semanticActionType == .keepCurrentSetup })
+    }
+
     func testSemanticEvalOutputEncodesLiveAndPauseRowsWithClosedCatalogActions() throws {
         let liveHint = LiveHintPresentation(
             id: "lh_runtime_042",
@@ -453,7 +826,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         XCTAssertEqual(pauseRow.futureActions, ["increase_exposure"])
     }
 
-    func testSemanticEvalPauseConfidenceUsesTechnicalQualityFloor() {
+    func testSemanticEvalPauseConfidenceMatchesUIAndRecordsDistinctCritiqueScore() throws {
         let pauseCritique = PauseCritiquePresentation(
             frameId: "frame-technical-overexposure",
             verdict: .mixed,
@@ -476,20 +849,39 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
             filename: "technical.jpg",
             critique: pauseCritique,
             source: "swift_runtime_projection",
-            runtimeClaim: .realRuntimeStillReplay,
+            runtimeClaim: .testFixture,
             futureActions: ["reduce_exposure"],
-            technicalConfidenceFloor: 0.79
+            critiqueVerdictConfidence: 0.91,
+            confidenceContext: .stillReplayCandidate,
+            debugNumericFeatures: ["verdict_confidence": 0.19]
         )
 
-        XCTAssertEqual(pauseRow.confidence, 0.79, accuracy: 0.0001)
+        XCTAssertEqual(pauseRow.confidence, 0.52, accuracy: 0.0001)
+        XCTAssertEqual(pauseRow.confidence, DecisionTracePresentation.pause(critique: pauseCritique).confidence.value)
+        let evidence = try XCTUnwrap(pauseRow.confidenceEvidence)
+        XCTAssertEqual(evidence.source, .pauseCritiquePresentation)
+        XCTAssertEqual(evidence.context, .stillReplayCandidate)
+        XCTAssertEqual(evidence.presentationFrameId, pauseCritique.frameId)
+        XCTAssertEqual(evidence.critiqueVerdictConfidence, 0.91)
+        XCTAssertEqual(evidence.presentationConfidence, 0.52)
+        XCTAssertEqual(pauseRow.debugNumericFeatures["verdict_confidence"], 0.19)
         XCTAssertEqual(pauseRow.futureActions, ["reduce_exposure"])
+
+        let encoded = try JSONEncoder().encode(pauseRow)
+        XCTAssertEqual(try JSONDecoder().decode(SemanticEvalCandidateOutput.self, from: encoded), pauseRow)
+        var historical = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        historical.removeValue(forKey: "confidence_evidence")
+        let historicalData = try JSONSerialization.data(withJSONObject: historical)
+        let decodedHistorical = try JSONDecoder().decode(SemanticEvalCandidateOutput.self, from: historicalData)
+        XCTAssertNil(decodedHistorical.confidenceEvidence)
+        XCTAssertEqual(decodedHistorical.confidence, pauseRow.confidence)
     }
 
-    func testSemanticEvalPauseMixedCorrectiveConfidenceIsNotRaisedByTechnicalFloor() {
+    func testSemanticEvalPauseDoesNotRecapSuppliedPresentationConfidence() {
         let pauseCritique = PauseCritiquePresentation(
             frameId: "frame-mixed-background",
             verdict: .mixed,
-            verdictConfidence: 0.74,
+            verdictConfidence: 0.86,
             summaryId: "summary_mixed_background",
             shortVerdict: "Кадр можно улучшить.",
             whyGood: nil,
@@ -532,13 +924,15 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
             filename: "mixed_background.jpg",
             critique: pauseCritique,
             source: "swift_runtime_projection",
-            runtimeClaim: .realRuntimeStillReplay,
+            runtimeClaim: .testFixture,
             futureActions: ["increase_exposure"],
-            technicalConfidenceFloor: 0.91
+            critiqueVerdictConfidence: 0.41
         )
 
         XCTAssertEqual(pauseRow.semanticActions, ["simplify_background"])
-        XCTAssertEqual(pauseRow.confidence, 0.74, accuracy: 0.0001)
+        XCTAssertEqual(pauseRow.confidence, 0.86, accuracy: 0.0001)
+        XCTAssertEqual(pauseRow.confidence, DecisionTracePresentation.pause(critique: pauseCritique).confidence.value)
+        XCTAssertEqual(pauseRow.confidenceEvidence?.critiqueVerdictConfidence, 0.41)
     }
 
     func testSemanticEvalLiveHiddenRowDoesNotExportTechnicalConfidence() {
@@ -547,15 +941,113 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
             filename: "hidden_live.jpg",
             hint: nil,
             source: "swift_runtime_projection",
-            runtimeClaim: .realRuntimeStillReplay,
+            runtimeClaim: .testFixture,
             futureActions: ["stabilize_camera"],
-            technicalConfidenceFloor: 0.91
+            critiqueVerdictConfidence: 0.91
         )
 
         XCTAssertFalse(liveRow.shown)
         XCTAssertEqual(liveRow.semanticActions, [])
         XCTAssertEqual(liveRow.futureActions, ["stabilize_camera"])
         XCTAssertEqual(liveRow.confidence, 0, accuracy: 0.0001)
+        XCTAssertEqual(liveRow.confidenceEvidence?.source, .noPresentation)
+        XCTAssertNil(liveRow.confidenceEvidence?.presentationConfidence)
+        XCTAssertEqual(liveRow.confidenceEvidence?.critiqueVerdictConfidence, 0.91)
+    }
+
+    func testSemanticEvalConfidenceEncodesNonFiniteObservationsWithoutChangingUIBounds() throws {
+        for raw in [-0.2, 1.2, Double.nan, Double.infinity, -Double.infinity] {
+            let hint = LiveHintPresentation(
+                id: "numeric-control", frameId: "numeric-frame", text: "numeric-control",
+                confidence: raw, actionType: nil, actionId: nil, linkedIssueIds: [],
+                summaryId: "numeric-summary", traceRootIds: [], targetRegion: nil,
+                overlayHint: nil, isFallback: false, expandedVerdict: nil
+            )
+            let critique = PauseCritiquePresentation(
+                frameId: "numeric-frame", verdict: .mixed, verdictConfidence: raw,
+                summaryId: "numeric-summary", shortVerdict: "numeric-control",
+                whyGood: nil, whyProblematic: nil, strengths: [], issues: [], actions: [],
+                noChangeRationale: nil, assumptions: [], traceRootIds: [], fallbackUsed: false
+            )
+            let diagnostics = ["finite": 0.19, "nan": Double.nan,
+                               "positive_infinity": Double.infinity, "negative_infinity": -Double.infinity]
+            let live = SemanticEvalCandidateOutput.live(
+                recordId: "numeric-control", filename: "fixture", hint: hint,
+                source: "numeric_fixture", runtimeClaim: .testFixture,
+                critiqueVerdictConfidence: raw, debugNumericFeatures: diagnostics
+            )
+            let pause = SemanticEvalCandidateOutput.pause(
+                recordId: "numeric-control", filename: "fixture", critique: critique,
+                source: "numeric_fixture", runtimeClaim: .testFixture,
+                critiqueVerdictConfidence: raw, debugNumericFeatures: diagnostics
+            )
+            let hidden = SemanticEvalCandidateOutput.hidden(
+                recordId: "numeric-control", filename: "fixture", mode: .live,
+                source: "numeric_fixture", runtimeClaim: .testFixture,
+                critiqueVerdictConfidence: raw, debugNumericFeatures: diagnostics
+            )
+            XCTAssertEqual(live.confidence, DecisionTracePresentation.live(hint: hint).confidence.value)
+            XCTAssertEqual(pause.confidence, DecisionTracePresentation.pause(critique: critique).confidence.value)
+            XCTAssertEqual(hidden.confidence, 0)
+            for row in [live, pause, hidden] {
+                XCTAssertTrue(row.confidence.isFinite)
+                XCTAssertTrue((0...1).contains(row.confidence))
+                XCTAssertEqual(row.debugNumericFeatures, ["finite": 0.19])
+                let evidence = try XCTUnwrap(row.confidenceEvidence)
+                XCTAssertEqual(evidence.context, .suppliedPresentation)
+                if raw.isFinite {
+                    XCTAssertEqual(evidence.critiqueVerdictConfidence, raw)
+                    XCTAssertEqual(evidence.presentationConfidence, row.shown ? raw : nil)
+                } else {
+                    XCTAssertNil(evidence.critiqueVerdictConfidence)
+                    XCTAssertNil(evidence.presentationConfidence)
+                }
+                let encoded = try JSONEncoder().encode(row)
+                XCTAssertEqual(try JSONDecoder().decode(SemanticEvalCandidateOutput.self, from: encoded), row)
+            }
+            XCTAssertEqual(live.confidenceEvidence?.source, .liveHintPresentation)
+            XCTAssertEqual(pause.confidenceEvidence?.source, .pauseCritiquePresentation)
+            XCTAssertEqual(hidden.confidenceEvidence?.source, .noPresentation)
+        }
+    }
+
+    @MainActor
+    func testSemanticEvalLiveConfidenceUsesRetainedPresentationInsteadOfRejectedCandidate() throws {
+        let pipeline = AnalysisPipeline(reasoningProvider: nil)
+        let now = Date(timeIntervalSince1970: 1_768_500_410)
+        func makeHint(id: String, confidence: Double, action: ActionTypeV1) -> LiveHintPresentation {
+            LiveHintPresentation(
+                id: id, frameId: "frame_\(id)", text: id, confidence: confidence,
+                actionType: action, actionId: "action_\(id)", linkedIssueIds: [],
+                summaryId: "summary_\(id)", traceRootIds: ["contextual_unknown_group_framing"],
+                targetRegion: nil, overlayHint: nil, isFallback: false, expandedVerdict: nil
+            )
+        }
+        let initial = makeHint(id: "held", confidence: 0.82, action: .reduceBackgroundDistractions)
+        let rejected = makeHint(id: "pending", confidence: 0.51, action: .increaseSubjectSize)
+        pipeline.testingApplyLiveHintCandidate(initial, now: now)
+        pipeline.testingApplyLiveHintCandidate(rejected, now: now.addingTimeInterval(0.10))
+        let accepted = try XCTUnwrap(pipeline.currentLiveHint)
+        XCTAssertEqual(accepted, initial)
+
+        let row = SemanticEvalCandidateOutput.live(
+            recordId: "confidence-retention-control", filename: "fixture",
+            hint: accepted, source: "publication_hold_fixture", runtimeClaim: .testFixture,
+            debugNumericFeatures: ["verdict_confidence": 0.12]
+        )
+        let consumer = try XCTUnwrap(DecisionTracePresentation.current(
+            liveHint: pipeline.currentLiveHint, pauseCritique: nil, isPaused: false,
+            overlayAnnotations: [], debugSignals: .empty
+        ))
+        XCTAssertEqual(row.confidence, consumer.confidence.value)
+        XCTAssertEqual(row.confidence, 0.82, accuracy: 0.0001)
+        XCTAssertNotEqual(row.confidence, rejected.confidence)
+        XCTAssertEqual(row.confidenceEvidence?.source, .liveHintPresentation)
+        XCTAssertEqual(row.confidenceEvidence?.context, .suppliedPresentation)
+        XCTAssertEqual(row.confidenceEvidence?.presentationFrameId, initial.frameId)
+        // No CritiqueReport for this retained frame was supplied; the debug map
+        // does not manufacture an observation at another stage.
+        XCTAssertNil(row.confidenceEvidence?.critiqueVerdictConfidence)
     }
 
     func testSemanticEvalPauseDropsLeaveAsIsActionForDominantTechnicalFutureAction() {
@@ -630,19 +1122,25 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         XCTAssertEqual(hiddenRow.traceIds, ["trace_hidden"])
     }
 
-    func testSemanticEvalTechnicalQualityProbeDetectsExposureAndFocusActions() {
+    func testSemanticEvalTechnicalQualityProbePreservesExposureWithoutInventingPhysicalCauses() {
         let probe = SemanticEvalTechnicalQualityProbe()
 
         let overexposed = probe.signal(pixelBuffer: makeHotspotPixelBuffer(width: 96, height: 96))
         XCTAssertTrue(overexposed.futureActionIds.contains(TechnicalQualityActionType.reduceExposure.rawValue))
 
-        let softFocus = probe.signal(pixelBuffer: makeSoftFocusPixelBuffer(width: 96, height: 96))
-        XCTAssertTrue(softFocus.futureActionIds.contains(TechnicalQualityActionType.refocusSubject.rawValue))
-        XCTAssertTrue(softFocus.futureActionIds.contains(TechnicalQualityActionType.stabilizeCamera.rawValue))
+        // The historical fixture is a sharp 118/124 step, not known defocus or motion.
+        let stepMeasurement = probe.measurement(pixelBuffer: makeSoftFocusPixelBuffer(width: 96, height: 96))
+        guard case let .partial(softFocus, reason, _) = stepMeasurement else {
+            return XCTFail("Low-contrast pixels retain unknown sharpness cause")
+        }
+        XCTAssertEqual(reason, .sharpnessCauseUnobservable)
+        XCTAssertFalse(stepMeasurement.supportsPositiveConfirmation)
+        XCTAssertFalse(softFocus.futureActionIds.contains(TechnicalQualityActionType.refocusSubject.rawValue))
+        XCTAssertFalse(softFocus.futureActionIds.contains(TechnicalQualityActionType.stabilizeCamera.rawValue))
 
         let lowLight = probe.signal(pixelBuffer: makeLowLightPixelBuffer(width: 96, height: 96))
         XCTAssertTrue(lowLight.futureActionIds.contains(TechnicalQualityActionType.increaseExposure.rawValue))
-        XCTAssertTrue(lowLight.futureActionIds.contains(TechnicalQualityActionType.reduceIsoNoise.rawValue))
+        XCTAssertFalse(lowLight.futureActionIds.contains(TechnicalQualityActionType.reduceIsoNoise.rawValue))
     }
 
     func testSemanticEvalTechnicalQualityProbeDoesNotTreatLowKeyTextureAsDominantBlur() {
@@ -651,18 +1149,26 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         let lowKey = probe.signal(pixelBuffer: makeLowKeyCinematicPixelBuffer(width: 96, height: 96))
 
         XCTAssertTrue(lowKey.futureActionIds.contains(TechnicalQualityActionType.increaseExposure.rawValue))
-        XCTAssertTrue(lowKey.futureActionIds.contains(TechnicalQualityActionType.reduceIsoNoise.rawValue))
+        XCTAssertFalse(lowKey.futureActionIds.contains(TechnicalQualityActionType.reduceIsoNoise.rawValue))
         XCTAssertFalse(lowKey.dominantFutureActionIds.contains(TechnicalQualityActionType.refocusSubject.rawValue))
         XCTAssertFalse(lowKey.dominantFutureActionIds.contains(TechnicalQualityActionType.stabilizeCamera.rawValue))
     }
 
-    func testSemanticEvalTechnicalQualityProbeKeepsModerateLowLightSoftnessDominant() {
+    func testSemanticEvalTechnicalQualityProbeDoesNotInferBlurCauseFromModerateLowLightStep() {
         let probe = SemanticEvalTechnicalQualityProbe()
 
-        let softLowLight = probe.signal(pixelBuffer: makeModerateLowLightSoftPixelBuffer(width: 96, height: 96))
+        // This is another sharp edge (34/42), with no physical blur operation.
+        let measurement = probe.measurement(pixelBuffer: makeModerateLowLightSoftPixelBuffer(width: 96, height: 96))
+        guard case let .partial(softLowLight, reason, _) = measurement else {
+            return XCTFail("Dark low-contrast detail cannot identify a physical blur cause")
+        }
+        XCTAssertEqual(reason, .sharpnessCauseUnobservable)
+        XCTAssertFalse(measurement.supportsPositiveConfirmation)
 
-        XCTAssertTrue(softLowLight.dominantFutureActionIds.contains(TechnicalQualityActionType.refocusSubject.rawValue))
-        XCTAssertTrue(softLowLight.dominantFutureActionIds.contains(TechnicalQualityActionType.stabilizeCamera.rawValue))
+        XCTAssertTrue(softLowLight.futureActionIds.contains(TechnicalQualityActionType.increaseExposure.rawValue))
+        XCTAssertFalse(softLowLight.futureActionIds.contains(TechnicalQualityActionType.refocusSubject.rawValue))
+        XCTAssertFalse(softLowLight.futureActionIds.contains(TechnicalQualityActionType.stabilizeCamera.rawValue))
+        XCTAssertFalse(softLowLight.futureActionIds.contains(TechnicalQualityActionType.reduceIsoNoise.rawValue))
     }
 
     func testSemanticEvalTechnicalQualityProbeMarksModerateBrightHotspotAsDominant() {
@@ -1870,7 +2376,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
     }
 
     @MainActor
-    func testStillImageReplayMapsSyntheticUnderexposureToFrontFillAndSubjectRotation() async throws {
+    func testStillImageReplayKeepsSyntheticUnderexposureMeasurementWithoutSceneControl() async throws {
         let pipeline = AnalysisPipeline(
             reasoningProvider: nil,
             visualEvidenceProvider: nil,
@@ -1886,12 +2392,27 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
             options: .fullRuntime
         )
 
+        // Preserve the full actual row even when an assertion stops this test.
+        // Its raw debug features and trace distinguish presentation from the
+        // future-action export union; no verdict or expected label is changed.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let attachment = XCTAttachment(
+            data: try encoder.encode(result.pauseRow), uniformTypeIdentifier: "public.json"
+        )
+        attachment.name = "recovered-180-pause-semantic-eval"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
         XCTAssertTrue(result.pauseRow.futureActions.contains(TechnicalQualityActionType.increaseExposure.rawValue))
+        // A replay image supplies no user fact about controlling people/lights.
+        XCTAssertFalse(result.pauseRow.semanticActions.contains(SemanticActionType.addFrontFillLight.rawValue))
+        XCTAssertFalse(result.pauseRow.semanticActions.contains(SemanticActionType.rotateSubjectTowardLight.rawValue))
         XCTAssertFalse(result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue))
     }
 
     @MainActor
-    func testStillImageReplayMapsUnknownSyntheticUnderexposureAndOcclusionToLightingAndCleanup() async throws {
+    func testStillImageReplayWithholdsUnownedFillWhileKeepingCameraOcclusionAdvice() async throws {
         let pipeline = AnalysisPipeline(
             reasoningProvider: nil,
             visualEvidenceProvider: nil,
@@ -1907,7 +2428,10 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
             options: .fullRuntime
         )
 
-        XCTAssertTrue(
+        // Keep the measurable quality expectation; scene control only restricts
+        // the action recipient. Unknown cannot grant authority over a light.
+        XCTAssertTrue(result.pauseRow.futureActions.contains(TechnicalQualityActionType.increaseExposure.rawValue))
+        XCTAssertFalse(
             result.pauseRow.semanticActions.contains(SemanticActionType.addFrontFillLight.rawValue),
             "semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) trace=\(result.pauseRow.traceIds) debug=\(result.pauseRow.debugNumericFeatures)"
         )
@@ -2061,7 +2585,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
     }
 
     @MainActor
-    func testStillImageReplayMapsUnknownSyntheticUnderexposureToLightingAdvice() async throws {
+    func testStillImageReplayWithholdsUnownedLightAndSubjectRotation() async throws {
         let pipeline = AnalysisPipeline(
             reasoningProvider: nil,
             visualEvidenceProvider: nil,
@@ -2078,11 +2602,25 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
                 options: .fullRuntime
             )
 
-            XCTAssertTrue(
+            // Retain the consumed measurement and actual presentation before
+            // evaluating the unchanged legacy quality assertions below.
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let attachment = XCTAttachment(
+                data: try encoder.encode(result.pauseRow), uniformTypeIdentifier: "public.json"
+            )
+            attachment.name = "recovered-\(recordId)-pause-semantic-eval"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+
+            // This input supplies neither lighting control nor permission to
+            // direct participants. Exposure measurement must still be present.
+            XCTAssertTrue(result.pauseRow.futureActions.contains(TechnicalQualityActionType.increaseExposure.rawValue))
+            XCTAssertFalse(
                 result.pauseRow.semanticActions.contains(SemanticActionType.addFrontFillLight.rawValue),
                 "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) debug=\(result.pauseRow.debugNumericFeatures)"
             )
-            XCTAssertTrue(
+            XCTAssertFalse(
                 result.pauseRow.semanticActions.contains(SemanticActionType.rotateSubjectTowardLight.rawValue),
                 "recordId=\(recordId) semanticActions=\(result.pauseRow.semanticActions) future=\(result.pauseRow.futureActions) debug=\(result.pauseRow.debugNumericFeatures)"
             )
@@ -3046,7 +3584,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         )
 
         await MainActor.run {
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: critique.frameId,
                 snapshot: snapshot,
                 critique: critique,
@@ -3243,40 +3781,50 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
 
     func testDemoObjectModePublishesCupBoundingBoxAndCorrectionInsteadOfFalseGood() async {
         let pipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
-        let frameId = "demo-cup-edge"
         let cupRegion = NormalizedRect(x: 0.02, y: 0.32, width: 0.18, height: 0.36)
-        let snapshot = makeDemoLiveSnapshot(
-            frameId: frameId,
-            subjectSignals: .init(
-                faceDetected: false,
-                personDetected: false,
-                personCount: 0,
-                topObjectLabel: "cup",
-                topObjectConfidence: 0.83,
-                topObjectRegion: cupRegion,
-                primaryCandidateRegion: cupRegion,
-                primaryCandidateConfidence: 0.83
-            ),
-            objects: .init(totalCount: 2, topKLabels: ["cup", "chair"])
-        )
-        let semantics = makeDemoSemantics(
-            frameId: frameId,
-            primarySubject: .init(kind: .unknown, confidence: 0.18),
-            sceneType: .objectInsert
-        )
-
         await MainActor.run {
             pipeline.setCameraDemoSceneMode(.object)
-            pipeline.testingPublishLivePresentation(
-                frameId: frameId,
-                snapshot: snapshot,
-                critique: makeCritique(frameId: frameId, verdict: .good),
-                plan: makeDemoNoChangePlan(frameId: frameId),
-                semantics: semantics,
-                legacySuggestion: nil,
-                structuredAvailable: true,
-                now: Date(timeIntervalSince1970: 1_768_500_330)
-            )
+            // This presentation fixture supplies a grounded subject and three
+            // fresh observations. A detector label plus unknown semantics, or
+            // a single observation, cannot admit a spatial command.
+            for index in 0..<3 {
+                let frameId = "demo-cup-edge-\(index)"
+                let time = Date(timeIntervalSince1970: 1_768_500_330 + Double(index) * 0.04)
+                let snapshot = makeDemoLiveSnapshot(
+                    frameId: frameId,
+                    capturedAt: time,
+                    subjectSignals: .init(
+                        faceDetected: false,
+                        personDetected: false,
+                        personCount: 0,
+                        topObjectLabel: "cup",
+                        topObjectConfidence: 0.83,
+                        topObjectRegion: cupRegion,
+                        primaryCandidateRegion: cupRegion,
+                        primaryCandidateConfidence: 0.83
+                    ),
+                    objects: .init(totalCount: 2, topKLabels: ["cup", "chair"])
+                )
+                let semantics = makeDemoSemantics(
+                    frameId: frameId,
+                    primarySubject: .init(kind: .object, label: "cup", region: cupRegion, confidence: 0.83),
+                    sceneType: .objectInsert
+                )
+                pipeline.testingPublishMeasuredLiveFixture(
+                    frameId: frameId,
+                    snapshot: snapshot,
+                    critique: makeCritique(frameId: frameId, verdict: .good),
+                    plan: makeDemoNoChangePlan(frameId: frameId),
+                    semantics: semantics,
+                    legacySuggestion: nil,
+                    structuredAvailable: true,
+                    now: time
+                )
+                if index < 2 {
+                    XCTAssertNil(pipeline.currentLiveHint, "A spatial command needs three fresh observations")
+                    XCTAssertTrue(pipeline.currentOverlayAnnotations.isEmpty)
+                }
+            }
         }
 
         await MainActor.run {
@@ -3285,7 +3833,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
                 objectDemoCatalogInstructions.contains(pipeline.currentLiveHint?.text ?? "")
             )
             XCTAssertFalse(pipeline.currentLiveHint?.text.contains("стаканчик") == true)
-            XCTAssertNotEqual(pipeline.currentLiveHint?.actionType, .leaveFrameAsIs)
+            XCTAssertEqual(pipeline.currentLiveHint?.actionType, .moveFrameRight)
             XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.targetRegion, cupRegion)
             XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.label, "Объект")
             XCTAssertEqual(pipeline.currentOverlayAnnotations.first?.tone, .danger)
@@ -3321,7 +3869,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
 
         await MainActor.run {
             pipeline.setCameraDemoSceneMode(.auto)
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: frameId,
                 snapshot: snapshot,
                 critique: makeCritique(frameId: frameId, verdict: .good),
@@ -3368,7 +3916,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
 
         await MainActor.run {
             pipeline.setCameraDemoSceneMode(.portrait)
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: frameId,
                 snapshot: snapshot,
                 critique: makeCritique(frameId: frameId, verdict: .good),
@@ -3410,7 +3958,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
 
         await MainActor.run {
             pipeline.setCameraDemoSceneMode(.object)
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: frameId,
                 snapshot: snapshot,
                 critique: makeCritique(frameId: frameId, verdict: .good),
@@ -3455,7 +4003,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
 
         await MainActor.run {
             pipeline.setCameraDemoSceneMode(.object)
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: frameId,
                 snapshot: snapshot,
                 critique: makeCritique(frameId: frameId, verdict: .good),
@@ -3521,7 +4069,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
 
         await MainActor.run {
             pipeline.setCameraDemoSceneMode(.object)
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: firstFrame,
                 snapshot: snapshot1,
                 critique: makeCritique(frameId: firstFrame, verdict: .good),
@@ -3542,7 +4090,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         }
 
         await MainActor.run {
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: secondFrame,
                 snapshot: snapshot2,
                 critique: makeCritique(frameId: secondFrame, verdict: .good),
@@ -3563,7 +4111,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         }
 
         await MainActor.run {
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: thirdFrame,
                 snapshot: snapshot3,
                 critique: makeCritique(frameId: thirdFrame, verdict: .good),
@@ -3619,7 +4167,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
                 sceneType: .objectInsert
             )
             await MainActor.run {
-                pipeline.testingPublishLivePresentation(
+                pipeline.testingPublishMeasuredLiveFixture(
                     frameId: frameId,
                     snapshot: snapshot,
                     critique: makeCritique(frameId: frameId, verdict: .good),
@@ -3673,7 +4221,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
 
         await MainActor.run {
             pipeline.setCameraDemoSceneMode(.object)
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: firstFrame,
                 snapshot: snapshot,
                 critique: makeCritique(frameId: firstFrame, verdict: .mixed),
@@ -3687,7 +4235,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
                 structuredAvailable: true,
                 now: Date(timeIntervalSince1970: 1_768_500_370)
             )
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: missFrame,
                 snapshot: missSnapshot,
                 critique: makeCritique(frameId: missFrame, verdict: .good),
@@ -3743,7 +4291,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
 
         await MainActor.run {
             pipeline.setCameraDemoSceneMode(.portrait)
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: frameId,
                 snapshot: snapshot,
                 critique: makeCritique(frameId: frameId, verdict: .good),
@@ -3800,7 +4348,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
 
         await MainActor.run {
             pipeline.setCameraDemoSceneMode(.portrait)
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: frameId,
                 snapshot: snapshot,
                 critique: makeCritique(frameId: frameId, verdict: .good),
@@ -4348,7 +4896,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
             sceneType: .singleCharacterMedium
         )
         await MainActor.run {
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: frameId,
                 snapshot: snapshot,
                 critique: makeCritique(frameId: frameId, verdict: .mixed),
@@ -4644,7 +5192,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
                                       actionType: ActionTypeV1) async {
         let (critique, plan) = makeTemporalCritiqueAndPlan(frameId: frameId, actionType: actionType, region: semantics.primarySubject.region)
         await MainActor.run {
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: frameId,
                 snapshot: snapshot,
                 critique: critique,
@@ -4789,7 +5337,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
                                   semantics: SceneSemanticsReport,
                                   now: TimeInterval) async {
         await MainActor.run {
-            pipeline.testingPublishLivePresentation(
+            pipeline.testingPublishMeasuredLiveFixture(
                 frameId: frameId,
                 snapshot: snapshot,
                 critique: makeCritique(frameId: frameId, verdict: .good),
@@ -5179,37 +5727,48 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
     }
 
     private func makeDatasetPixelBuffer(named filename: String) throws -> CVPixelBuffer {
-        let imageURL = bundledCameraBenchmarkPackURL()
+        let imageURL = try bundledCameraBenchmarkPackURL()
             .appendingPathComponent("images")
             .appendingPathComponent(filename)
-        guard FileManager.default.fileExists(atPath: imageURL.path) else {
-            // CC-002 excluded some benchmark images from the checkout. Tests
-            // referencing missing images are skipped rather than failed —
-            // the failure would be a file-not-found, not a behavior bug.
-            throw XCTSkip("benchmark image not in checkout: \(filename)")
+        if FileManager.default.fileExists(atPath: imageURL.path) {
+            return try makePixelBuffer(from: imageURL)
         }
-        return try makePixelBuffer(from: imageURL)
+        #if DEBUG && targetEnvironment(simulator)
+        let caches = try XCTUnwrap(FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first)
+        let data = try LegacyCameraReferenceFixture.imageData(named: filename, caches: caches)
+        // Decode exactly the authenticated bytes; never reopen the staged file.
+        return try makePixelBuffer(from: imageURL, authenticatedData: data)
+        #else
+            // Required research inputs must be present before behavior is evaluated.
+            // CC-002 excludes this pack from Release, not from Debug validation.
+            throw NSError(
+                domain: "AnalysisPipelinePresentationTests",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Missing required benchmark image in the Debug resource pack: \(filename)"]
+            )
+        #endif
     }
 
-    private func bundledCameraBenchmarkPackURL() -> URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1")
+    private func bundledCameraBenchmarkPackURL() throws -> URL {
+        try DeviceBenchmarkArtifactStore(runId: "legacy-camera-presentation-inputs")
+            .resourcePackURL(packId: "camera_device_benchmark_pack_v1")
     }
 
     private func loadSemanticDemoScenarios() throws -> [SemanticDemoScenario] {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let scenarioURL = repoRoot
-            .appendingPathComponent("docs/cameraanalysis/demo/semantic_demo_scenarios.json")
+        let scenarioURL = try bundledCameraBenchmarkPackURL()
+            .appendingPathComponent("semantic_demo_scenarios.json")
         let data = try Data(contentsOf: scenarioURL)
         return try JSONDecoder().decode([SemanticDemoScenario].self, from: data)
     }
 
-    private func makePixelBuffer(from imageURL: URL) throws -> CVPixelBuffer {
-        guard let source = CGImageSourceCreateWithURL(imageURL as CFURL, nil),
+    private func makePixelBuffer(from imageURL: URL, authenticatedData: Data? = nil) throws -> CVPixelBuffer {
+        let source: CGImageSource?
+        if let authenticatedData {
+            source = CGImageSourceCreateWithData(authenticatedData as CFData, nil)
+        } else {
+            source = CGImageSourceCreateWithURL(imageURL as CFURL, nil)
+        }
+        guard let source,
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             throw NSError(
                 domain: "AnalysisPipelinePresentationTests",
@@ -5396,6 +5955,13 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
 
         let labels = try loadLabels(path: config.labelsPath)
         let limit = config.limit
+        if let limit, limit <= 0 {
+            throw NSError(
+                domain: "SemanticEvalReplayTests",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Semantic replay limit must be positive."]
+            )
+        }
         let selectedLabels = limit.map { Array(labels.prefix($0)) } ?? labels
         let options: SemanticEvalStillImageReplayOptions = config.runtime == "lightweight"
             ? .lightweightTest
@@ -5442,6 +6008,15 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
 
     private func loadReplayConfig() throws -> SemanticEvalReplayConfig? {
         let env = ProcessInfo.processInfo.environment
+        let inputKeys = ["SEMANTIC_EVAL_LABELS", "SEMANTIC_EVAL_IMAGES_ROOT", "SEMANTIC_EVAL_OUTPUT"]
+        let suppliedInputCount = inputKeys.filter { env[$0] != nil }.count
+        guard suppliedInputCount == 0 || suppliedInputCount == inputKeys.count else {
+            throw NSError(
+                domain: "SemanticEvalReplayTests",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Explicit semantic replay requires labels, images root and output together."]
+            )
+        }
         if let labelsPath = env["SEMANTIC_EVAL_LABELS"],
            let imagesRootPath = env["SEMANTIC_EVAL_IMAGES_ROOT"],
            let outputPath = env["SEMANTIC_EVAL_OUTPUT"] {
@@ -5456,17 +6031,27 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
         }
 
         let fileManager = FileManager.default
-        let bundledPackURL = bundledCameraBenchmarkPackURL()
-        let bundledFallbackConfig = SemanticEvalReplayConfig(
-            labelsPath: bundledPackURL.appendingPathComponent("camera_quick_labels.jsonl").path,
-            imagesRootPath: bundledPackURL.appendingPathComponent("images").path,
-            outputPath: URL(fileURLWithPath: NSTemporaryDirectory())
-                .appendingPathComponent("semantic_eval_replay_candidate_outputs.jsonl")
-                .path,
-            runtime: "lightweight",
-            limit: nil,
-            deleteAfterRead: false
-        )
+        func bundledFallbackConfig() throws -> SemanticEvalReplayConfig {
+            let bundledPackURL = try bundledCameraBenchmarkPackURL()
+            return SemanticEvalReplayConfig(
+                labelsPath: bundledPackURL.appendingPathComponent("camera_quick_labels.jsonl").path,
+                imagesRootPath: bundledPackURL.appendingPathComponent("images").path,
+                outputPath: URL(fileURLWithPath: NSTemporaryDirectory())
+                    .appendingPathComponent("semantic_eval_replay_candidate_outputs.jsonl")
+                    .path,
+                runtime: "lightweight",
+                limit: nil,
+                deleteAfterRead: false
+            )
+        }
+        if let explicitConfigPath = env["SEMANTIC_EVAL_CONFIG"],
+           !fileManager.fileExists(atPath: explicitConfigPath) {
+            throw NSError(
+                domain: "SemanticEvalReplayTests",
+                code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "Explicit semantic replay configuration is unavailable."]
+            )
+        }
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -5480,7 +6065,7 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
             "/private/tmp/semantic_eval_replay_config.json"
         ].compactMap { $0 }
         guard let configPath = configCandidates.first(where: { fileManager.fileExists(atPath: $0) }) else {
-            return bundledFallbackConfig
+            return try bundledFallbackConfig()
         }
         let configURL = URL(fileURLWithPath: configPath)
         print("Semantic eval replay config path: \(configURL.path)")
@@ -5488,22 +6073,23 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
             SemanticEvalReplayConfig.self,
             from: Data(contentsOf: configURL)
         )
-        if config.deleteAfterRead {
-            try? FileManager.default.removeItem(at: configURL)
-        }
         guard fileManager.fileExists(atPath: config.labelsPath),
               fileManager.fileExists(atPath: config.imagesRootPath) else {
-            print("Semantic eval replay falling back to bundled camera benchmark pack: \(bundledPackURL.path)")
-            return bundledFallbackConfig
+            throw NSError(
+                domain: "SemanticEvalReplayTests",
+                code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "Configured semantic replay inputs are unavailable; no fallback dataset was selected."]
+            )
+        }
+        if config.deleteAfterRead {
+            try? FileManager.default.removeItem(at: configURL)
         }
         return config
     }
 
-    private func bundledCameraBenchmarkPackURL() -> URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1")
+    private func bundledCameraBenchmarkPackURL() throws -> URL {
+        try DeviceBenchmarkArtifactStore(runId: "legacy-semantic-export-inputs")
+            .resourcePackURL(packId: "camera_device_benchmark_pack_v1")
     }
 
     private func loadLabels(path: String) throws -> [SemanticEvalLabelRecord] {
@@ -5511,6 +6097,13 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
         let lines = String(decoding: data, as: UTF8.self)
             .split(separator: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !lines.isEmpty else {
+            throw NSError(
+                domain: "SemanticEvalReplayTests",
+                code: 6,
+                userInfo: [NSLocalizedDescriptionKey: "Semantic replay labels must contain at least one record."]
+            )
+        }
         let decoder = JSONDecoder()
         return try lines.map { line in
             try decoder.decode(SemanticEvalLabelRecord.self, from: Data(line.utf8))
@@ -5583,5 +6176,32 @@ final class SemanticEvalStillImageBatchReplayTests: XCTestCase {
 
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         return pixelBuffer
+    }
+}
+
+// Existing snapshot-only composition/demo tests explicitly supply a synthetic
+// measured-clean fixture. This helper is not a physical image-quality claim.
+private extension AnalysisPipeline {
+    @MainActor
+    func testingPublishMeasuredLiveFixture(
+        frameId: String,
+        snapshot: FrameFeatureSnapshot,
+        critique: CritiqueReport,
+        plan: RecommendationPlan,
+        semantics: SceneSemanticsReport,
+        legacySuggestion: Suggestion?,
+        structuredAvailable: Bool,
+        now: Date = Date()
+    ) {
+        testingPublishLivePresentation(
+            frameId: frameId, snapshot: snapshot, critique: critique, plan: plan,
+            semantics: semantics, legacySuggestion: legacySuggestion,
+            structuredAvailable: structuredAvailable,
+            technicalEvidence: FrameTechnicalQualityEvidence(
+                frameID: snapshot.frameId, capturedAt: snapshot.capturedAt,
+                measurement: .measured(.empty)
+            ),
+            now: now
+        )
     }
 }

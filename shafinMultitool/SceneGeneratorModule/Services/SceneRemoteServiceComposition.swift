@@ -71,7 +71,9 @@ enum SceneRemoteServiceComposition {
                     ?? URLSessionAppAttestEnrollmentTransport(baseURL: resolved.baseURL, session: session),
                 secrets: secrets ?? KeychainAppAttestSecretStore(
                     service: credentialNamespace(for: resolved.baseURL)
-                )
+                ),
+                deletionTransport: URLSessionInstallationDeletionTransport(baseURL: resolved.baseURL, session: session),
+                deletionPolicyFingerprint: resolved.transferPolicy?.fingerprint
             )
         }
 
@@ -150,9 +152,11 @@ enum SceneRemoteServiceBootstrap {
             performer: performer,
             tokenProviderOverride: tokenProviderOverride
         ) else {
+            CameraCloudServiceBootstrap.clear()
             return false
         }
         SceneParserService.shared.configureRemoteOffload(enabled: true, provider: provider)
+        CameraCloudServiceBootstrap.configure(sceneClient: provider, bundleInfo: bundleInfo)
         return true
     }
 }

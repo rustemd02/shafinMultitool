@@ -152,18 +152,43 @@ struct TrackedSubject {
     let isFace: Bool
 }
 
+enum VisionProcessingStatus: String {
+    case completed
+    case failed
+}
+
 struct VisionTrackingResult {
     let subjects: [TrackedSubject]
     let saliencyCenter: CGPoint?
     let saliencyRegion: CGRect?
     let faceCount: Int
     let personCount: Int
+    let processingStatus: VisionProcessingStatus
+
+    /// A failed batch is unavailable evidence, not a measured absence of people.
+    /// Discard partial request payloads until independent request status is owned.
+    init(subjects: [TrackedSubject], saliencyCenter: CGPoint?, saliencyRegion: CGRect?,
+         faceCount: Int, personCount: Int,
+         processingStatus: VisionProcessingStatus = .completed) {
+        self.processingStatus = processingStatus
+        let completed = processingStatus == .completed
+        self.subjects = completed ? subjects : []
+        self.saliencyCenter = completed ? saliencyCenter : nil
+        self.saliencyRegion = completed ? saliencyRegion : nil
+        self.faceCount = completed ? faceCount : 0
+        self.personCount = completed ? personCount : 0
+    }
 }
 
 final class VisionTracking {
     private let humanRequest = VNDetectHumanRectanglesRequest()
     private let faceRequest = VNDetectFaceRectanglesRequest()
     private let saliencyRequest = VNGenerateAttentionBasedSaliencyImageRequest()
+#if targetEnvironment(simulator)
+    // Request objects persist, so configure their supported compute stages once.
+    // Cache failures too: no default attempt/retry or duplicate inference per frame.
+    private var simulatorComputeConfiguration: Result<Void, Error>?
+#endif
     private var lastObservation: VNDetectedObjectObservation?
     // EMA для центра saliency, чтобы подавить дрожание
     private var saliencyEMA: CGPoint?
@@ -213,13 +238,7 @@ final class VisionTracking {
     /// A newer empty batch is an ordering barrier just like a positive batch.
     @discardableResult
     func offerObjectSeed(_ seed: VisionObjectSeed) -> Bool {
-        guard seed.frame.isKnown else { return false }
-        if let current = latestObjectFrame, !seed.frame.sharesEpoch(with: current) { return false }
-        if let newest = newestObjectSeedFrame {
-            guard seed.frame.sharesEpoch(with: newest),
-                  CMTimeCompare(seed.frame.samplePTS, newest.samplePTS) > 0 else { return false }
-        }
-        newestObjectSeedFrame = seed.frame
+        guard acceptObjectSourceFrame(seed.frame) else { return false }
         pendingObjectSeed = VisionObjectSeed(
             frame: seed.frame, pixelBuffer: seed.pixelBuffer,
             detections: Array(seed.detections.filter {
@@ -228,6 +247,27 @@ final class VisionTracking {
             sourceCandidateCount: seed.sourceCandidateCount
         )
         activeObjectSequence = nil
+        return true
+    }
+
+    /// Failed semantic inference invalidates older geometry without claiming an
+    /// observed empty batch. Keep the source ordering barrier against late callbacks.
+    @discardableResult
+    func invalidateObjectSource(frame: VisionObjectFrame) -> Bool {
+        guard acceptObjectSourceFrame(frame) else { return false }
+        pendingObjectSeed = nil
+        activeObjectSequence = nil
+        return true
+    }
+
+    private func acceptObjectSourceFrame(_ frame: VisionObjectFrame) -> Bool {
+        guard frame.isKnown else { return false }
+        if let current = latestObjectFrame, !frame.sharesEpoch(with: current) { return false }
+        if let newest = newestObjectSeedFrame {
+            guard frame.sharesEpoch(with: newest),
+                  CMTimeCompare(frame.samplePTS, newest.samplePTS) > 0 else { return false }
+        }
+        newestObjectSeedFrame = frame
         return true
     }
 
@@ -347,6 +387,42 @@ final class VisionTracking {
         return geometry
     }
 
+#if targetEnvironment(simulator)
+    @available(iOS 17.0, *)
+    private func configureSimulatorComputeIfNeeded() throws {
+        if let simulatorComputeConfiguration {
+            try simulatorComputeConfiguration.get()
+            return
+        }
+        let configuration = Result<Void, Error> {
+            for request in [faceRequest, humanRequest, saliencyRequest] as [VNRequest] {
+                let requestName = String(describing: type(of: request))
+                let stages = try request.supportedComputeStageDevices
+                guard !stages.isEmpty else {
+                    throw NSError(domain: "com.multitool2.vision.simulatorCompute", code: 1,
+                                  userInfo: [NSLocalizedDescriptionKey: "No supported compute stages for \(requestName)"])
+                }
+                for (stage, devices) in stages {
+                    guard let cpu = devices.first(where: {
+                        if case .cpu = $0 { return true }
+                        return false
+                    }) else {
+                        throw NSError(domain: "com.multitool2.vision.simulatorCompute", code: 2,
+                                      userInfo: [NSLocalizedDescriptionKey: "No supported CPU for \(requestName)/\(stage.rawValue)"])
+                    }
+                    request.setComputeDevice(cpu, for: stage)
+                    guard let configured = request.computeDevice(for: stage), case .cpu = configured else {
+                        throw NSError(domain: "com.multitool2.vision.simulatorCompute", code: 3,
+                                      userInfo: [NSLocalizedDescriptionKey: "CPU assignment not retained for \(requestName)/\(stage.rawValue)"])
+                    }
+                }
+            }
+        }
+        simulatorComputeConfiguration = configuration
+        try configuration.get()
+    }
+#endif
+
     func process(pixelBuffer: CVPixelBuffer,
                  orientation: CGImagePropertyOrientation) -> VisionTrackingResult {
         var results: [TrackedSubject] = []
@@ -360,6 +436,12 @@ final class VisionTracking {
                                             orientation: orientation,
                                             options: [:])
         do {
+#if targetEnvironment(simulator)
+            // Explicit supported CPU avoids the measured simulator Espresso
+            // initialization failure. Physical devices retain framework defaults.
+            // Older simulators retain their existing path where this API is absent.
+            if #available(iOS 17.0, *) { try configureSimulatorComputeIfNeeded() }
+#endif
             try handler.perform([faceRequest, humanRequest, saliencyRequest])
 
             if let faces = faceRequest.results as? [VNFaceObservation] {
@@ -439,7 +521,8 @@ final class VisionTracking {
             }
         } catch {
             os_log("❌ Vision error: %{private}@", log: log, type: .error, error.localizedDescription)
-            return VisionTrackingResult(subjects: results, saliencyCenter: nil, saliencyRegion: nil, faceCount: 0, personCount: 0)
+            return VisionTrackingResult(subjects: [], saliencyCenter: nil, saliencyRegion: nil,
+                                        faceCount: 0, personCount: 0, processingStatus: .failed)
         }
 
         let faces = results.filter { $0.isFace }.count

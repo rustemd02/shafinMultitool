@@ -658,7 +658,7 @@ final class MarkedObjectMatcher {
         markedObjects: [MarkedObject]
     ) -> [MarkedObjectReference] {
 #if DEBUG
-        print("🔍 [MATCHER] Поиск упоминаний markedObjects в тексте: '\(text)'")
+        SceneGeneratorDiagnosticsLogger.shared.log("[MATCHER] started inputChars=\(text.count)")
 #endif
         print("🔍 [MATCHER] Размеченных объектов для поиска: \(markedObjects.count)")
         
@@ -666,14 +666,14 @@ final class MarkedObjectMatcher {
         let lowercasedText = text.lowercased()
         
         for (index, marker) in markedObjects.enumerated() {
-            print("🔍 [MATCHER] Проверка markedObject[\(index)]: name='\(marker.name)', type=\(marker.type.rawValue)")
+            SceneGeneratorDiagnosticsLogger.shared.log("[MATCHER] checking marker index=\(index), type=\(marker.type.rawValue)")
             let markerName = marker.name.lowercased()
             let normalizedMarkerNames = normalizedSearchCandidates(for: markerName)
             
             // Ищем прямое упоминание имени маркера
             for candidate in normalizedMarkerNames {
                 if let range = lowercasedText.range(of: candidate) {
-                    print("🔍 [MATCHER]   Найдено прямое упоминание '\(candidate)'")
+                    SceneGeneratorDiagnosticsLogger.shared.log("[MATCHER] direct mention found")
                     references.append(MarkedObjectReference(
                         markerId: marker.id,
                         markerName: marker.name,
@@ -688,7 +688,7 @@ final class MarkedObjectMatcher {
             // Ищем через лемматизацию
             for candidate in normalizedMarkerNames {
                 if lemmatizer.textContainsKeyword(lowercasedText, keyword: candidate) {
-                    print("🔍 [MATCHER]   Найдено через лемматизацию '\(candidate)'")
+                    SceneGeneratorDiagnosticsLogger.shared.log("[MATCHER] lemma mention found")
                     // Находим точную позицию через поиск по словам
                     if let position = findWordPosition(in: lowercasedText, word: candidate) {
                         references.append(MarkedObjectReference(
@@ -705,7 +705,7 @@ final class MarkedObjectMatcher {
 
             for candidate in normalizedMarkerNames {
                 if let position = findMultiWordMarkerPosition(in: lowercasedText, markerName: candidate) {
-                    print("🔍 [MATCHER]   Найдено по многословной лемме '\(candidate)'")
+                    SceneGeneratorDiagnosticsLogger.shared.log("[MATCHER] multiword lemma mention found")
                     references.append(MarkedObjectReference(
                         markerId: marker.id,
                         markerName: marker.name,
@@ -717,7 +717,7 @@ final class MarkedObjectMatcher {
             }
             if references.last?.markerId == marker.id { continue }
 
-            print("🔍 [MATCHER]   Не найдено упоминание '\(markerName)'")
+            SceneGeneratorDiagnosticsLogger.shared.log("[MATCHER] mention unresolved")
             
             // Ищем с притяжательными местоимениями ("мой стол", "этот стол")
             let possessivePatterns = ["мой \(markerName)", "моя \(markerName)", "моё \(markerName)",

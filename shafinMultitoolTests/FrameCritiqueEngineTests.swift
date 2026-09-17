@@ -2,8 +2,227 @@ import Foundation
 import XCTest
 @testable import shafinMultitool
 
+/// These existing composition fixtures assume successfully measured pixels.
+/// The explicit measurement is unit-test input, not pixel or human-gold evidence.
+private struct MeasuredTechnicalCritiqueFixture {
+    func rawIssueScoreForTesting(type: IssueTypeV1, snapshot: FrameFeatureSnapshot,
+                                semantics: SceneSemanticsReport) -> Double? {
+        FrameCritiqueEngine().rawIssueScoreForTesting(type: type, snapshot: snapshot, semantics: semantics)
+    }
+
+    func analyze(snapshot: FrameFeatureSnapshot, semantics: SceneSemanticsReport) -> CritiqueReport {
+        FrameCritiqueEngine().analyze(
+            snapshot: snapshot, semantics: semantics,
+            technicalEvidence: FrameTechnicalQualityEvidence(
+                frameID: snapshot.frameId, capturedAt: snapshot.capturedAt,
+                measurement: .measured(.empty)
+            )
+        )
+    }
+}
+
 final class FrameCritiqueEngineTests: XCTestCase {
-    private let engine = FrameCritiqueEngine()
+    private let engine = MeasuredTechnicalCritiqueFixture()
+
+    func testMissingVisionAndUnresolvedSceneCannotConfirmGoodFromOtherAvailableSources() {
+        let strong = SourceState(available: true, freshnessMs: 30, confidence: 0.9)
+        let missing = SourceState(available: false, freshnessMs: nil, confidence: nil)
+        let snapshot = makeSnapshot(sources: .init(
+            vision: missing, horizon: strong, lighting: strong, detr: strong, aesthetic: strong
+        ))
+        XCTAssertFalse(snapshot.technicalFlags.contains(.lowSceneConfidence),
+                       "Strong DETR/horizon used to bypass the existing degraded flag")
+        for (sceneType, confidence) in [(SceneTypeV1.unknown, 0.0), (.establishingLikeFrame, 0.0)] {
+            let semantics = makeSemantics(frameId: snapshot.frameId, mode: snapshot.mode,
+                                          sceneType: sceneType, sceneTypeConfidence: confidence)
+            let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+            XCTAssertNotEqual(report.verdict, .good)
+            XCTAssertTrue(report.fallbackUsed)
+            XCTAssertLessThanOrEqual(report.verdictConfidence, 0.55)
+        }
+    }
+
+    func testValidVisionAndResolvedDetrSceneStillPermitPositiveConfirmation() {
+        let control = makeSnapshot()
+        let semantics = makeSemantics(frameId: control.frameId, mode: control.mode)
+        XCTAssertEqual(engine.analyze(snapshot: control, semantics: semantics).verdict, .good)
+
+        let strong = SourceState(available: true, freshnessMs: 30, confidence: 0.9)
+        let missing = SourceState(available: false, freshnessMs: nil, confidence: nil)
+        let detectorOnly = makeSnapshot(sources: .init(
+            vision: missing, horizon: strong, lighting: strong, detr: strong, aesthetic: strong
+        ))
+        let report = engine.analyze(snapshot: detectorOnly, semantics: semantics)
+        XCTAssertEqual(report.verdict, .good,
+                       "A resolved same-frame scene is not rejected solely because Vision is absent")
+        XCTAssertFalse(report.fallbackUsed)
+    }
+
+    func testStaleSemanticFrameOrModeCannotAcquirePositiveAuthorityThroughAlignment() {
+        let snapshot = makeSnapshot()
+        for semantics in [makeSemantics(frameId: "previous-frame", mode: snapshot.mode),
+                          makeSemantics(frameId: snapshot.frameId, mode: .live)] {
+            let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+            XCTAssertEqual(report.frameId, snapshot.frameId)
+            XCTAssertEqual(report.mode, snapshot.mode)
+            XCTAssertNotEqual(report.verdict, .good)
+            XCTAssertTrue(report.fallbackUsed)
+        }
+    }
+
+    func testDecodedInvalidSceneConfidenceCannotBecomePositiveCoverage() throws {
+        let strong = SourceState(available: true, freshnessMs: 30, confidence: 0.9)
+        let snapshot = makeSnapshot(sources: .init(
+            vision: .init(available: false), horizon: strong, lighting: strong, detr: strong, aesthetic: strong
+        ))
+        let semantics = makeSemantics(frameId: snapshot.frameId, mode: snapshot.mode)
+        let encoded = try JSONEncoder().encode(semantics)
+        let original = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let decoder = JSONDecoder()
+        decoder.nonConformingFloatDecodingStrategy = .convertFromString(
+            positiveInfinity: "Infinity", negativeInfinity: "-Infinity", nan: "NaN"
+        )
+        // The ordinary initializer clamps confidence; synthesized Codable can
+        // receive raw invalid values and therefore still needs the admission check.
+        let invalidValues: [Any] = ["Infinity", "-Infinity", "NaN", 1.5]
+        for value in invalidValues {
+            var object = original
+            object["sceneTypeConfidence"] = value
+            let decoded = try decoder.decode(SceneSemanticsReport.self,
+                from: JSONSerialization.data(withJSONObject: object))
+            let report = engine.analyze(snapshot: snapshot, semantics: decoded)
+            XCTAssertFalse(FrameCritiqueEngine.hasPositiveSemanticCoverage(snapshot: snapshot, semantics: decoded))
+            XCTAssertNotEqual(report.verdict, .good)
+            XCTAssertTrue(report.verdictConfidence.isFinite)
+        }
+    }
+
+    func testMissingSceneCoverageRetainsSupportedCorrectiveIssue() {
+        let strong = SourceState(available: true, freshnessMs: 30, confidence: 0.9)
+        let snapshot = makeSnapshot(
+            sources: .init(vision: .init(available: false, freshnessMs: nil, confidence: nil),
+                           horizon: strong, lighting: strong, detr: strong, aesthetic: strong),
+            composition: .init(horizontalOffset: 0.95, verticalOffset: 0, subjectAreaRatio: 0.12,
+                               saliencyLeftRightBalance: 0.5, saliencyTopBottomBalance: 0)
+        )
+        let semantics = makeSemantics(
+            frameId: snapshot.frameId, mode: snapshot.mode, sceneType: .unknown, sceneTypeConfidence: 0,
+            primaryConfidence: 0.9,
+            dominance: .init(hasClearFocus: true, focusCompetitionScore: 0.12, backgroundClutterScore: 0.24),
+            readability: .init(subjectReadable: true, lookSpaceAdequate: false,
+                               edgePressureScore: 0.96, separationScore: 0.86)
+        )
+        let report = engine.analyze(snapshot: snapshot, semantics: semantics)
+        XCTAssertNotEqual(report.verdict, .good)
+        XCTAssertTrue(report.issues.contains { $0.type == .subjectTooCloseToEdge },
+                      "Coverage admission must not erase a supported issue used by the local or Cloud planner")
+    }
+
+    func testUnavailableTechnicalMeasurementCannotConfirmOtherwiseGoodComposition() {
+        let snapshot = makeSnapshot()
+        let semantics = makeSemantics(frameId: snapshot.frameId, mode: snapshot.mode)
+        let measured = engine.analyze(snapshot: snapshot, semantics: semantics)
+        XCTAssertEqual(measured.verdict, .good, "The control must exercise positive confirmation")
+
+        let unavailable: [FrameTechnicalQualityEvidence?] = [
+            nil,
+            FrameTechnicalQualityEvidence(frameID: snapshot.frameId, capturedAt: snapshot.capturedAt,
+                                          measurement: .unavailable(.notMeasured)),
+            FrameTechnicalQualityEvidence(frameID: snapshot.frameId, capturedAt: snapshot.capturedAt,
+                                          measurement: .unavailable(.missingPixelBuffer)),
+            FrameTechnicalQualityEvidence(frameID: snapshot.frameId, capturedAt: snapshot.capturedAt,
+                                          measurement: .unavailable(.unsupportedPixelFormat)),
+            FrameTechnicalQualityEvidence(frameID: snapshot.frameId, capturedAt: snapshot.capturedAt,
+                                          measurement: .unavailable(.baseAddressUnavailable)),
+            FrameTechnicalQualityEvidence(frameID: snapshot.frameId, capturedAt: snapshot.capturedAt,
+                                          measurement: .unavailable(.invalidBufferLayout)),
+            FrameTechnicalQualityEvidence(frameID: snapshot.frameId, capturedAt: snapshot.capturedAt,
+                                          measurement: .unavailable(.pixelBufferLockFailed))
+        ]
+        for evidence in unavailable {
+            let report = FrameCritiqueEngine().analyze(
+                snapshot: snapshot, semantics: semantics, technicalEvidence: evidence
+            )
+            XCTAssertEqual(report.verdict, .mixed)
+            XCTAssertEqual(report.issues, measured.issues)
+            XCTAssertEqual(report.strengths, measured.strengths)
+            XCTAssertLessThanOrEqual(report.verdictConfidence, measured.verdictConfidence)
+            XCTAssertNil(report.summary.whyProblematic)
+            XCTAssertEqual(report.summary.shortVerdict, "Недостаточно данных для полной оценки кадра.")
+        }
+    }
+
+    func testPartialImageDetailRetainsMeasuredSignalWithoutConfirmingGood() {
+        let snapshot = makeSnapshot()
+        let semantics = makeSemantics(frameId: snapshot.frameId, mode: snapshot.mode)
+        let measured = engine.analyze(snapshot: snapshot, semantics: semantics)
+        XCTAssertEqual(measured.verdict, .good)
+        let signal = TechnicalQualitySignal(issues: [
+            .init(type: .underexposure, actionType: .increaseExposure,
+                  confidence: 0.8, severity: 0.7)
+        ])
+        let partial = TechnicalQualityMeasurement.partial(signal,
+            reason: .sharpnessCauseUnobservable, detail: .init(
+                sampleWidth: 96, sampleHeight: 96, meanLuma: 0.1,
+                gradientMean: 0, gradientVariance: 0))
+        let evidence = FrameTechnicalQualityEvidence(
+            frameID: snapshot.frameId, capturedAt: snapshot.capturedAt, measurement: partial)
+        XCTAssertEqual(evidence.measuredSignal(for: snapshot), signal)
+        XCTAssertFalse(evidence.resolvedMeasurement(for: snapshot).supportsPositiveConfirmation)
+        let report = FrameCritiqueEngine().analyze(
+            snapshot: snapshot, semantics: semantics, technicalEvidence: evidence)
+        XCTAssertEqual(report.verdict, .mixed)
+        XCTAssertEqual(report.issues, measured.issues)
+        XCTAssertEqual(report.strengths, measured.strengths)
+        XCTAssertEqual(report.summary.shortVerdict, "Недостаточно данных для полной оценки кадра.")
+        XCTAssertLessThanOrEqual(report.verdictConfidence, 0.55,
+                                "Withheld global confirmation must not retain its prior high confidence")
+        XCTAssertNil(report.summary.whyGood)
+    }
+
+    func testDifferentOrInvalidTechnicalFrameCannotConfirmGoodComposition() {
+        let snapshot = makeSnapshot()
+        let semantics = makeSemantics(frameId: snapshot.frameId, mode: snapshot.mode)
+        XCTAssertEqual(engine.analyze(snapshot: snapshot, semantics: semantics).verdict, .good)
+        let invalidFrames: [(String, Date)] = [
+            ("another-frame", snapshot.capturedAt),
+            ("   ", snapshot.capturedAt),
+            (snapshot.frameId, snapshot.capturedAt.addingTimeInterval(0.001)),
+            (snapshot.frameId, Date(timeIntervalSince1970: .infinity)),
+            (snapshot.frameId, Date(timeIntervalSince1970: .nan))
+        ]
+        for (frameID, capturedAt) in invalidFrames {
+            let evidence = FrameTechnicalQualityEvidence(
+                frameID: frameID, capturedAt: capturedAt, measurement: .measured(.empty)
+            )
+            XCTAssertNil(evidence.measuredSignal(for: snapshot))
+            let report = FrameCritiqueEngine().analyze(
+                snapshot: snapshot, semantics: semantics, technicalEvidence: evidence
+            )
+            XCTAssertEqual(report.verdict, .mixed)
+        }
+    }
+
+    func testTechnicalEvidenceInputAndDirectCallPreserveTheSameMeasuredSignal() {
+        let snapshot = makeSnapshot()
+        let semantics = makeSemantics(frameId: snapshot.frameId, mode: snapshot.mode)
+        let signal = TechnicalQualitySignal(issues: [
+            .init(type: .overexposure, actionType: .reduceExposure,
+                  confidence: 0.91, severity: 0.85, isDominant: true)
+        ])
+        let evidence = FrameTechnicalQualityEvidence(
+            frameID: snapshot.frameId, capturedAt: snapshot.capturedAt, measurement: .measured(signal)
+        )
+        XCTAssertEqual(evidence.measuredSignal(for: snapshot), signal)
+        let input = FrameCritiqueInput(snapshot: snapshot, semantics: semantics, technicalEvidence: evidence)
+        XCTAssertEqual(
+            FrameCritiqueEngine().analyze(input),
+            FrameCritiqueEngine().analyze(snapshot: snapshot, semantics: semantics, technicalEvidence: evidence)
+        )
+        // Technical issue selection stays with its existing Pipeline owner.
+        // Passing the measurement here must not rewrite its confidence or action.
+        XCTAssertEqual(input.technicalEvidence?.measurement.signal, signal)
+    }
 
     func testDeterminismWithIdenticalInput() {
         let snapshot = makeSnapshot()
@@ -141,6 +360,12 @@ final class FrameCritiqueEngineTests: XCTestCase {
             "confidence=\(report.verdictConfidence) issues=\(report.issues.map { "\($0.type.rawValue):\($0.severity):\($0.confidence)" }) strengths=\(report.strengths.map { "\($0.type.rawValue):\($0.confidence)" })"
         )
         XCTAssertGreaterThanOrEqual(report.verdictConfidence, 0.75)
+        let unmeasuredReport = FrameCritiqueEngine().analyze(snapshot: snapshot, semantics: semantics)
+        XCTAssertEqual(unmeasuredReport.verdict, .mixed)
+        XCTAssertLessThan(unmeasuredReport.verdictConfidence, 0.75,
+                          "Missing pixels must not receive the positive-promotion confidence floor")
+        XCTAssertEqual(unmeasuredReport.issues, report.issues)
+        XCTAssertEqual(unmeasuredReport.strengths, report.strengths)
         XCTAssertFalse(report.issues.contains(where: { issue in
             issue.type == .subjectTooCloseToEdge
                 || issue.type == .backgroundCompetesWithSubject

@@ -141,6 +141,7 @@ struct DecisionTracePresentation: Identifiable, Equatable {
         )
         let limitations = limitationRows(
             fallbackUsed: critique.fallbackUsed,
+            limitedTechnicalCoverage: !critique.technicalQualityMeasurement.supportsPositiveConfirmation,
             locale: locale
         )
         let traceIds = orderedTraceIds(
@@ -635,7 +636,8 @@ struct DecisionTracePresentation: Identifiable, Equatable {
     }
 
     private static func limitationRows(fallbackUsed: Bool,
-                                       locale: Locale) -> [LimitationRow] {
+                                      limitedTechnicalCoverage: Bool = false,
+                                      locale: Locale) -> [LimitationRow] {
         var rows: [LimitationRow] = []
         if fallbackUsed {
             rows.append(
@@ -644,6 +646,12 @@ struct DecisionTracePresentation: Identifiable, Equatable {
                     text: copy(.traceLimitFallback, locale: locale)
                 )
             )
+        }
+        if limitedTechnicalCoverage {
+            rows.append(LimitationRow(
+                id: "technical_coverage",
+                text: copy(.pauseAssessmentUnavailable, locale: locale)
+            ))
         }
         if rows.isEmpty {
             rows.append(

@@ -115,6 +115,16 @@ final class SETFixtureCatalogTests: XCTestCase {
         XCTAssertFalse(configuration.reduceMotion)
         XCTAssertFalse(configuration.reduceTransparency)
         XCTAssertFalse(configuration.dynamicTypeSize.isAccessibilitySize)
+        XCTAssertNil(configuration.interfaceGeometry)
+    }
+
+    func testExplicitFixtureGeometryRequiresRecognizedConcreteArgument() {
+        let flag = SETGalleryLaunchConfiguration.interfaceGeometryArgument
+        XCTAssertEqual(SETGalleryLaunchConfiguration(arguments: [flag, "landscape"]).interfaceGeometry, .landscape)
+        XCTAssertEqual(SETGalleryLaunchConfiguration(arguments: [flag, "portrait"]).interfaceGeometry, .portrait)
+        for arguments in [[], [flag], [flag, "adaptive"], [flag, "sideways"], [flag, "-SHAFIN_SET_LOCALE", "en"]] {
+            XCTAssertNil(SETGalleryLaunchConfiguration(arguments: arguments).interfaceGeometry)
+        }
     }
 #endif
 }

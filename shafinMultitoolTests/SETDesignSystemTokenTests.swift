@@ -339,8 +339,8 @@ final class SETDesignSystemTokenTests: XCTestCase {
         let english = SETLocalizedPauseCopy.summary(for: critique, locale: Locale(identifier: "en"))
         let russian = SETLocalizedPauseCopy.summary(for: critique, locale: Locale(identifier: "ru"))
 
-        XCTAssertEqual(english, "NO CHANGE NEEDED")
-        XCTAssertEqual(russian, "ИЗМЕНЕНИЙ НЕ ТРЕБУЕТСЯ")
+        XCTAssertEqual(english, "Not enough information to assess this frame.")
+        XCTAssertEqual(russian, "Недостаточно данных для оценки кадра.")
         XCTAssertFalse(english.contains("Injected"))
         XCTAssertFalse(russian.contains("Injected"))
     }
@@ -418,6 +418,37 @@ final class SETDesignSystemTokenTests: XCTestCase {
             SETLocalizedPauseCopy.summary(for: blankCritique, locale: Locale(identifier: "en")),
             SETCopyKey.traceActionStepCloser.localizedString(locale: Locale(identifier: "en"))
         )
+    }
+
+    func testPauseSummarySeparatesMeasuredGoodFromUnavailableAndNoSupportedAction() {
+        for locale in [Locale(identifier: "en"), Locale(identifier: "ru")] {
+            XCTAssertEqual(
+                SETLocalizedPauseCopy.summary(for: nil, locale: locale),
+                SETCopyKey.pauseAssessmentUnavailable.localizedString(locale: locale)
+            )
+            for verdict in [FrameVerdict.good, .mixed, .needsFix] {
+                for measurement in [TechnicalQualityMeasurement.measured(.empty),
+                                    .unavailable(.missingPixelBuffer),
+                                    .unavailable(.unsupportedPixelFormat),
+                                    .unavailable(.frameMismatch)] {
+                    let critique = PauseCritiquePresentation(
+                        frameId: "typed-assessment", verdict: verdict, verdictConfidence: 0.82,
+                        summaryId: "typed-assessment-summary",
+                        shortVerdict: "Raw unlocalized text must not determine UI state",
+                        whyGood: nil, whyProblematic: nil, strengths: [], issues: [], actions: [],
+                        noChangeRationale: nil, assumptions: [], traceRootIds: [], fallbackUsed: false,
+                        technicalQualityMeasurement: measurement
+                    )
+                    let expectedKey: SETCopyKey = measurement.signal == nil
+                        ? .pauseAssessmentUnavailable
+                        : (verdict == .good ? .cameraKeep : .pauseNoSupportedAction)
+                    XCTAssertEqual(
+                        SETLocalizedPauseCopy.summary(for: critique, locale: locale),
+                        expectedKey.localizedString(locale: locale)
+                    )
+                }
+            }
+        }
     }
 
     func testNominalTimecodeUsesTwentyFourFramesAndFreezesAtWholeFrames() {

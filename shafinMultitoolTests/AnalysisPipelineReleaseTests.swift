@@ -860,6 +860,40 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
         XCTAssertTrue(pipeline.testingLiveEntityObservations(for: substitutedPixels, evaluatedAt: asOf).isEmpty,
                       "Equal frame strings cannot attribute accepted geometry to different pixel bytes")
 
+        // A same-source reseed changes the semantic anchor while preserving
+        // measured object identity. This uses the existing high-lane fixture;
+        // it qualifies accepted observations, not an admitted coaching episode.
+        let refinedLeft = left.offsetBy(dx: 0.04, dy: 0)
+        let reseededSequence = PipelineMultipleObjectTrackingSequence(boxes: [refinedLeft, right])
+        pipeline.testingSetObjectTrackingSequenceFactory { _ in reseededSequence }
+        let reseedSource = makeObjectTrackingContext(timestamp: 90.2)
+        pipeline.testingDeliverLiveDetrSeed([
+            DETRDetection(boundingBox: left, label: "chair", confidence: 0.95),
+            DETRDetection(boundingBox: CGRect(x: 0.6, y: 0.01, width: 0.2, height: 0.4),
+                          label: "chair", confidence: 0.95)
+        ], context: reseedSource)
+        pipeline.ingestHigh(context: makeObjectTrackingContext(timestamp: 90.3))
+        await pipeline.testingDrainHighQueue()
+        let reseedAccepted = await waitUntil { pipeline.testingPresentedObjectFrame?.frameID == "frame_90300" }
+        XCTAssertTrue(reseedAccepted)
+        let reseededEvidence = try XCTUnwrap(pipeline.testingLatestFrameEvidence)
+        let reseededObservations = pipeline.testingLiveEntityObservations(for: reseededEvidence)
+        XCTAssertEqual(reseededObservations.count, 2, "Missing post-reseed rows cannot qualify continuity")
+        XCTAssertEqual(Set(reseededObservations.compactMap(\.trackID)), Set(observations.compactMap(\.trackID)))
+        XCTAssertEqual(Set(reseededObservations.map(\.entityRef)), Set(observations.map(\.entityRef)))
+        XCTAssertEqual(reseededObservations.first { $0.visibility == .visible }?.region?.x ?? -1,
+                       Double(refinedLeft.minX), accuracy: 0.000001)
+        for observation in reseededObservations {
+            XCTAssertEqual(observation.provenance?.semanticSourceFrameID, "frame_90200")
+            XCTAssertEqual(observation.provenance?.semanticMeasuredAt, reseedSource.capturedAt)
+        }
+        XCTAssertEqual(observations.first?.provenance?.semanticSourceFrameID, "frame_90000",
+                       "An immutable earlier observation must keep its original semantic anchor")
+        XCTAssertNil(pipeline.currentLiveHint, "Reseeding alone supplies no calibration or action authority")
+        if case .baseline = pipeline.currentCoachingEpisodeEvent {
+            XCTFail("This uncalibrated measurement fixture must not silently create a coaching baseline")
+        }
+
         // An empty detector barrier followed by a new frame clears current
         // measurements. Previous immutable evidence stays intact; no absent row.
         pipeline.testingDeliverLiveDetrSeed([], context: makeObjectTrackingContext(timestamp: 90.4))
@@ -874,6 +908,294 @@ final class AnalysisPipelineReleaseTests: XCTestCase {
         XCTAssertEqual(movement.entityObservations.count, 2)
         await pipeline.releaseAndWait()
         XCTAssertTrue(pipeline.testingLiveEntityObservations(for: current).isEmpty)
+    }
+
+    @MainActor
+    func testLiveDetrFailureInvalidatesInOrderAndRecoversWithoutOldSeedResurrection() async throws {
+        let pipeline = makeObjectTrackingPipeline()
+        let box = CGRect(x: 0.2, y: 0.2, width: 0.3, height: 0.3)
+        let sequence = PipelineObjectTrackingSequence(box: box)
+        pipeline.testingSetObjectTrackingSequenceFactory { _ in sequence }
+        let detection = DETRDetection(boundingBox: box, label: "chair", confidence: 0.8)
+        let firstSource = makeObjectTrackingContext(timestamp: 400)
+        pipeline.testingDeliverLiveDetrSeed([detection], context: firstSource)
+        pipeline.ingestHigh(context: makeObjectTrackingContext(timestamp: 400.1))
+        await pipeline.testingDrainHighQueue()
+        XCTAssertNotNil(pipeline.testingLatestFrameEvidence?.adapterState?.detr)
+
+        let failedSource = makeObjectTrackingContext(timestamp: 400.2)
+        pipeline.testingDeliverLiveDetrFailure(.inferenceFailed, context: failedSource)
+        pipeline.testingDeliverLiveDetrSeed([detection], context: firstSource)
+        pipeline.ingestHigh(context: makeObjectTrackingContext(timestamp: 400.3))
+        await pipeline.testingDrainHighQueue()
+        let unavailable = try XCTUnwrap(pipeline.testingLatestFrameEvidence?.adapterState)
+        XCTAssertNil(unavailable.detr, "An older success cannot cross a newer failed-source barrier")
+        XCTAssertNil(unavailable.debugData.detrMeasuredAt)
+        XCTAssertTrue(unavailable.debugData.detrDetections.isEmpty)
+
+        let recoveredSource = makeObjectTrackingContext(timestamp: 400.4)
+        pipeline.testingDeliverLiveDetrSeed([detection], context: recoveredSource)
+        pipeline.testingDeliverLiveDetrFailure(.missingOutput, context: failedSource)
+        pipeline.ingestHigh(context: makeObjectTrackingContext(timestamp: 400.5))
+        await pipeline.testingDrainHighQueue()
+        let recovered = try XCTUnwrap(pipeline.testingLatestFrameEvidence?.adapterState?.detr)
+        XCTAssertEqual(recovered.value.detections.map(\.label), ["chair"])
+        XCTAssertEqual(recovered.value.tracking?.source.frameID, "frame_400400")
+        XCTAssertEqual(sequence.pixels.count, 4, "Only the two successful seeds prime and measure")
+        await pipeline.releaseAndWait()
+    }
+
+    @MainActor
+    func testReplayDetrFailureIsUnknownAndValidEmptyCanRecover() async throws {
+        let pipeline = makeObjectTrackingPipeline()
+        let context = makeObjectTrackingContext(timestamp: 500)
+        let detection = DETRDetection(boundingBox: CGRect(x: 0.2, y: 0.2, width: 0.3, height: 0.3),
+                                      label: "chair", confidence: 0.8)
+        let differentObject = DETRDetection(boundingBox: CGRect(x: 0.6, y: 0.4, width: 0.2, height: 0.2),
+                                            label: "cup", confidence: 0.8)
+        let results: [DETRDetectionResult] = [
+            .success([detection]), .success([]), .success([differentObject]),
+            .failure(.inferenceFailed), .failure(.missingOutput),
+            .failure(.invalidOutput), .failure(.modelUnavailable), .success([]), .success([detection])
+        ]
+        for result in results {
+            let state = pipeline.testingApplyDetrResult(result, pixelBuffer: context.pixelBuffer,
+                                                        measuredAt: context.capturedAt)
+            assertDetrObservation(result, state: state, capturedAt: context.capturedAt)
+            if case .success(let detections) = result {
+                XCTAssertEqual(state.features.subject.objectName, detections.first?.label)
+                XCTAssertEqual(state.features.subject.count, detections.count)
+                XCTAssertEqual(state.features.composition.subjectAreaRatio,
+                               detections.first.map { $0.boundingBox.width * $0.boundingBox.height } ?? 0)
+            }
+        }
+        await pipeline.releaseAndWait()
+    }
+
+    @MainActor
+    func testPauseDetrFailureCannotFallbackToAcceptedObjectEvidence() async throws {
+        let pipeline = makeObjectTrackingPipeline()
+        let context = makeObjectTrackingContext(timestamp: 600)
+        let detection = DETRDetection(boundingBox: CGRect(x: 0.2, y: 0.2, width: 0.3, height: 0.3),
+                                      label: "chair", confidence: 0.8)
+        let accepted = pipeline.testingApplyDetrResult(.success([detection]),
+            pixelBuffer: context.pixelBuffer, measuredAt: context.capturedAt)
+        XCTAssertNotNil(accepted.detr)
+        XCTAssertEqual(accepted.features.subject.objectName, "chair")
+        XCTAssertGreaterThan(accepted.features.composition.subjectAreaRatio, 0)
+        // Empty must clear an immediately preceding positive object, without
+        // relying on a failure having cleared the legacy fields first.
+        let directEmpty = pipeline.testingApplyPauseDetrResult(.success([]),
+            measuredAt: context.capturedAt, state: accepted)
+        assertDetrObservation(.success([]), state: directEmpty, capturedAt: context.capturedAt)
+        XCTAssertNil(directEmpty.features.subject.objectName)
+        XCTAssertEqual(directEmpty.features.subject.count, 0)
+        XCTAssertEqual(directEmpty.features.composition.subjectAreaRatio, 0)
+        XCTAssertEqual(directEmpty.features.composition.horizontalOffset,
+                       accepted.features.composition.horizontalOffset)
+        XCTAssertEqual(directEmpty.features.horizon.angle, accepted.features.horizon.angle)
+        let differentObject = DETRDetection(boundingBox: CGRect(x: 0.6, y: 0.4, width: 0.2, height: 0.2),
+                                            label: "cup", confidence: 0.8)
+        for previous in [accepted, directEmpty] {
+            let current = pipeline.testingApplyPauseDetrResult(.success([differentObject]),
+                measuredAt: context.capturedAt, state: previous)
+            assertDetrObservation(.success([differentObject]), state: current, capturedAt: context.capturedAt)
+            XCTAssertEqual(current.features.subject.objectName, "cup")
+            XCTAssertEqual(current.features.subject.count, 1)
+            XCTAssertEqual(current.features.composition.subjectAreaRatio,
+                           differentObject.boundingBox.width * differentObject.boundingBox.height)
+        }
+        for failure in [DETRDetectionFailure.inferenceFailed, .missingOutput, .invalidOutput, .modelUnavailable] {
+            let state = pipeline.testingApplyPauseDetrResult(.failure(failure),
+                measuredAt: context.capturedAt, state: accepted)
+            assertDetrObservation(.failure(failure), state: state, capturedAt: context.capturedAt)
+            XCTAssertNil(state.features.subject.objectName)
+            let recovered = pipeline.testingApplyPauseDetrResult(.success([]),
+                measuredAt: context.capturedAt, state: state)
+            assertDetrObservation(.success([]), state: recovered, capturedAt: context.capturedAt)
+        }
+        await pipeline.releaseAndWait()
+
+        // Exercise the independent Vision owner through the actual high lane.
+        let visionSubject = TrackedSubject(
+            boundingBox: CGRect(x: 0.1, y: 0.2, width: 0.4, height: 0.4),
+            confidence: 1, isFace: true)
+        let personPipeline = makeObjectTrackingPipeline(visionSubjects: [visionSubject])
+        let personContext = makeObjectTrackingContext(timestamp: 600)
+        personPipeline.ingestHigh(context: personContext)
+        await personPipeline.testingDrainHighQueue()
+        let published = await waitUntil { personPipeline.testingPresentedObjectFrame?.frameID == "frame_600000" }
+        XCTAssertTrue(published)
+        let personState = try XCTUnwrap(personPipeline.testingLatestFrameEvidence?.adapterState)
+        XCTAssertTrue(personState.features.subject.isFace)
+        XCTAssertTrue(personState.features.subject.isPerson)
+        XCTAssertEqual(personState.features.subject.count, 1)
+        let objectResults: [DETRDetectionResult] = [
+            .failure(.inferenceFailed), .success([]), .success([differentObject])
+        ]
+        for result in objectResults {
+            let state = personPipeline.testingApplyPauseDetrResult(result,
+                measuredAt: personContext.capturedAt, state: personState)
+            XCTAssertTrue(state.features.subject.isFace)
+            XCTAssertTrue(state.features.subject.isPerson)
+            XCTAssertEqual(state.features.subject.count, personState.features.subject.count)
+            XCTAssertEqual(state.features.subject.objectName, personState.features.subject.objectName)
+            XCTAssertEqual(state.features.composition.subjectAreaRatio,
+                           personState.features.composition.subjectAreaRatio)
+            XCTAssertEqual(state.features.composition.horizontalOffset,
+                           personState.features.composition.horizontalOffset)
+            XCTAssertEqual(state.vision?.value.personCount, personState.vision?.value.personCount)
+        }
+        await personPipeline.releaseAndWait()
+    }
+
+    private func assertDetrObservation(_ result: DETRDetectionResult,
+                                       state: PipelineFeatureSnapshotAdapterState, capturedAt: Date,
+                                       file: StaticString = #filePath, line: UInt = #line) {
+        let snapshot = FeatureSnapshotAggregator().makeSnapshot(from:
+            PipelineFeatureSnapshotAdapter().makeInput(
+                frameId: "typed-detr-availability", mode: .pause, capturedAt: capturedAt,
+                evaluatedAt: capturedAt, state: state))
+        switch result {
+        case .success(let detections):
+            XCTAssertTrue(snapshot.sources.detr.available, file: file, line: line)
+            XCTAssertNotNil(state.detr, file: file, line: line)
+            XCTAssertEqual(snapshot.objects.totalCount, detections.count, file: file, line: line)
+            XCTAssertEqual(state.debugData.detrMeasuredAt, capturedAt, file: file, line: line)
+        case .failure:
+            XCTAssertFalse(snapshot.sources.detr.available, file: file, line: line)
+            XCTAssertNil(state.detr, file: file, line: line)
+            XCTAssertNil(state.debugData.detrMeasuredAt, file: file, line: line)
+            XCTAssertTrue(state.debugData.detrDetections.isEmpty, file: file, line: line)
+            XCTAssertNil(snapshot.subjectSignals.primaryCandidateRegion, file: file, line: line)
+        }
+    }
+
+    func testFailedVisionBatchCannotCarryPartialObservationPayload() {
+        let result = VisionTrackingResult(
+            subjects: [TrackedSubject(boundingBox: CGRect(x: 0.2, y: 0.2, width: 0.4, height: 0.4),
+                                      confidence: 1, isFace: true)],
+            saliencyCenter: CGPoint(x: 0.4, y: 0.4),
+            saliencyRegion: CGRect(x: 0.2, y: 0.2, width: 0.4, height: 0.4),
+            faceCount: 1, personCount: 1, processingStatus: .failed)
+        XCTAssertEqual(result.processingStatus, .failed)
+        XCTAssertTrue(result.subjects.isEmpty)
+        XCTAssertNil(result.saliencyCenter)
+        XCTAssertNil(result.saliencyRegion)
+        XCTAssertEqual(result.faceCount, 0)
+        XCTAssertEqual(result.personCount, 0)
+    }
+
+    @MainActor
+    func testHighVisionFailureClearsEarlierEvidenceAndCompletedEmptyRemainsAvailable() async throws {
+        let subject = TrackedSubject(boundingBox: CGRect(x: 0.2, y: 0.2, width: 0.4, height: 0.4),
+                                     confidence: 1, isFace: true)
+        let positive = VisionTrackingResult(subjects: [subject], saliencyCenter: nil,
+                                            saliencyRegion: nil, faceCount: 1, personCount: 1)
+        let failed = VisionTrackingResult(subjects: [], saliencyCenter: nil, saliencyRegion: nil,
+                                         faceCount: 0, personCount: 0, processingStatus: .failed)
+        let empty = VisionTrackingResult(subjects: [], saliencyCenter: nil, saliencyRegion: nil,
+                                        faceCount: 0, personCount: 0)
+        let provider = PipelineVisionResultSequence([positive, failed, empty, positive])
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil, visualEvidenceProvider: nil, neuralEvidenceService: nil,
+            liveHybridFusionEnabled: false, demoLiveCoachEnabled: false,
+            visionResultProviderForTesting: { _, _ in provider.next() })
+        let expectedAvailable = [true, false, true, true]
+        let expectedPeople = [1, 0, 0, 1]
+        for index in expectedAvailable.indices {
+            let timestamp = 200.0 + Double(index) * 0.1
+            let context = makeObjectTrackingContext(timestamp: timestamp)
+            let frameID = "frame_\(Int((timestamp * 1000).rounded()))"
+            pipeline.ingestHigh(context: context)
+            await pipeline.testingDrainHighQueue()
+            let accepted = await waitUntil { pipeline.testingPresentedObjectFrame?.frameID == frameID }
+            XCTAssertTrue(accepted, "Missing high-lane publication at step \(index)")
+            let evidence = try XCTUnwrap(pipeline.testingLatestFrameEvidence)
+            XCTAssertEqual(evidence.sourceFrameId, frameID)
+            let state = try XCTUnwrap(evidence.adapterState)
+            // Evaluate at this producer timestamp to isolate availability from age expiry.
+            let asOf = state.vision?.measuredAt ?? evidence.capturedAt
+            let snapshot = FeatureSnapshotAggregator().makeSnapshot(from:
+                PipelineFeatureSnapshotAdapter().makeInput(
+                    frameId: frameID, mode: .live, capturedAt: evidence.capturedAt,
+                    evaluatedAt: asOf, state: state))
+            XCTAssertEqual(state.vision != nil, expectedAvailable[index], "step \(index)")
+            XCTAssertEqual(snapshot.sources.vision.available, expectedAvailable[index], "step \(index)")
+            XCTAssertEqual(snapshot.subjectSignals.personCount, expectedPeople[index], "step \(index)")
+            if index == 1 {
+                XCTAssertNil(state.debugData.visionMeasuredAt, "Debug fallback cannot resurrect failed evidence")
+                XCTAssertTrue(state.debugData.visionSubjects.isEmpty)
+                XCTAssertNil(snapshot.subjectSignals.primaryCandidateRegion)
+            }
+        }
+        XCTAssertEqual(provider.remainingCount, 0)
+        await pipeline.releaseAndWait()
+    }
+
+    @MainActor
+    func testStillReplayDistinguishesUnavailableVisionFromCompletedEmptyBatch() async {
+        let failed = VisionTrackingResult(subjects: [], saliencyCenter: nil, saliencyRegion: nil,
+                                         faceCount: 0, personCount: 0, processingStatus: .failed)
+        let empty = VisionTrackingResult(subjects: [], saliencyCenter: nil, saliencyRegion: nil,
+                                        faceCount: 0, personCount: 0)
+        let provider = PipelineVisionResultSequence([failed, empty])
+        let pipeline = AnalysisPipeline(
+            reasoningProvider: nil, visualEvidenceProvider: nil, neuralEvidenceService: nil,
+            liveHybridFusionEnabled: false, demoLiveCoachEnabled: false,
+            visionResultProviderForTesting: { _, _ in provider.next() })
+        for (index, expectedAvailable) in [0.0, 1.0].enumerated() {
+            let context = makeObjectTrackingContext(timestamp: 300.0 + Double(index))
+            let result = await pipeline.testingReplayStillImageForSemanticEval(
+                recordId: "vision-availability-\(index)", filename: "generated-control.bgra",
+                pixelBuffer: context.pixelBuffer, orientation: .up, capturedAt: context.capturedAt,
+                options: .lightweightTest)
+            for row in [result.liveRow, result.pauseRow] {
+                XCTAssertEqual(row.debugNumericFeatures["vision_available"], expectedAvailable)
+                XCTAssertEqual(row.debugNumericFeatures["person_count"], 0)
+                XCTAssertEqual(row.runtimeClaim, .testFixture)
+            }
+        }
+        XCTAssertEqual(provider.remainingCount, 0)
+        await pipeline.releaseAndWait()
+    }
+
+    func testSceneClassificationDoesNotTreatUnavailableVisionAsObservedPersonAbsence() {
+        let capturedAt = Date(timeIntervalSince1970: 1_790_000_000)
+        func scene(visionAvailable: Bool, width: CGFloat, confidence: Double,
+                   objectCount: Int = 1) -> SceneSemanticsReport {
+            let emptyVision = FeatureSample(
+                value: FeatureSnapshotVisionPayload(subjects: [], saliencyCenter: nil,
+                    saliencyRegion: nil, faceCount: 0, personCount: 0),
+                measuredAt: capturedAt, baseConfidence: nil)
+            let detections = (0..<objectCount).map { index in
+                FeatureSnapshotDetectedObject(
+                    boundingBox: CGRect(x: 0.1 + CGFloat(index) * 0.25, y: 0.2,
+                                        width: width, height: width),
+                    label: "cup", confidence: confidence)
+            }
+            let input = FeatureAggregationInput(
+                frameId: "same-detr-person-observation-control", mode: .pause,
+                capturedAt: capturedAt, motionState: .still, shakeLevel: 0,
+                vision: visionAvailable ? emptyVision : nil, horizon: nil, lighting: nil,
+                detr: FeatureSample(value: FeatureSnapshotDetrPayload(detections: detections),
+                                    measuredAt: capturedAt, baseConfidence: confidence),
+                aesthetic: nil)
+            let snapshot = FeatureSnapshotAggregator().makeSnapshot(from: input)
+            XCTAssertTrue(snapshot.sources.detr.available)
+            XCTAssertEqual(snapshot.sources.vision.available, visionAvailable)
+            XCTAssertEqual(snapshot.objects.totalCount, objectCount)
+            XCTAssertEqual(snapshot.subjectSignals.personCount, 0,
+                           "The numeric zero alone does not establish observed absence")
+            return SceneSemanticsAnalyzer().analyze(snapshot: snapshot)
+        }
+        XCTAssertEqual(scene(visionAvailable: true, width: 0.4, confidence: 0.9).sceneType, .objectInsert)
+        XCTAssertEqual(scene(visionAvailable: false, width: 0.4, confidence: 0.9).sceneType, .unknown)
+        XCTAssertEqual(scene(visionAvailable: true, width: 0.1, confidence: 0.4).sceneType, .establishingLikeFrame)
+        XCTAssertEqual(scene(visionAvailable: false, width: 0.1, confidence: 0.4).sceneType, .unknown)
+        // Independent observed objects remain valid positive establishing evidence.
+        XCTAssertEqual(scene(visionAvailable: false, width: 0.1, confidence: 0.4,
+                             objectCount: 3).sceneType, .establishingLikeFrame)
     }
 
     private func makeObjectTrackingPipeline(visionSubjects: [TrackedSubject] = []) -> AnalysisPipeline {
@@ -1149,6 +1471,24 @@ private final class ReleaseTestSessionRunner: CameraSessionRunner {
         let callback = onStop
         lock.unlock()
         callback?()
+    }
+}
+
+private final class PipelineVisionResultSequence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [VisionTrackingResult]
+
+    init(_ values: [VisionTrackingResult]) { self.values = values }
+
+    var remainingCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return values.count
+    }
+
+    func next() -> VisionTrackingResult {
+        lock.lock(); defer { lock.unlock() }
+        precondition(!values.isEmpty, "Unexpected extra Vision invocation")
+        return values.removeFirst()
     }
 }
 

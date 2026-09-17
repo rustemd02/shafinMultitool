@@ -5,6 +5,7 @@
 //  Created by Codex on 15.06.2026.
 //
 
+import Darwin
 import Foundation
 
 enum SceneGeneratorBenchmarkRuntimeDefaults {
@@ -354,17 +355,43 @@ final class DeviceBenchmarkArtifactStore {
         rootURL.appendingPathComponent(name, isDirectory: true)
     }
 
+    /// Resolves packaged input without copying it or depending on a build-host path.
+    func resourcePackURL(packId: String) throws -> URL {
+        if let source = bundledPackURL(packId: packId) {
+            return source
+        }
+        return try preparePackDirectory(packId: packId)
+    }
+
     func preparePackDirectory(packId: String) throws -> URL {
         let destination = directoryURL("packs").appendingPathComponent(packId, isDirectory: true)
         if FileManager.default.fileExists(atPath: destination.path) {
-            return destination
+            let contents = try FileManager.default.contentsOfDirectory(atPath: destination.path)
+            if !contents.isEmpty {
+                return destination
+            }
+            // Older failed copies left an empty destination. rmdir refuses to
+            // remove a directory if another writer has added any contents.
+            let removalResult = destination.path.withCString { Darwin.rmdir($0) }
+            guard removalResult == 0 else {
+                throw NSError(
+                    domain: NSPOSIXErrorDomain,
+                    code: Int(errno),
+                    userInfo: [NSLocalizedDescriptionKey: "Could not recover the empty benchmark cache directory."]
+                )
+            }
         }
-        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let parent = destination.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        let staging = parent.appendingPathComponent(".\(packId)-\(UUID().uuidString).partial", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: staging) }
         if let source = bundledPackURL(packId: packId) {
-            try FileManager.default.copyItem(at: source, to: destination)
-            return destination
+            try FileManager.default.copyItem(at: source, to: staging)
+        } else {
+            try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+            try materializeFlattenedPack(packId: packId, destination: staging)
         }
-        try materializeFlattenedPack(packId: packId, destination: destination)
+        try FileManager.default.moveItem(at: staging, to: destination)
         return destination
     }
 
@@ -414,7 +441,8 @@ final class DeviceBenchmarkArtifactStore {
             "camera_quick_labels.jsonl",
             "live_sequences.json",
             "guided_live_scenarios.json",
-            "camera_device_benchmark_manifest.json"
+            "camera_device_benchmark_manifest.json",
+            "semantic_demo_scenarios.json"
         ]
         for filename in staticFiles {
             try copyBundledResource(named: filename, to: destination.appendingPathComponent(filename))

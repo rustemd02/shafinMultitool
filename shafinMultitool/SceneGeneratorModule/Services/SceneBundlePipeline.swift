@@ -3601,7 +3601,7 @@ final class SceneBundlePipeline {
                 // M5-024: the described action is recorded only when its actor
                 // is a real extracted entity; a phantom actor is never minted.
                 guard enriched.actors.contains(where: { $0.ref == actorRef }) else {
-                    print("[PARSER_V9] described action skipped: no extracted actor for ref=\(actorRef)")
+                    SceneGeneratorDiagnosticsLogger.shared.log("[PARSER_V9] described action skipped: no extracted actor")
                     return enriched
                 }
                 enriched.beats.append(

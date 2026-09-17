@@ -585,6 +585,75 @@ struct TechnicalQualityIssueSignal: Codable, Equatable, Sendable {
     }
 }
 
+enum TechnicalQualityUnavailableReason: String, Equatable, Sendable {
+    case notMeasured
+    case frameMismatch
+    case missingPixelBuffer
+    case unsupportedPixelFormat
+    case pixelBufferLockFailed
+    case invalidBufferLayout
+    case baseAddressUnavailable
+    case sharpnessCauseUnobservable
+}
+
+/// Observed sampled detail, not optical-defocus or camera-motion evidence.
+/// Gradients use the existing 96-cell sampler and central two-pixel differences.
+struct TechnicalImageDetailObservation: Codable, Equatable, Sendable {
+    let sampleWidth: Int
+    let sampleHeight: Int
+    let meanLuma: Double
+    let gradientMean: Double
+    let gradientVariance: Double
+}
+
+/// Availability of an actual pixel measurement, not an aesthetic verdict.
+/// A measured empty signal and pixels that could not be measured are distinct.
+enum TechnicalQualityMeasurement: Equatable, Sendable {
+    case measured(TechnicalQualitySignal)
+    /// Observable corrections remain usable; incomplete detail evidence cannot
+    /// authorize positive confirmation or a cause-specific sharpness action.
+    case partial(TechnicalQualitySignal, reason: TechnicalQualityUnavailableReason,
+                 detail: TechnicalImageDetailObservation)
+    case unavailable(TechnicalQualityUnavailableReason)
+
+    var signal: TechnicalQualitySignal? {
+        switch self {
+        case .measured(let signal), .partial(let signal, _, _): return signal
+        case .unavailable: return nil
+        }
+    }
+
+    var supportsPositiveConfirmation: Bool {
+        if case .measured = self { return true }
+        return false
+    }
+}
+
+/// The accepted capture owner binds the measurement to its source pixels.
+/// This internal evidence does not change the public snapshot Codable schema.
+struct FrameTechnicalQualityEvidence: Equatable, Sendable {
+    let frameID: String
+    let capturedAt: Date
+    let measurement: TechnicalQualityMeasurement
+
+    func matches(snapshot: FrameFeatureSnapshot) -> Bool {
+        !frameID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && frameID == snapshot.frameId
+            && capturedAt.timeIntervalSinceReferenceDate.isFinite
+            && snapshot.capturedAt.timeIntervalSinceReferenceDate.isFinite
+            && capturedAt == snapshot.capturedAt
+    }
+
+    func measuredSignal(for snapshot: FrameFeatureSnapshot) -> TechnicalQualitySignal? {
+        resolvedMeasurement(for: snapshot).signal
+    }
+
+    func resolvedMeasurement(for snapshot: FrameFeatureSnapshot) -> TechnicalQualityMeasurement {
+        guard matches(snapshot: snapshot) else { return .unavailable(.frameMismatch) }
+        return measurement
+    }
+}
+
 struct TechnicalQualitySignal: Codable, Equatable, Sendable {
     let issues: [TechnicalQualityIssueSignal]
 
@@ -931,10 +1000,15 @@ struct FrameFeatureSnapshot: Codable, Equatable, Sendable {
     struct ObjectDetectionsSummary: Codable, Equatable, Sendable {
         let totalCount: Int
         let topKLabels: [String]
+        /// Optional for historical snapshots. Nil means this evidence was not
+        /// retained, never an observed empty list or a complete scene inventory.
+        let localComponentInventory: LocalObjectComponentInventory?
 
-        init(totalCount: Int, topKLabels: [String]) {
+        init(totalCount: Int, topKLabels: [String],
+             localComponentInventory: LocalObjectComponentInventory? = nil) {
             self.totalCount = max(0, totalCount)
             self.topKLabels = topKLabels
+            self.localComponentInventory = localComponentInventory
         }
     }
 
@@ -3547,11 +3621,14 @@ enum VLMTrigger: String, Codable, CaseIterable, Sendable {
 enum VLMPrivacyTier: String, Codable, CaseIterable, Sendable {
     case structuredOnly = "structured_only"
     case redactedVisual = "redacted_visual"
+    /// One explicitly approved still; faces, text and objects are not redacted.
+    case authorizedSelectedStill = "authorized_selected_still"
 }
 
 enum VLMVisualInputAttachmentKind: String, Codable, CaseIterable, Sendable {
     case redactedStill = "redacted_still"
     case redactedSubjectCrop = "redacted_subject_crop"
+    case userSelectedStill = "user_selected_still"
 }
 
 enum VLMEvidenceViolation: String, Codable, CaseIterable, Sendable {
@@ -3585,11 +3662,27 @@ struct VLMVisualInput: Codable, Equatable, Sendable {
     func validate() -> [VLMEvidenceViolation] {
         var violations: [VLMEvidenceViolation] = []
 
-        if mediaRef.isEmpty || longEdgePx <= 0 || longEdgePx > 1024 || !exifStripped || !redactionApplied {
+        if mediaRef.isEmpty || longEdgePx <= 0 || longEdgePx > 1024 || !exifStripped
+            || !redactionApplied || attachmentKind == .userSelectedStill {
             violations.append(.privacyTierMismatch)
         }
 
         return violations
+    }
+
+    /// Metadata describes bytes prepared and verified by CameraCloudFramePreprocessor.
+    /// This check alone grants no consent and is not proof that media bytes exist.
+    func validateAuthorizedSelectedStill() -> [VLMEvidenceViolation] {
+        let prefix = "sha256:"
+        let digest = mediaRef.hasPrefix(prefix) ? String(mediaRef.dropFirst(prefix.count)) : ""
+        let validDigest = digest.utf8.count == 64 && digest.utf8.allSatisfy {
+            (48...57).contains($0) || (97...102).contains($0)
+        }
+        guard attachmentKind == .userSelectedStill, validDigest,
+              longEdgePx > 0, longEdgePx <= 1_024, exifStripped, !redactionApplied else {
+            return [.privacyTierMismatch]
+        }
+        return []
     }
 }
 
@@ -3736,6 +3829,12 @@ struct VLMVisualEvidenceRequest: Codable, Equatable, Sendable {
                 break
             }
             violations.append(contentsOf: visualInput.validate())
+        case .authorizedSelectedStill:
+            guard trigger == .explicitUserRequest, let visualInput else {
+                violations.append(.privacyTierMismatch)
+                break
+            }
+            violations.append(contentsOf: visualInput.validateAuthorizedSelectedStill())
         }
 
         return Array(Set(violations)).sortedByRawValue()

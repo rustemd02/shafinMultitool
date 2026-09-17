@@ -17,7 +17,7 @@ final class DETRDetectorTests: XCTestCase {
             ]
         )
 
-        let detections = DETRDetector.extractDetections(from: array)
+        let detections = try DETRDetector.extractDetections(from: array)
 
         XCTAssertEqual(detections.count, 2)
         XCTAssertEqual(detections.map(\.label), ["chair", "chair"])
@@ -36,7 +36,7 @@ final class DETRDetectorTests: XCTestCase {
             ]
         )
 
-        let detections = DETRDetector.extractDetections(from: array)
+        let detections = try DETRDetector.extractDetections(from: array)
 
         XCTAssertEqual(detections.count, 1)
         assertBox(detections[0].boundingBox, x: 0.4, y: 0.5, width: 0.4, height: 0.5)
@@ -51,7 +51,7 @@ final class DETRDetectorTests: XCTestCase {
             ]
         )
 
-        let detections = DETRDetector.extractDetections(from: array)
+        let detections = try DETRDetector.extractDetections(from: array)
 
         XCTAssertEqual(detections.count, 1)
         XCTAssertEqual(detections[0].label, "chair")
@@ -63,8 +63,12 @@ final class DETRDetectorTests: XCTestCase {
         let floatArray = try MLMultiArray(shape: [2, 2].map { NSNumber(value: $0) }, dataType: .float32)
         let rankThreeArray = try MLMultiArray(shape: [2, 2, 1].map { NSNumber(value: $0) }, dataType: .int32)
 
-        XCTAssertTrue(DETRDetector.extractDetections(from: floatArray).isEmpty)
-        XCTAssertTrue(DETRDetector.extractDetections(from: rankThreeArray).isEmpty)
+        XCTAssertThrowsError(try DETRDetector.extractDetections(from: floatArray)) {
+            XCTAssertEqual($0 as? DETRDetectionFailure, .invalidOutput)
+        }
+        XCTAssertThrowsError(try DETRDetector.extractDetections(from: rankThreeArray)) {
+            XCTAssertEqual($0 as? DETRDetectionFailure, .invalidOutput)
+        }
     }
 
     func testNontrivialStridesDriveLogicalPixelExtraction() throws {
@@ -79,7 +83,7 @@ final class DETRDetectorTests: XCTestCase {
         )
 
         XCTAssertEqual(array.strides.map { $0.intValue }, [6, 2])
-        let detections = DETRDetector.extractDetections(from: array)
+        let detections = try DETRDetector.extractDetections(from: array)
 
         XCTAssertEqual(detections.count, 1)
         assertBox(detections[0].boundingBox, x: 0.25, y: 0, width: 0.25, height: 1.0 / 3.0)
@@ -125,9 +129,10 @@ final class DETRDetectorTests: XCTestCase {
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
 
-        let detections = await withCheckedContinuation { continuation in
+        let result: DETRDetectionResult = await withCheckedContinuation { continuation in
             detector.detect(pixelBuffer: pixelBuffer, orientation: .up) { continuation.resume(returning: $0) }
         }
+        let detections = try result.get()
         let chairs = detections.filter { $0.label == "chair" }
         XCTAssertEqual(chairs.count, 2)
         guard chairs.count == 2 else { return }
@@ -138,6 +143,29 @@ final class DETRDetectorTests: XCTestCase {
         XCTAssertGreaterThan(right.width * right.height, 0)
         XCTAssertGreaterThan(right.midX - left.midX, 0.1)
         XCTAssertTrue(left.intersection(right).isNull)
+    }
+
+    func testTypedDetectionDistinguishesEmptyMissingInvalidThrowAndRecovery() throws {
+        let empty = try makeArray(shape: [4, 4], values: [])
+        let positive = try makeArray(shape: [4, 4], values: [(x: 1, y: 1)])
+        let invalid = try MLMultiArray(shape: [2, 2], dataType: .float32)
+        var executions = 0
+        XCTAssertTrue(try DETRDetector.resolveDetection { executions += 1; return empty }.get().isEmpty)
+        let failingOperations: [(() throws -> MLMultiArray?, DETRDetectionFailure)] = [
+            ({ () throws -> MLMultiArray? in nil }, DETRDetectionFailure.missingOutput),
+            ({ () throws -> MLMultiArray? in invalid }, .invalidOutput),
+            ({ () throws -> MLMultiArray? in throw NSError(domain: "fixture", code: 1) }, .inferenceFailed)
+        ]
+        for (operation, expected) in failingOperations {
+            let result = DETRDetector.resolveDetection { executions += 1; return try operation() }
+            guard case .failure(let failure) = result else {
+                XCTFail("Unavailable model evidence became successful empty"); continue
+            }
+            XCTAssertEqual(failure, expected)
+        }
+        let recovered = try DETRDetector.resolveDetection { executions += 1; return positive }.get()
+        XCTAssertEqual(recovered.map(\.label), ["chair"])
+        XCTAssertEqual(executions, 5, "Each logical attempt executes exactly once")
     }
 
     private func makeArray(shape: [Int],

@@ -4,6 +4,46 @@ import XCTest
 final class HybridFusionServiceTests: XCTestCase {
     private let service = HybridFusionService()
 
+    func testFusionPreservesInsufficientMeasurementVerdictWhileReorderingStrengths() {
+        let snapshot = makeSnapshot(mode: .pause, frameId: "fusion-unavailable-technical")
+        let semantics = makeSemantics(frameId: snapshot.frameId, mode: .pause)
+        let critique = CritiqueReport(
+            frameId: snapshot.frameId, mode: .pause, verdict: .mixed, verdictConfidence: 0.68,
+            strengths: [
+                makeStrength(id: "str_focus", type: .clearFocusHierarchy, confidence: 0.58,
+                             rationale: "Иерархия фокуса уже читается."),
+                makeStrength(id: "str_isolation", type: .goodSubjectIsolation, confidence: 0.57,
+                             rationale: "Объект хорошо отделен от фона.")
+            ],
+            issues: [],
+            summary: CritiqueSummary(
+                id: "summary_\(snapshot.frameId)_main",
+                shortVerdict: "Недостаточно данных для полной оценки кадра.",
+                whyGood: "Иерархия фокуса уже читается. Объект хорошо отделен от фона.",
+                whyProblematic: nil
+            ),
+            traceRefs: ["trc_\(snapshot.frameId)_crit_summary_main"], fallbackUsed: false
+        )
+        let neural = makeNeuralSnapshot(frameId: snapshot.frameId, mode: .pause, scalarOverrides: [
+            .subjectProminence: (0.92, 0.88, .available),
+            .backgroundClutter: (0.12, 0.79, .available),
+            .balanceConfidence: (0.20, 0.95, .available),
+            .depthSeparation: (0.95, 0.95, .available)
+        ])
+        let output = service.fuse(HybridFusionInput(
+            snapshot: snapshot, semantics: semantics, critique: critique,
+            neuralSnapshot: neural, neuralMetadata: makeMetadata(frameId: snapshot.frameId, mode: .pause)
+        ))
+        XCTAssertFalse(output.appliedDecisions.isEmpty, "The test must actually enter summary rebuilding")
+        XCTAssertEqual(output.critique.strengths.map(\.id), ["str_isolation", "str_focus"])
+        XCTAssertEqual(output.critique.summary.whyGood,
+                       "Объект хорошо отделен от фона. Иерархия фокуса уже читается.")
+        XCTAssertEqual(output.critique.verdict, .mixed)
+        XCTAssertEqual(output.critique.verdictConfidence, critique.verdictConfidence)
+        XCTAssertEqual(output.critique.summary.shortVerdict, critique.summary.shortVerdict)
+        XCTAssertNil(output.critique.summary.whyProblematic)
+    }
+
     func testPauseFusionReordersStrengthsAndRebuildsSummary() {
         let snapshot = makeSnapshot(mode: .pause, frameId: "fusion-strengths")
         let semantics = makeSemantics(frameId: snapshot.frameId, mode: .pause)

@@ -166,6 +166,18 @@ final class CameraViewModel: ObservableObject {
     @Published var pauseCritique: PauseCritiquePresentation?
     @Published private(set) var pausePresentationState: CameraPausePresentationState = .idle
     @Published private(set) var pauseFailureReason: CameraPauseFailureReason?
+    @Published private(set) var cloudReviewState: CameraCloudReviewState = .idle
+    @Published private(set) var pendingCloudTransfer: CameraCloudTransferRequest?
+
+    private let cameraCloudClient: CameraCloudAnalyzing?
+    private var cloudRequestToken: UUID?
+    private var cloudTask: Task<Void, Never>?
+    private var cloudDeadlineTask: Task<Void, Never>?
+    private var preparedCloudAnalysis: (
+        request: CameraCloudPreparedAnalysis,
+        snapshot: LatestFrameEvidenceStore.AcceptedSnapshot,
+        pauseToken: UUID
+    )?
     @Published var overlayAnnotations: [OverlayAnnotationPresentation] = []
     @Published var legacySuggestion: Suggestion?
     
@@ -306,9 +318,11 @@ final class CameraViewModel: ObservableObject {
          lensSelectionHaptic: SETHapticPerforming? = nil,
          performanceStore: CameraRuntimePerformanceStore = .shared,
          recordingCoordinator: CameraCoachRecordingCoordinator? = nil,
-         recordingCoordinatorFactory: (@MainActor () throws -> CameraCoachRecordingCoordinator)? = nil) {
+         recordingCoordinatorFactory: (@MainActor () throws -> CameraCoachRecordingCoordinator)? = nil,
+         cameraCloudClient: CameraCloudAnalyzing? = CameraCloudServiceBootstrap.client) {
         self.cameraManager = cameraManager
         self.analysisPipeline = analysisPipeline
+        self.cameraCloudClient = cameraCloudClient
         self.recordingCoordinator = recordingCoordinator
         self.recordingCoordinatorFactory = recordingCoordinatorFactory
         self.pauseCutMarkController = SETPauseCutMarkController(eventLedger: motionEventLedger)
@@ -528,6 +542,11 @@ final class CameraViewModel: ObservableObject {
     /// does not guarantee that every background transition emits its own
     /// interruption notification.
     func reportSceneInactive() {
+        cancelCloudPauseAnalysis()
+        if let snapshotID = acceptedPauseSnapshot?.snapshotID {
+            resetPauseSceneControl(expectedSnapshotID: snapshotID)
+            setPauseImagePlacement(nil, expectedSnapshotID: snapshotID)
+        }
         guard hasActiveCaptureOrPauseWork else { return }
         // Keep a committed accepted frame/review intact across scene changes.
         // The user resumes explicitly; no camera restart is attempted while
@@ -545,6 +564,7 @@ final class CameraViewModel: ObservableObject {
     /// The UIKit scene adapter awaits writer finalization and persistence under
     /// its existing background task before releasing the capture graph.
     func handleSceneDidEnterBackground() async {
+        cancelCloudPauseAnalysis()
         await recordingCoordinator?.handleBackground()
         reportSceneInactive()
         if let releaseOperation { await awaitReleaseOperation(releaseOperation) }
@@ -673,6 +693,7 @@ final class CameraViewModel: ObservableObject {
     }
 
     private func clearPresentationProjection() {
+        cancelCloudPauseAnalysis()
         invalidateProControlPresentation()
         proControlsSnapshot = nil
         proAudioMeterEnabled = false
@@ -889,7 +910,78 @@ final class CameraViewModel: ObservableObject {
     /// CC-I05: records the user's answer for the pending style cue; a
     /// confirmed intent suppresses the conflicting corrections for the session.
     func answerIntentClarification(intended: Bool) {
-        analysisPipeline.answerIntentClarification(intended: intended)
+        cancelCloudPauseAnalysis()
+        guard analysisPipeline.answerIntentClarification(intended: intended),
+              isPauseProjectionReady, let snapshot = acceptedPauseSnapshot,
+              let token = pauseRequestToken, acceptedPauseRequestToken == token,
+              let updated = analysisPipeline.refreshAcceptedPauseForIntent(acceptedSnapshot: snapshot) else { return }
+        previewSuggestions = []
+        pauseCritique = updated
+        pausePresentationState = .success(snapshotID: snapshot.snapshotID, critique: updated)
+    }
+
+    var canClarifyPauseSceneControl: Bool {
+        guard !routeExitRequested, isPaused, isPauseProjectionReady,
+              let token = pauseRequestToken, acceptedPauseRequestToken == token,
+              let snapshot = acceptedPauseSnapshot else { return false }
+        return analysisPipeline.canRefreshAcceptedPause(snapshot)
+    }
+
+    var pauseSceneControlFacts: PauseSceneControlFacts {
+        guard isPaused, let snapshot = acceptedPauseSnapshot else { return .unknown }
+        return analysisPipeline.pauseSceneControlFacts(for: snapshot)
+    }
+
+    var pauseImagePlacementCandidates: [PauseImagePlacementCandidate] {
+        guard canClarifyPauseSceneControl, let snapshot = acceptedPauseSnapshot else { return [] }
+        return analysisPipeline.pauseImagePlacementCandidates(for: snapshot)
+    }
+
+    var pauseImagePlacementProposal: PauseImagePlacementProposal? {
+        guard canClarifyPauseSceneControl, let snapshot = acceptedPauseSnapshot else { return nil }
+        return analysisPipeline.pauseImagePlacementProposal(for: snapshot)
+    }
+
+    @discardableResult
+    func setPauseImagePlacement(_ goal: CaptureImagePlacementGoal?, expectedSnapshotID: String) -> Bool {
+        guard canClarifyPauseSceneControl, let snapshot = acceptedPauseSnapshot,
+              snapshot.snapshotID == expectedSnapshotID else { return false }
+        let previousRevision = analysisPipeline.pauseCaptureIntent(for: snapshot).intentRevision
+        guard let updated = analysisPipeline.updatePauseImagePlacement(goal, acceptedSnapshot: snapshot) else { return false }
+        // Domain rejection and an unchanged goal leave the current request
+        // alone. An admitted change already invalidates its context atomically;
+        // this synchronous MainActor turn then cancels the obsolete transport.
+        if analysisPipeline.pauseCaptureIntent(for: snapshot).intentRevision != previousRevision {
+            cancelCloudPauseAnalysis()
+        }
+        previewSuggestions = []
+        pauseCritique = updated
+        pausePresentationState = .success(snapshotID: snapshot.snapshotID, critique: updated)
+        return true
+    }
+
+    func answerPauseSceneControl(category: PauseSceneControlFacts.Category,
+                                 state: PauseSceneControlFacts.State, expectedSnapshotID: String) {
+        guard canClarifyPauseSceneControl,
+              let snapshot = acceptedPauseSnapshot, snapshot.snapshotID == expectedSnapshotID else { return }
+        let updated = pauseSceneControlFacts.replacing(category, with: state)
+        commitPauseSceneControl(updated, snapshot: snapshot)
+    }
+
+    func resetPauseSceneControl(expectedSnapshotID: String) {
+        guard canClarifyPauseSceneControl,
+              let snapshot = acceptedPauseSnapshot, snapshot.snapshotID == expectedSnapshotID else { return }
+        commitPauseSceneControl(.init(frameID: snapshot.sourceFrameId), snapshot: snapshot)
+    }
+
+    private func commitPauseSceneControl(_ facts: PauseSceneControlFacts,
+                                        snapshot: LatestFrameEvidenceStore.AcceptedSnapshot) {
+        guard facts != pauseSceneControlFacts else { return }
+        cancelCloudPauseAnalysis()
+        guard let updated = analysisPipeline.updatePauseSceneControl(facts, acceptedSnapshot: snapshot) else { return }
+        previewSuggestions = []
+        pauseCritique = updated
+        pausePresentationState = .success(snapshotID: snapshot.snapshotID, critique: updated)
     }
 
     func continueCoaching(after token: CoachingEpisodeToken) -> Bool {
@@ -929,6 +1021,24 @@ final class CameraViewModel: ObservableObject {
     var testingVerificationInput: ActionVerificationInput? {
         coachingEpisodeCoordinator.verificationInput
     }
+
+    /// Seeds only the accepted pause handoff for deterministic cloud integration
+    /// tests. All cloud gestures, cancellation and UI publication use normal methods.
+    func testingInstallCloudPausePresentation(
+        acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot,
+        critique: PauseCritiquePresentation
+    ) {
+        cancelCloudPauseAnalysis()
+        let token = UUID()
+        pauseRequestToken = token
+        acceptedPauseRequestToken = token
+        acceptedPauseSnapshot = acceptedSnapshot
+        isPaused = true
+        pendingPauseAnalysis = PendingPauseAnalysis(
+            result: .success, suggestions: [], critique: critique
+        )
+        applyPendingPauseAnalysisIfReady()
+    }
 #endif
 
     /// Planner owner handoff for WAIT/SELECT_SUBJECT/ABSTAIN states that do
@@ -966,10 +1076,178 @@ final class CameraViewModel: ObservableObject {
         analysisPipeline.handleSceneTap(normalizedX: sceneX, normalizedY: sceneY)
     }
 
+    var isCameraCloudConfigured: Bool { cameraCloudClient != nil }
+
+    var canRequestCloudPauseAnalysis: Bool {
+        guard !routeExitRequested, isPaused, isPauseProjectionReady,
+              !cloudReviewState.isBusy, cameraCloudClient != nil,
+              let snapshot = acceptedPauseSnapshot,
+              acceptedPauseRequestToken == pauseRequestToken else { return false }
+        return analysisPipeline.makeCloudPauseContext(acceptedSnapshot: snapshot) != nil
+    }
+
+    func requestCloudPauseAnalysis(locale: String = Locale.current.identifier) {
+        guard canRequestCloudPauseAnalysis,
+              let client = cameraCloudClient,
+              let snapshot = acceptedPauseSnapshot,
+              let pauseToken = acceptedPauseRequestToken,
+              let context = analysisPipeline.makeCloudPauseContext(acceptedSnapshot: snapshot) else { return }
+        cancelCloudPauseAnalysis()
+        let token = UUID()
+        cloudRequestToken = token
+        cloudReviewState = .preparing
+        cloudTask = Task { [weak self] in
+            do {
+                let still = try await CameraCloudFramePreprocessor.prepare(snapshot: snapshot)
+                try Task.checkCancellation()
+                guard let self else { return }
+                guard self.isCurrentCloudOperation(token, pauseToken: pauseToken,
+                                                   snapshot: snapshot, context: context) else {
+                    self.finishCloudOperation(token, state: .idle)
+                    return
+                }
+                let prepared = try client.prepare(still: still, context: context, locale: locale)
+                // Preparing bytes and displaying a disclosure do not acquire
+                // credentials or contact the service.
+                self.preparedCloudAnalysis = (prepared, snapshot, pauseToken)
+                self.pendingCloudTransfer = prepared.transfer
+                self.cloudReviewState = .awaitingConsent
+                self.cloudTask = nil
+            } catch {
+                guard let self, self.cloudRequestToken == token else { return }
+                if error is CancellationError
+                    || (error as? CameraCloudFramePreprocessingError) == .cancelled {
+                    self.cancelCloudPauseAnalysis()
+                } else {
+                    self.finishCloudOperation(token, state: .failed(.preparation))
+                }
+            }
+        }
+    }
+
+    func approveCloudPauseAnalysis(_ approval: CameraCloudTransferApproval) {
+        guard let client = cameraCloudClient, let prepared = preparedCloudAnalysis,
+              let token = cloudRequestToken,
+              pendingCloudTransfer?.approval == approval,
+              prepared.request.transfer.approval == approval,
+              isCurrentCloudOperation(token, pauseToken: prepared.pauseToken,
+                                      snapshot: prepared.snapshot, context: prepared.request.context) else { return }
+        pendingCloudTransfer = nil
+        cloudReviewState = .analyzing
+        // This timer bounds the visible operation including token enrollment.
+        // Token coalescing may finish independently; a cancelled content task
+        // checks cancellation after that await and can never send the image.
+        cloudDeadlineTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: UInt64(
+                    CameraCloudAnalysisClient.requestDeadlineSeconds * 1_000_000_000
+                ))
+                guard !Task.isCancelled, let self, self.cloudRequestToken == token else { return }
+                self.cancelCloudPauseAnalysis()
+                self.cloudReviewState = .failed(.network)
+            } catch {}
+        }
+        cloudTask = Task { [weak self] in
+            do {
+                try Task.checkCancellation()
+                guard let self else { return }
+                guard self.isCurrentCloudOperation(
+                    token, pauseToken: prepared.pauseToken, snapshot: prepared.snapshot,
+                    context: prepared.request.context
+                ) else {
+                    self.finishCloudOperation(token, state: .idle)
+                    return
+                }
+                let evidence = try await client.analyze(prepared.request, approval: approval)
+                try Task.checkCancellation()
+                guard self.isCurrentCloudOperation(
+                        token, pauseToken: prepared.pauseToken, snapshot: prepared.snapshot,
+                        context: prepared.request.context
+                      ) else {
+                    self.finishCloudOperation(token, state: .idle)
+                    return
+                }
+                guard let admittedCount = self.analysisPipeline.applyCloudPauseEvidence(
+                    response: evidence.response, request: evidence.request,
+                    context: prepared.request.context, acceptedSnapshot: prepared.snapshot
+                ) else {
+                    self.finishCloudOperation(token, state: .failed(.responseInvalid))
+                    return
+                }
+                if admittedCount > 0,
+                   let critique = self.analysisPipeline.currentPauseCritique,
+                   critique.frameId == prepared.snapshot.sourceFrameId {
+                    self.pauseCritique = critique
+                    self.pausePresentationState = .success(
+                        snapshotID: prepared.snapshot.snapshotID, critique: critique
+                    )
+                }
+                self.finishCloudOperation(token, state: admittedCount > 0 ? .complete : .noAdditionalEvidence)
+            } catch {
+                guard let self, self.cloudRequestToken == token else { return }
+                if error is CancellationError {
+                    self.cancelCloudPauseAnalysis()
+                    return
+                }
+                let failure: CameraCloudReviewFailure
+                switch error as? CameraCloudClientError {
+                case .authentication: failure = .authentication
+                case .invalidResponse: failure = .responseInvalid
+                case .unavailable, .invalidConfiguration: failure = .serviceUnavailable
+                case .invalidRequest, .approvalRequired: failure = .preparation
+                default: failure = .network
+                }
+                self.finishCloudOperation(token, state: .failed(failure))
+            }
+        }
+    }
+
+    /// A stale sheet cannot cancel or approve a newer request.
+    func cancelCloudPauseAnalysis(requestID: UUID? = nil) {
+        if let requestID, pendingCloudTransfer?.requestID != requestID { return }
+        cloudRequestToken = nil
+        cloudTask?.cancel()
+        cloudTask = nil
+        cloudDeadlineTask?.cancel()
+        cloudDeadlineTask = nil
+        pendingCloudTransfer = nil
+        preparedCloudAnalysis = nil
+        cloudReviewState = .idle
+    }
+
+    private func finishCloudOperation(_ token: UUID, state: CameraCloudReviewState) {
+        guard cloudRequestToken == token else { return }
+        cloudRequestToken = nil
+        cloudDeadlineTask?.cancel()
+        cloudDeadlineTask = nil
+        cloudTask = nil
+        pendingCloudTransfer = nil
+        preparedCloudAnalysis = nil
+        cloudReviewState = state
+    }
+
+    private func isCurrentCloudOperation(
+        _ token: UUID, pauseToken: UUID,
+        snapshot: LatestFrameEvidenceStore.AcceptedSnapshot, context: CameraCloudPauseContext
+    ) -> Bool {
+        !routeExitRequested && isPaused
+            && cloudRequestToken == token
+            && pauseRequestToken == pauseToken
+            && acceptedPauseRequestToken == pauseToken
+            && acceptedPauseSnapshot?.snapshotID == snapshot.snapshotID
+            && analysisPipeline.isCurrentCloudPauseContext(context, acceptedSnapshot: snapshot)
+    }
+
+
     func togglePause() {
         guard !routeExitRequested, !hasActiveRecording else { return }
+        cancelCloudPauseAnalysis()
         analysisPipeline.clearLivePresentationState()
         if isPaused {
+            if let snapshotID = acceptedPauseSnapshot?.snapshotID {
+                resetPauseSceneControl(expectedSnapshotID: snapshotID)
+                setPauseImagePlacement(nil, expectedSnapshotID: snapshotID)
+            }
             pauseDisplayRenderTask?.cancel()
             pauseDisplayRenderTask = nil
             pendingPauseAnalysis = nil
@@ -1108,6 +1386,10 @@ final class CameraViewModel: ObservableObject {
         guard !hasActiveRecording else {
             lensSwitchPresentationState = .failed(.recordingInProgress)
             return
+        }
+        if let snapshotID = acceptedPauseSnapshot?.snapshotID {
+            resetPauseSceneControl(expectedSnapshotID: snapshotID)
+            setPauseImagePlacement(nil, expectedSnapshotID: snapshotID)
         }
         invalidateProControlPresentation()
         // Invalidate the current episode before the asynchronous lens switch

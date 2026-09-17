@@ -1,0 +1,34 @@
+DETR ResNet-50 panoptic segmentation — Apple Core ML F16P8 distribution
+
+Copyright 2020 - present, Facebook, Inc
+
+Original paper: Nicolas Carion, Francisco Massa, Gabriel Synnaeve,
+Nicolas Usunier, Alexander Kirillov and Sergey Zagoruyko,
+End-to-End Object Detection with Transformers.
+https://arxiv.org/abs/2005.12872
+
+Original model distribution:
+https://huggingface.co/facebook/detr-resnet-50-panoptic
+Pinned model repository revision: d53b52a799403a8867920f82c869e40732b47037
+Upstream source revision: 29901c51d7fe8712168b8d0d64351170bc0f83e0
+https://github.com/facebookresearch/detr
+
+The supplied model metadata identifies Apache License 2.0.
+The complete license is distributed with this app as
+DETR-Apache-2.0-LICENSE.txt, including the upstream copyright statement.
+
+Apple converted model distribution:
+https://ml-assets.apple.com/coreml/models/Image/Segmentation/DETR/DETRResnet50SemanticSegmentationF16P8.mlpackage.zip
+ZIP SHA-256: 9436f344d7e935ef8f54025a43e760888a058ab9192f18248c3745d25fced4a7
+
+The three material package files supplied by Apple are included without
+changes to their model specification, learned weight bytes or package manifest.
+Xcode compiles the package for the application. App-side runtime code is separate.
+
+This attribution was prepared for SET OS from the identified distributions;
+it is not presented as an upstream NOTICE file. No separate NOTICE was found
+in the exact Apple ZIP or the inspected pinned Hugging Face distribution.
+The pinned Meta repository root contains its full LICENSE and no root NOTICE.
+
+These attributions and license do not qualify coaching accuracy, calibrated
+confidence, physical device performance or the project's replacement gates.

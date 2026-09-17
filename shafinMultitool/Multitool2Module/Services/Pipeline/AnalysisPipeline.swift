@@ -339,6 +339,12 @@ struct PauseCritiquePresentation: Equatable, Sendable {
     /// Typed same-frame provenance for pause Why/evidence/marker surfaces.
     /// A missing projection is an intentional fail-closed result.
     let linkedEvidence: CameraLinkedEvidenceProjection?
+    /// Resolved against the accepted frame before presentation. Missing pixels
+    /// remain unavailable through text refinement and localized UI projection.
+    let technicalQualityMeasurement: TechnicalQualityMeasurement
+    /// The user explicitly retained a style that conflicts with one or more
+    /// proposed corrections. This does not certify frame quality.
+    let intentionalStylePreserved: Bool
 
     init(frameId: String,
          verdict: FrameVerdict,
@@ -354,7 +360,9 @@ struct PauseCritiquePresentation: Equatable, Sendable {
          assumptions: [String],
          traceRootIds: [String],
          fallbackUsed: Bool,
-         linkedEvidence: CameraLinkedEvidenceProjection? = nil) {
+         linkedEvidence: CameraLinkedEvidenceProjection? = nil,
+         technicalQualityMeasurement: TechnicalQualityMeasurement = .unavailable(.notMeasured),
+         intentionalStylePreserved: Bool = false) {
         self.frameId = frameId
         self.verdict = verdict
         self.verdictConfidence = verdictConfidence
@@ -370,6 +378,8 @@ struct PauseCritiquePresentation: Equatable, Sendable {
         self.traceRootIds = traceRootIds
         self.fallbackUsed = fallbackUsed
         self.linkedEvidence = linkedEvidence
+        self.technicalQualityMeasurement = technicalQualityMeasurement
+        self.intentionalStylePreserved = intentionalStylePreserved
     }
 }
 
@@ -378,6 +388,306 @@ enum SemanticEvalRuntimeClaim: String, Codable, Equatable, Sendable {
     case testFixture = "test_fixture"
     case notRealRuntime = "not_real_runtime"
     case realRuntimeStillReplay = "real_runtime_still_replay"
+}
+
+#if DEBUG
+/// Replay-path observations only. A runtime claim alone does not prove model execution.
+struct SemanticEvalModelExecutionMetadata: Codable, Equatable, Sendable {
+    let frameId: String
+    let mode: AnalysisMode
+    let capturedAt: Date
+    let compactNeural: SemanticEvalCompactModelExecution
+    /// DETR and NIMA run once for these pixels and are shared by the live/pause replay rows.
+    let stillFeatures: SemanticEvalStillModelExecution?
+    let stillFeatureIdentityMatches: Bool
+    let composition: SemanticEvalLegacyModelExecution
+
+    init(frameId: String, mode: AnalysisMode, capturedAt: Date,
+         neuralRequested: Bool, neuralOutcome: NeuralEvidenceRecordedOutcome?,
+         stillFeatures: SemanticEvalStillModelExecution) {
+        self.frameId = frameId
+        self.mode = mode
+        self.capturedAt = capturedAt
+        compactNeural = .project(
+            requested: neuralRequested, frameId: frameId, mode: mode,
+            capturedAt: capturedAt, outcome: neuralOutcome
+        )
+        stillFeatureIdentityMatches = stillFeatures.frameId == frameId
+            && stillFeatures.capturedAt == capturedAt
+        self.stillFeatures = stillFeatureIdentityMatches ? stillFeatures : nil
+        // SETCompositionNet has no invocation on this replay path. Do not load it for diagnostics.
+        composition = .init(invocation: .notInvoked)
+    }
+}
+
+struct SemanticEvalCompactModelExecution: Codable, Equatable, Sendable {
+    enum Status: String, Codable, Sendable {
+        case notRequested = "not_requested"
+        case unknown
+        case identityMismatch = "identity_mismatch"
+        case disabled
+        case executed
+        case policySkipped = "policy_skipped"
+        case failed
+    }
+
+    let status: Status
+    let metadata: NeuralEvidenceRuntimeMetadata?
+    let headStatuses: [String: EvidenceHeadStatus]?
+
+    static func project(requested: Bool, frameId: String, mode: AnalysisMode,
+                        capturedAt: Date, outcome: NeuralEvidenceRecordedOutcome?) -> Self {
+        guard requested else {
+            return Self(status: .notRequested, metadata: nil, headStatuses: nil)
+        }
+        guard let outcome else {
+            return Self(status: .unknown, metadata: nil, headStatuses: nil)
+        }
+        guard !frameId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return Self(status: .identityMismatch, metadata: nil, headStatuses: nil)
+        }
+        // Disabled has no embedded identity. It is the direct return of this row's request,
+        // not a cached outcome; it makes no inference or model-availability claim.
+        if outcome.kind == .disabled {
+            return Self(status: .disabled, metadata: nil, headStatuses: nil)
+        }
+        guard let snapshot = outcome.snapshot, let metadata = outcome.metadata,
+              snapshot.frameId == frameId, metadata.frameId == frameId,
+              snapshot.mode == mode, metadata.mode == mode,
+              snapshot.capturedAt == capturedAt else {
+            return Self(status: .identityMismatch, metadata: nil, headStatuses: nil)
+        }
+        let status: Status
+        switch outcome.kind {
+        case .executed: status = .executed
+        case .policySkipped: status = .policySkipped
+        case .failed: status = .failed
+        case .disabled: status = .disabled
+        }
+        // Preserve "executed" even when every head is unavailable or no subject was produced.
+        // Do not reinterpret head availability as execution success/failure.
+        let headStatuses = snapshot.headOutputs.reduce(into: [String: EvidenceHeadStatus]()) {
+            $0[$1.headId.rawValue] = $1.payload.status
+        }
+        return Self(status: status, metadata: metadata, headStatuses: headStatuses)
+    }
+}
+
+struct SemanticEvalLegacyModelExecution: Codable, Equatable, Sendable {
+    enum Invocation: String, Codable, Sendable {
+        case notRequested = "not_requested"
+        case notInvoked = "not_invoked"
+        case modelUnavailable = "model_unavailable"
+        case callbackReceived = "callback_received"
+    }
+    enum OutputEvidence: String, Codable, Sendable {
+        case available
+        case unknown
+    }
+
+    let invocation: Invocation
+    let modelLoaded: Bool?
+    let outputEvidence: OutputEvidence
+    let detectionCount: Int?
+    let score10: Double?
+    let failureReason: DETRDetectionFailure?
+
+    init(invocation: Invocation, modelLoaded: Bool? = nil,
+         outputEvidence: OutputEvidence = .unknown,
+         detectionCount: Int? = nil, score10: Double? = nil,
+         failureReason: DETRDetectionFailure? = nil) {
+        self.invocation = invocation
+        self.modelLoaded = modelLoaded
+        self.outputEvidence = outputEvidence
+        self.detectionCount = detectionCount
+        self.score10 = score10
+        self.failureReason = failureReason
+    }
+
+    static func detrResult(_ result: DETRDetectionResult) -> Self {
+        switch result {
+        case .success(let detections):
+            return Self(invocation: .callbackReceived, modelLoaded: true,
+                        outputEvidence: .available, detectionCount: detections.count)
+        case .failure(let failure):
+            return Self(invocation: failure == .modelUnavailable ? .modelUnavailable : .callbackReceived,
+                        modelLoaded: failure != .modelUnavailable, outputEvidence: .unknown,
+                        failureReason: failure)
+        }
+    }
+
+    static func nimaCallback(score10: Double?) -> Self {
+        let finiteScore = score10.flatMap { $0.isFinite ? $0 : nil }
+        // nil does not expose whether the model was missing, failed, or returned no usable output.
+        return Self(invocation: .callbackReceived, modelLoaded: finiteScore == nil ? nil : true,
+                    outputEvidence: finiteScore == nil ? .unknown : .available, score10: finiteScore)
+    }
+}
+
+struct SemanticEvalStillModelExecution: Codable, Equatable, Sendable {
+    let frameId: String
+    let capturedAt: Date
+    let detr: SemanticEvalLegacyModelExecution
+    let nima: SemanticEvalLegacyModelExecution
+
+    static func notRequested(frameId: String, capturedAt: Date) -> Self {
+        Self(frameId: frameId, capturedAt: capturedAt,
+             detr: .init(invocation: .notRequested), nima: .init(invocation: .notRequested))
+    }
+}
+
+/// Scalars copied from the analyzer's one completed sampling pass. Luma means
+/// and pixel ratios use 0...1; gradient mean uses byte-luma units and gradient
+/// variance uses their squares, exactly as the existing analyzer computes them.
+struct TechnicalQualityPixelMetrics: Codable, Equatable, Sendable {
+    let sourceWidth: Int
+    let sourceHeight: Int
+    let sampleWidth: Int
+    let sampleHeight: Int
+    let meanLuma: Double
+    let darkRatio: Double
+    let deepShadowRatio: Double
+    let clippedBrightRatio: Double
+    let brightHotspotRatio: Double
+    let centerMeanLuma: Double
+    let maxSideBrightRatio: Double
+    let gradientMean: Double
+    let gradientVariance: Double
+}
+
+/// Only a predicate actually invoked while constructing an observed issue is
+/// recorded. An absent evaluation means not evaluated, never false.
+struct TechnicalQualityDominanceEvaluation: Codable, Equatable, Sendable {
+    enum Combination: String, Codable, Sendable { case all, any }
+    let issueType: TechnicalQualityIssueType
+    let combination: Combination
+    let conditions: [String: Bool]
+    let result: Bool
+}
+
+struct TechnicalQualityPixelDiagnostics: Codable, Equatable, Sendable {
+    let schemaVersion: String
+    let metrics: TechnicalQualityPixelMetrics
+    let dominanceEvaluations: [TechnicalQualityDominanceEvaluation]
+}
+
+/// Local, immutable return value. It contains no pixels, observer or shared
+/// mutable state and can cross the live/pause replay awaits.
+struct FrameTechnicalQualityDebugCapture: Equatable, Sendable {
+    let evidence: FrameTechnicalQualityEvidence
+    let diagnostics: TechnicalQualityPixelDiagnostics?
+
+    func resolvedDiagnostics(for consumed: FrameTechnicalQualityEvidence,
+                             snapshot: FrameFeatureSnapshot) -> TechnicalQualityPixelDiagnostics? {
+        guard evidence == consumed, consumed.matches(snapshot: snapshot),
+              consumed.measurement.signal != nil else { return nil }
+        return diagnostics
+    }
+}
+
+/// The exact technical measurement consumed for this replay snapshot.
+/// Identity is frame ID plus capture time, not a cryptographic pixel binding.
+struct SemanticEvalTechnicalMeasurementMetadata: Codable, Equatable, Sendable {
+    enum Status: String, Codable, Sendable {
+        case measured
+        case partial
+        case unavailable
+    }
+
+    let frameId: String
+    let capturedAt: Date?
+    let sourceFrameId: String
+    let sourceCapturedAt: Date?
+    let frameIdentityMatches: Bool
+    let status: Status
+    /// Raw value of the existing typed TechnicalQualityUnavailableReason.
+    let unavailableReason: String?
+    /// A partial signal retains observed corrections without proving complete coverage.
+    let signal: TechnicalQualitySignal?
+    let imageDetail: TechnicalImageDetailObservation?
+    let pixelDiagnostics: TechnicalQualityPixelDiagnostics?
+
+    init(evidence: FrameTechnicalQualityEvidence, snapshot: FrameFeatureSnapshot,
+         debugCapture: FrameTechnicalQualityDebugCapture? = nil) {
+        frameId = snapshot.frameId
+        capturedAt = snapshot.capturedAt.timeIntervalSinceReferenceDate.isFinite ? snapshot.capturedAt : nil
+        sourceFrameId = evidence.frameID
+        sourceCapturedAt = evidence.capturedAt.timeIntervalSinceReferenceDate.isFinite ? evidence.capturedAt : nil
+        frameIdentityMatches = evidence.matches(snapshot: snapshot)
+        pixelDiagnostics = debugCapture?.resolvedDiagnostics(for: evidence, snapshot: snapshot)
+        switch evidence.resolvedMeasurement(for: snapshot) {
+        case .measured(let signal):
+            status = .measured
+            unavailableReason = nil
+            self.signal = signal
+            imageDetail = nil
+        case .partial(let signal, let reason, let detail):
+            status = .partial
+            unavailableReason = reason.rawValue
+            self.signal = signal
+            imageDetail = detail
+        case .unavailable(let reason):
+            status = .unavailable
+            unavailableReason = reason.rawValue
+            signal = nil
+            imageDetail = nil
+        }
+    }
+
+    var numericFeatures: [String: Double] {
+        guard let signal else { return [:] }
+        return [
+            "technical_issue_count": Double(signal.issues.count),
+            "technical_dominant_count": Double(signal.issues.filter(\.isDominant).count),
+            "technical_max_severity": signal.issues.map(\.severity).max() ?? 0,
+            "technical_max_confidence": signal.issues.map(\.confidence).max() ?? 0
+        ]
+    }
+}
+#endif
+
+
+/// Observations at distinct stages, not an additional confidence estimator.
+/// Neither exporting a score nor showing a percentage establishes calibration.
+struct SemanticEvalConfidenceEvidence: Codable, Equatable, Sendable {
+    enum Source: String, Codable, Sendable {
+        case liveHintPresentation = "LiveHintPresentation.confidence"
+        case pauseCritiquePresentation = "PauseCritiquePresentation.verdictConfidence"
+        case noPresentation = "no_presentation"
+    }
+
+    enum Context: String, Codable, Sendable {
+        /// The caller supplied a presentation; publication was not observed here.
+        case suppliedPresentation = "supplied_presentation"
+        /// Still replay uses production builders but bypasses live publication/hold.
+        case stillReplayCandidate = "still_replay_candidate"
+    }
+
+    let source: Source
+    let context: Context
+    let presentationFrameId: String?
+    /// The finite post-fusion CritiqueReport score, when supplied.
+    /// nil means not supplied or invalid, never an observed zero.
+    let critiqueVerdictConfidence: Double?
+    /// The finite presentation score before the UI's bounded display conversion.
+    /// source/context remain available when the supplied score was non-finite.
+    let presentationConfidence: Double?
+
+    init(source: Source, context: Context, presentationFrameId: String?,
+         critiqueVerdictConfidence: Double?, presentationConfidence: Double?) {
+        self.source = source
+        self.context = context
+        self.presentationFrameId = presentationFrameId
+        self.critiqueVerdictConfidence = critiqueVerdictConfidence.flatMap { $0.isFinite ? $0 : nil }
+        self.presentationConfidence = presentationConfidence.flatMap { $0.isFinite ? $0 : nil }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case source, context
+        case presentationFrameId = "presentation_frame_id"
+        case critiqueVerdictConfidence = "critique_verdict_confidence"
+        case presentationConfidence = "presentation_confidence"
+    }
 }
 
 struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
@@ -398,6 +708,12 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
     let debugActionTypes: [String]
     let debugNumericFeatures: [String: Double]
     let debugSemanticLabels: [String: String]
+    // Optional for decoding historical rows; absence means provenance is unknown.
+    var confidenceEvidence: SemanticEvalConfidenceEvidence? = nil
+#if DEBUG
+    var debugModelExecution: SemanticEvalModelExecutionMetadata? = nil
+    var debugTechnicalMeasurement: SemanticEvalTechnicalMeasurementMetadata? = nil
+#endif
 
     private enum CodingKeys: String, CodingKey {
         case recordId = "record_id"
@@ -417,7 +733,26 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
         case debugActionTypes = "debug_action_types"
         case debugNumericFeatures = "debug_numeric_features"
         case debugSemanticLabels = "debug_semantic_labels"
+        case confidenceEvidence = "confidence_evidence"
+#if DEBUG
+        case debugModelExecution = "debug_model_execution"
+        case debugTechnicalMeasurement = "debug_technical_measurement"
+#endif
     }
+
+#if DEBUG
+    func withModelExecution(_ metadata: SemanticEvalModelExecutionMetadata) -> Self {
+        var row = self
+        row.debugModelExecution = metadata
+        return row
+    }
+
+    func withTechnicalMeasurement(_ metadata: SemanticEvalTechnicalMeasurementMetadata) -> Self {
+        var row = self
+        row.debugTechnicalMeasurement = metadata
+        return row
+    }
+#endif
 
     static func live(recordId: String,
                      filename: String,
@@ -426,7 +761,8 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
                      runtimeClaim: SemanticEvalRuntimeClaim,
                      futureActions: [String] = [],
                      dominantFutureActions: [String]? = nil,
-                     technicalConfidenceFloor: Double? = nil,
+                     critiqueVerdictConfidence: Double? = nil,
+                     confidenceContext: SemanticEvalConfidenceEvidence.Context = .suppliedPresentation,
                      traceIds: [String] = [],
                      debugNumericFeatures: [String: Double] = [:],
                      debugSemanticLabels: [String: String] = [:]) -> SemanticEvalCandidateOutput {
@@ -439,17 +775,13 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
             !hasDominantTechnicalFutureAction(dominantActions) || actionType.semanticActionType != .keepCurrentSetup
         }
         let effectiveTraceIds = traceIds.isEmpty ? (hint?.traceRootIds ?? []) : traceIds
-        let confidence = hint.map {
-            confidenceWithTechnicalFloor(
-                base: $0.confidence,
-                technicalConfidenceFloor: technicalConfidenceFloor,
-                semanticActions: semanticActionStrings(from: exportableActionTypes),
-                futureActions: futureActions,
-                traceIds: effectiveTraceIds,
-                debugNumericFeatures: debugNumericFeatures,
-                debugSemanticLabels: debugSemanticLabels
-            )
-        } ?? 0
+        let confidenceEvidence = SemanticEvalConfidenceEvidence(
+            source: hint == nil ? .noPresentation : .liveHintPresentation,
+            context: confidenceContext,
+            presentationFrameId: hint?.frameId,
+            critiqueVerdictConfidence: critiqueVerdictConfidence,
+            presentationConfidence: hint?.confidence
+        )
         return SemanticEvalCandidateOutput(
             recordId: recordId,
             filename: filename,
@@ -459,15 +791,16 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
             pauseSummary: nil,
             semanticActions: semanticActionStrings(from: exportableActionTypes),
             futureActions: futureActions,
-            confidence: confidence,
+            confidence: hint.map { ConfidencePresentation.make($0.confidence).value } ?? 0,
             source: source,
             runtimeClaim: runtimeClaim,
             traceIds: effectiveTraceIds,
             debugIssueTypes: [],
             debugStrengthTypes: [],
             debugActionTypes: hint?.actionType.map { [$0.rawValue] } ?? [],
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
+            debugNumericFeatures: debugNumericFeatures.filter { $0.value.isFinite },
+            debugSemanticLabels: debugSemanticLabels,
+            confidenceEvidence: confidenceEvidence
         )
     }
 
@@ -478,7 +811,8 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
                       runtimeClaim: SemanticEvalRuntimeClaim,
                       futureActions: [String] = [],
                       dominantFutureActions: [String]? = nil,
-                      technicalConfidenceFloor: Double? = nil,
+                      critiqueVerdictConfidence: Double? = nil,
+                      confidenceContext: SemanticEvalConfidenceEvidence.Context = .suppliedPresentation,
                       traceIds: [String] = [],
                       debugNumericFeatures: [String: Double] = [:],
                       debugSemanticLabels: [String: String] = [:]) -> SemanticEvalCandidateOutput {
@@ -501,15 +835,12 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
             includeKeepCurrentSetup: allowsKeepCurrentSetup
         )
         let effectiveTraceIds = traceIds.isEmpty ? (critique?.traceRootIds ?? []) : traceIds
-        let confidence = confidenceWithTechnicalFloor(
-            base: critique?.verdictConfidence ?? 0,
-            technicalConfidenceFloor: technicalConfidenceFloor,
-            verdict: critique?.verdict,
-            semanticActions: semanticActions,
-            futureActions: futureActions,
-            traceIds: effectiveTraceIds,
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
+        let confidenceEvidence = SemanticEvalConfidenceEvidence(
+            source: critique == nil ? .noPresentation : .pauseCritiquePresentation,
+            context: confidenceContext,
+            presentationFrameId: critique?.frameId,
+            critiqueVerdictConfidence: critiqueVerdictConfidence,
+            presentationConfidence: critique?.verdictConfidence
         )
         return SemanticEvalCandidateOutput(
             recordId: recordId,
@@ -520,15 +851,16 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
             pauseSummary: critique?.shortVerdict,
             semanticActions: semanticActions,
             futureActions: futureActions,
-            confidence: confidence,
+            confidence: critique.map { ConfidencePresentation.make($0.verdictConfidence).value } ?? 0,
             source: source,
             runtimeClaim: runtimeClaim,
             traceIds: effectiveTraceIds,
             debugIssueTypes: critique?.issues.map { $0.type.rawValue } ?? [],
             debugStrengthTypes: critique?.strengths.map { $0.type.rawValue } ?? [],
             debugActionTypes: critique?.actions.map { $0.actionType.rawValue } ?? [],
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
+            debugNumericFeatures: debugNumericFeatures.filter { $0.value.isFinite },
+            debugSemanticLabels: debugSemanticLabels,
+            confidenceEvidence: confidenceEvidence
         )
     }
 
@@ -538,6 +870,8 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
                        source: String,
                        runtimeClaim: SemanticEvalRuntimeClaim,
                        futureActions: [String] = [],
+                       critiqueVerdictConfidence: Double? = nil,
+                       confidenceContext: SemanticEvalConfidenceEvidence.Context = .suppliedPresentation,
                        traceIds: [String] = [],
                        debugNumericFeatures: [String: Double] = [:],
                        debugSemanticLabels: [String: String] = [:]) -> SemanticEvalCandidateOutput {
@@ -557,8 +891,15 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
             debugIssueTypes: [],
             debugStrengthTypes: [],
             debugActionTypes: [],
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
+            debugNumericFeatures: debugNumericFeatures.filter { $0.value.isFinite },
+            debugSemanticLabels: debugSemanticLabels,
+            confidenceEvidence: SemanticEvalConfidenceEvidence(
+                source: .noPresentation,
+                context: confidenceContext,
+                presentationFrameId: nil,
+                critiqueVerdictConfidence: critiqueVerdictConfidence,
+                presentationConfidence: nil
+            )
         )
     }
 
@@ -892,517 +1233,6 @@ struct SemanticEvalCandidateOutput: Codable, Equatable, Sendable {
         !futureActions.isEmpty
     }
 
-    private static func confidenceWithTechnicalFloor(base: Double,
-                                                     technicalConfidenceFloor: Double?,
-                                                     verdict: FrameVerdict? = nil,
-                                                     semanticActions: [String] = [],
-                                                     futureActions: [String] = [],
-                                                     traceIds: [String] = [],
-                                                     debugNumericFeatures: [String: Double] = [:],
-                                                     debugSemanticLabels: [String: String] = [:]) -> Double {
-        let confidence = clamp01(max(base, technicalConfidenceFloor ?? 0))
-        if shouldPromoteUnknownMotionBlurBackgroundConfidence(
-            confidence: confidence,
-            semanticActions: semanticActions,
-            futureActions: futureActions,
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
-        ) {
-            return max(confidence, 0.75)
-        }
-        if shouldPromoteWideUnknownGoodEstablishingKeepConfidence(
-            confidence: confidence,
-            semanticActions: semanticActions,
-            futureActions: futureActions,
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
-        ) {
-            return max(confidence, 0.75)
-        }
-        if shouldCapPositiveKeepTechnicalFloorConfidence(
-            confidence: confidence,
-            semanticActions: semanticActions,
-            futureActions: futureActions,
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
-        ) {
-            return min(confidence, 0.70)
-        }
-        if shouldCapMediumEvidencePositiveKeepConfidence(
-            confidence: confidence,
-            semanticActions: semanticActions,
-            futureActions: futureActions,
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
-        ) {
-            return min(confidence, 0.70)
-        }
-        if shouldCapMediumEvidenceTechnicalCorrectionConfidence(
-            confidence: confidence,
-            semanticActions: semanticActions,
-            futureActions: futureActions,
-            traceIds: traceIds,
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
-        ) {
-            return min(confidence, 0.70)
-        }
-        if shouldCapUnknownNoFocusFrontFillTechnicalConfidence(
-            confidence: confidence,
-            semanticActions: semanticActions,
-            futureActions: futureActions,
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
-        ) {
-            return min(confidence, 0.74)
-        }
-        if shouldCapContextualUnknownBlurMediumConfidence(
-            confidence: confidence,
-            semanticActions: semanticActions,
-            futureActions: futureActions,
-            traceIds: traceIds,
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
-        ) {
-            return min(confidence, 0.70)
-        }
-        if shouldCapReadableObjectTechnicalSilenceConfidence(
-            confidence: confidence,
-            semanticActions: semanticActions,
-            futureActions: futureActions,
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
-        ) {
-            return min(confidence, 0.74)
-        }
-        if shouldCapEmptyUnknownTechnicalSilenceConfidence(
-            confidence: confidence,
-            semanticActions: semanticActions,
-            futureActions: futureActions,
-            traceIds: traceIds,
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
-        ) {
-            return min(confidence, 0.44)
-        }
-        if semanticActions.isEmpty,
-           traceIds.contains("contextual_unknown_stabilized_technical_silence") {
-            return min(confidence, 0.70)
-        }
-        if traceIds.contains("contextual_underlit_readable_object") {
-            return min(confidence, 0.74)
-        }
-        if traceIds.contains("contextual_readable_underlit_object_front_fill") {
-            return min(confidence, 0.74)
-        }
-        if traceIds.contains("contextual_unknown_noisy_low_light_step_back") {
-            return min(confidence, 0.74)
-        }
-        if traceIds.contains("contextual_unknown_group_framing") {
-            return min(confidence, 0.70)
-        }
-        if shouldCapSmallReadableObjectFocusFutureConfidence(
-            confidence: confidence,
-            semanticActions: semanticActions,
-            futureActions: futureActions,
-            traceIds: traceIds,
-            debugNumericFeatures: debugNumericFeatures,
-            debugSemanticLabels: debugSemanticLabels
-        ) {
-            return min(confidence, 0.70)
-        }
-        if shouldPreserveHighWeakSubjectBackgroundConfidence(
-            confidence: confidence,
-            traceIds: traceIds,
-            debugNumericFeatures: debugNumericFeatures
-        ) {
-            return confidence
-        }
-        guard verdict == .mixed,
-              semanticActions.contains(where: { $0 != SemanticActionType.keepCurrentSetup.rawValue }) else {
-            return confidence
-        }
-        return min(confidence, 0.74)
-    }
-
-    private static func shouldCapPositiveKeepTechnicalFloorConfidence(confidence: Double,
-                                                                      semanticActions: [String],
-                                                                      futureActions: [String],
-                                                                      debugNumericFeatures: [String: Double],
-                                                                      debugSemanticLabels: [String: String]) -> Bool {
-        guard confidence >= 0.995,
-              semanticActions == [SemanticActionType.keepCurrentSetup.rawValue],
-              !futureActions.isEmpty else {
-            return false
-        }
-
-        let aestheticScore = debugNumericFeatures["aesthetic_score"] ?? 1.0
-        let objectCount = debugNumericFeatures["object_count"] ?? 0
-        let subjectArea = debugNumericFeatures["subject_area_ratio"] ?? 0
-        let subjectKind = debugSemanticLabels["primary_subject_kind"] ?? ""
-        let subjectReadable = debugSemanticLabels["subject_readable"] == "true"
-
-        if subjectKind == SubjectKind.unknown.rawValue,
-           !subjectReadable,
-           objectCount == 0,
-           aestheticScore < 0.43 {
-            return true
-        }
-
-        if subjectKind == SubjectKind.object.rawValue,
-           subjectReadable,
-           objectCount >= 2,
-           aestheticScore < 0.43,
-           (subjectArea >= 0.43 || subjectArea <= 0.25) {
-            return true
-        }
-
-        return false
-    }
-
-    private static func shouldCapMediumEvidencePositiveKeepConfidence(confidence: Double,
-                                                                      semanticActions: [String],
-                                                                      futureActions: [String],
-                                                                      debugNumericFeatures: [String: Double],
-                                                                      debugSemanticLabels: [String: String]) -> Bool {
-        guard confidence >= 0.75,
-              semanticActions == [SemanticActionType.keepCurrentSetup.rawValue],
-              !futureActions.isEmpty,
-              debugSemanticLabels["verdict"] == FrameVerdict.good.rawValue,
-              debugSemanticLabels["primary_subject_kind"] == SubjectKind.object.rawValue,
-              debugSemanticLabels["subject_readable"] == "true" else {
-            return false
-        }
-
-        let aestheticScore = debugNumericFeatures["aesthetic_score"] ?? 1.0
-        let exposureBias = debugNumericFeatures["exposure_bias"] ?? 0.0
-        let subjectArea = debugNumericFeatures["subject_area_ratio"] ?? 0.0
-        let objectCount = debugNumericFeatures["object_count"] ?? 0.0
-        let backgroundClutter = debugNumericFeatures["background_clutter"] ?? 0.0
-        let subjectLabel = debugSemanticLabels["primary_subject_label"] ?? ""
-        let hasStabilizationPressure = futureActions.contains(TechnicalQualityActionType.stabilizeCamera.rawValue)
-        let hasClearFocus = debugSemanticLabels["has_clear_focus"] == "true"
-
-        if shouldPreserveAmbiguousCurtainBoundaryConfidence(
-            subjectLabel: subjectLabel,
-            objectCount: objectCount,
-            subjectArea: subjectArea,
-            backgroundClutter: backgroundClutter,
-            exposureBias: exposureBias,
-            hasClearFocus: hasClearFocus
-        ) {
-            return false
-        }
-
-        if hasStabilizationPressure,
-           aestheticScore < 0.50,
-           subjectArea < 0.30,
-           exposureBias > -1.20 {
-            return true
-        }
-
-        if objectCount >= 4,
-           subjectArea >= 0.55,
-           backgroundClutter >= 0.55,
-           debugSemanticLabels["has_clear_focus"] == "false",
-           futureActions.contains(TechnicalQualityActionType.increaseExposure.rawValue) {
-            return true
-        }
-
-        if confidence >= 0.995,
-           objectCount >= 2,
-           aestheticScore < 0.46,
-           (exposureBias > -1.0 || subjectArea < 0.30 || backgroundClutter >= 0.40) {
-            return true
-        }
-
-        if confidence >= 0.995,
-           subjectLabel == "light",
-           objectCount == 1,
-           subjectArea >= 0.40,
-           aestheticScore < 0.40,
-           exposureBias <= -1.50,
-           backgroundClutter <= 0.15 {
-            return true
-        }
-
-        return false
-    }
-
-    private static func shouldPreserveAmbiguousCurtainBoundaryConfidence(subjectLabel: String,
-                                                                         objectCount: Double,
-                                                                         subjectArea: Double,
-                                                                         backgroundClutter: Double,
-                                                                         exposureBias: Double,
-                                                                         hasClearFocus: Bool) -> Bool {
-        guard subjectLabel == "curtain" else {
-            return false
-        }
-
-        if objectCount >= 5,
-           subjectArea < 0.20,
-           backgroundClutter >= 0.70,
-           exposureBias <= -1.0 {
-            return true
-        }
-
-        if objectCount <= 2,
-           hasClearFocus,
-           subjectArea < 0.12,
-           backgroundClutter <= 0.40,
-           exposureBias > -0.50 {
-            return true
-        }
-
-        return false
-    }
-
-    private static func shouldPromoteUnknownMotionBlurBackgroundConfidence(confidence: Double,
-                                                                           semanticActions: [String],
-                                                                           futureActions: [String],
-                                                                           debugNumericFeatures: [String: Double],
-                                                                           debugSemanticLabels: [String: String]) -> Bool {
-        guard confidence < 0.75,
-              semanticActions.contains(SemanticActionType.changeCameraAngle.rawValue),
-              semanticActions.contains(SemanticActionType.moveObjectBack.rawValue),
-              futureActions.contains(TechnicalQualityActionType.stabilizeCamera.rawValue),
-              futureActions.contains(TechnicalQualityActionType.reduceExposure.rawValue),
-              debugSemanticLabels["verdict"] == FrameVerdict.mixed.rawValue,
-              debugSemanticLabels["primary_subject_kind"] == SubjectKind.unknown.rawValue,
-              debugSemanticLabels["subject_readable"] == "false" else {
-            return false
-        }
-
-        let aestheticScore = debugNumericFeatures["aesthetic_score"] ?? 0.0
-        let horizonConfidence = debugNumericFeatures["horizon_confidence"] ?? 0.0
-        let objectCount = debugNumericFeatures["object_count"] ?? 0.0
-        let subjectArea = debugNumericFeatures["subject_area_ratio"] ?? 1.0
-        return objectCount == 2
-            && subjectArea == 0
-            && aestheticScore >= 0.44
-            && horizonConfidence >= 0.50
-    }
-
-    private static func shouldPromoteWideUnknownGoodEstablishingKeepConfidence(confidence: Double,
-                                                                               semanticActions: [String],
-                                                                               futureActions: [String],
-                                                                               debugNumericFeatures: [String: Double],
-                                                                               debugSemanticLabels: [String: String]) -> Bool {
-        guard confidence < 0.75,
-              semanticActions == [SemanticActionType.keepCurrentSetup.rawValue] else {
-            return false
-        }
-
-        let allowedFutureActions: Set<String> = [
-            TechnicalQualityActionType.stabilizeCamera.rawValue,
-            TechnicalQualityActionType.refocusSubject.rawValue,
-            TechnicalQualityActionType.reduceIsoNoise.rawValue,
-            TechnicalQualityActionType.increaseExposure.rawValue
-        ]
-        guard futureActions.allSatisfy({ allowedFutureActions.contains($0) }) else {
-            return false
-        }
-        if shouldPreserveNumericWideGoodEstablishingFrame(debugNumericFeatures: debugNumericFeatures) {
-            return true
-        }
-        // The semantic fallback has to keep the width requirement. Without it a NARROW
-        // frame carrying these labels was also promoted into the "high" confidence band,
-        // which contradicts the predicate's own name ("Wide...") and its test: the narrow
-        // fixture (frame_aspect_ratio < 1.76) must stay below 0.75. Same threshold as the
-        // numeric branch above.
-        guard (debugNumericFeatures["frame_aspect_ratio"] ?? 0) >= 1.76 else { return false }
-        return debugSemanticLabels["verdict"] == FrameVerdict.good.rawValue
-            && debugSemanticLabels["scene_type"] == SceneTypeV1.establishingLikeFrame.rawValue
-            && debugSemanticLabels["primary_subject_kind"] == SubjectKind.unknown.rawValue
-            && debugSemanticLabels["subject_readable"] == "false"
-    }
-
-    private static func shouldCapMediumEvidenceTechnicalCorrectionConfidence(confidence: Double,
-                                                                             semanticActions: [String],
-                                                                             futureActions: [String],
-                                                                             traceIds: [String],
-                                                                             debugNumericFeatures: [String: Double],
-                                                                             debugSemanticLabels: [String: String]) -> Bool {
-        guard confidence >= 0.75,
-              traceIds.contains("technical_quality_overexposure"),
-              semanticActions.contains(SemanticActionType.simplifyBackground.rawValue),
-              futureActions.contains(TechnicalQualityActionType.reduceExposure.rawValue),
-              futureActions.contains(TechnicalQualityActionType.increaseExposure.rawValue),
-              debugSemanticLabels["primary_subject_kind"] == SubjectKind.object.rawValue,
-              debugSemanticLabels["subject_readable"] == "true" else {
-            return false
-        }
-
-        let aestheticScore = debugNumericFeatures["aesthetic_score"] ?? 1.0
-        let exposureBias = debugNumericFeatures["exposure_bias"] ?? 0.0
-        let subjectArea = debugNumericFeatures["subject_area_ratio"] ?? 1.0
-        let objectCount = debugNumericFeatures["object_count"] ?? 0.0
-        let backgroundClutter = debugNumericFeatures["background_clutter"] ?? 0.0
-        return objectCount >= 2
-            && (0.10...0.22).contains(subjectArea)
-            && (0.40...0.43).contains(aestheticScore)
-            && exposureBias <= -0.50
-            && backgroundClutter >= 0.30
-    }
-
-    private static func shouldCapUnknownNoFocusFrontFillTechnicalConfidence(confidence: Double,
-                                                                            semanticActions: [String],
-                                                                            futureActions: [String],
-                                                                            debugNumericFeatures: [String: Double],
-                                                                            debugSemanticLabels: [String: String]) -> Bool {
-        guard confidence >= 0.75,
-              semanticActions.contains(SemanticActionType.addFrontFillLight.rawValue),
-              semanticActions.contains(SemanticActionType.rotateSubjectTowardLight.rawValue),
-              futureActions.contains(TechnicalQualityActionType.stabilizeCamera.rawValue),
-              futureActions.contains(TechnicalQualityActionType.refocusSubject.rawValue),
-              futureActions.contains(TechnicalQualityActionType.increaseExposure.rawValue),
-              debugSemanticLabels["verdict"] == FrameVerdict.needsFix.rawValue,
-              debugSemanticLabels["primary_subject_kind"] == SubjectKind.unknown.rawValue,
-              debugSemanticLabels["subject_readable"] == "false",
-              debugSemanticLabels["has_clear_focus"] == "false" else {
-            return false
-        }
-
-        let aestheticScore = debugNumericFeatures["aesthetic_score"] ?? 1.0
-        let exposureBias = debugNumericFeatures["exposure_bias"] ?? 0.0
-        let objectCount = debugNumericFeatures["object_count"] ?? 0.0
-        let subjectArea = debugNumericFeatures["subject_area_ratio"] ?? 1.0
-        return objectCount >= 3
-            && subjectArea == 0
-            && (0.39...0.43).contains(aestheticScore)
-            && (-1.10 ... -0.80).contains(exposureBias)
-    }
-
-    private static func shouldCapContextualUnknownBlurMediumConfidence(confidence: Double,
-                                                                       semanticActions: [String],
-                                                                       futureActions: [String],
-                                                                       traceIds: [String],
-                                                                       debugNumericFeatures: [String: Double],
-                                                                       debugSemanticLabels: [String: String]) -> Bool {
-        guard (0.75...0.87).contains(confidence),
-              traceIds.contains("contextual_unknown_blur_simplify_background"),
-              semanticActions == [SemanticActionType.simplifyBackground.rawValue],
-              futureActions.contains(TechnicalQualityActionType.stabilizeCamera.rawValue),
-              futureActions.contains(TechnicalQualityActionType.refocusSubject.rawValue),
-              futureActions.contains(TechnicalQualityActionType.reduceExposure.rawValue),
-              debugSemanticLabels["primary_subject_kind"] == SubjectKind.unknown.rawValue,
-              debugSemanticLabels["subject_readable"] == "false" else {
-            return false
-        }
-
-        let aestheticScore = debugNumericFeatures["aesthetic_score"] ?? 1.0
-        let objectCount = debugNumericFeatures["object_count"] ?? 1.0
-        let subjectArea = debugNumericFeatures["subject_area_ratio"] ?? 1.0
-        let exposureBias = debugNumericFeatures["exposure_bias"] ?? 0.0
-        return objectCount == 0
-            && subjectArea == 0
-            && (0.36...0.39).contains(aestheticScore)
-            && exposureBias > 0.20
-    }
-
-    private static func shouldCapReadableObjectTechnicalSilenceConfidence(confidence: Double,
-                                                                          semanticActions: [String],
-                                                                          futureActions: [String],
-                                                                          debugNumericFeatures: [String: Double],
-                                                                          debugSemanticLabels: [String: String]) -> Bool {
-        guard confidence >= 0.75,
-              confidence < 0.80,
-              semanticActions.isEmpty,
-              futureActions.contains(TechnicalQualityActionType.stabilizeCamera.rawValue),
-              futureActions.contains(TechnicalQualityActionType.reduceExposure.rawValue),
-              !futureActions.contains(TechnicalQualityActionType.refocusSubject.rawValue),
-              debugSemanticLabels["verdict"] == FrameVerdict.good.rawValue,
-              debugSemanticLabels["primary_subject_kind"] == SubjectKind.object.rawValue,
-              debugSemanticLabels["subject_readable"] == "true" else {
-            return false
-        }
-
-        let aestheticScore = debugNumericFeatures["aesthetic_score"] ?? 1.0
-        let exposureBias = debugNumericFeatures["exposure_bias"] ?? 0.0
-        let subjectArea = debugNumericFeatures["subject_area_ratio"] ?? 0.0
-        let objectCount = debugNumericFeatures["object_count"] ?? 0.0
-        let horizonConfidence = debugNumericFeatures["horizon_confidence"] ?? 0.0
-        return objectCount == 1
-            && subjectArea >= 0.40
-            && aestheticScore < 0.40
-            && exposureBias >= 0.50
-            && horizonConfidence >= 0.75
-    }
-
-    private static func shouldCapEmptyUnknownTechnicalSilenceConfidence(confidence: Double,
-                                                                        semanticActions: [String],
-                                                                        futureActions: [String],
-                                                                        traceIds: [String],
-                                                                        debugNumericFeatures: [String: Double],
-                                                                        debugSemanticLabels: [String: String]) -> Bool {
-        guard confidence >= 0.75,
-              semanticActions.isEmpty,
-              !traceIds.contains("technical_quality_motion_blur"),
-              futureActions.contains(TechnicalQualityActionType.stabilizeCamera.rawValue),
-              futureActions.contains(TechnicalQualityActionType.increaseExposure.rawValue),
-              debugSemanticLabels["primary_subject_kind"] == SubjectKind.unknown.rawValue,
-              debugSemanticLabels["subject_readable"] == "false" else {
-            return false
-        }
-
-        let aestheticScore = debugNumericFeatures["aesthetic_score"] ?? 1.0
-        let exposureBias = debugNumericFeatures["exposure_bias"] ?? 0.0
-        let objectCount = debugNumericFeatures["object_count"] ?? 1.0
-        let subjectArea = debugNumericFeatures["subject_area_ratio"] ?? 1.0
-        return objectCount == 0
-            && subjectArea == 0
-            && (0.39...0.42).contains(aestheticScore)
-            && abs(exposureBias) < 0.05
-    }
-
-    private static func shouldPreserveHighWeakSubjectBackgroundConfidence(confidence: Double,
-                                                                          traceIds: [String],
-                                                                          debugNumericFeatures: [String: Double]) -> Bool {
-        guard confidence >= 0.75,
-              traceIds.contains("contextual_weak_subject_background") else {
-            return false
-        }
-
-        let exposureBias = debugNumericFeatures["exposure_bias"] ?? 0.0
-        let subjectArea = debugNumericFeatures["subject_area_ratio"] ?? 1.0
-        let objectCount = debugNumericFeatures["object_count"] ?? 0.0
-        return objectCount == 1
-            && subjectArea < 0.10
-            && exposureBias <= -1.20
-    }
-
-    private static func shouldCapSmallReadableObjectFocusFutureConfidence(confidence: Double,
-                                                                          semanticActions: [String],
-                                                                          futureActions: [String],
-                                                                          traceIds: [String],
-                                                                          debugNumericFeatures: [String: Double],
-                                                                          debugSemanticLabels: [String: String]) -> Bool {
-        guard confidence >= 0.75,
-              traceIds.contains("technical_quality_overexposure"),
-              semanticActions.contains(SemanticActionType.simplifyBackground.rawValue),
-              futureActions.contains(TechnicalQualityActionType.stabilizeCamera.rawValue),
-              futureActions.contains(TechnicalQualityActionType.refocusSubject.rawValue),
-              debugSemanticLabels["verdict"] == FrameVerdict.good.rawValue,
-              debugSemanticLabels["primary_subject_kind"] == SubjectKind.object.rawValue,
-              debugSemanticLabels["subject_readable"] == "true" else {
-            return false
-        }
-
-        let aestheticScore = debugNumericFeatures["aesthetic_score"] ?? 1.0
-        let subjectArea = debugNumericFeatures["subject_area_ratio"] ?? 1.0
-        let exposureBias = debugNumericFeatures["exposure_bias"] ?? 0.0
-        let objectCount = debugNumericFeatures["object_count"] ?? 0.0
-        let backgroundClutter = debugNumericFeatures["background_clutter"] ?? 1.0
-        return objectCount >= 2
-            && subjectArea < 0.22
-            && (0.40...0.43).contains(aestheticScore)
-            && exposureBias <= -0.55
-            && backgroundClutter <= 0.25
-    }
-
-    private static func clamp01(_ value: Double) -> Double {
-        min(1.0, max(0.0, value))
-    }
 }
 
 #if DEBUG
@@ -1457,33 +1287,77 @@ struct TechnicalQualityAnalyzer {
         let gradientVariance: Double
     }
 
+    #if DEBUG
+    // These synchronous callbacks are installed only on a local value copy by
+    // debugMeasurement. The pipeline's shared analyzer is never modified.
+    private var debugMetricsObserver: ((TechnicalQualityPixelMetrics) -> Void)?
+    private var debugDominanceObserver: ((TechnicalQualityDominanceEvaluation) -> Void)?
+
+    init() {}
+
+    func debugMeasurement(pixelBuffer: CVPixelBuffer?, frameID: String,
+                          capturedAt: Date) -> FrameTechnicalQualityDebugCapture {
+        var observedMetrics: TechnicalQualityPixelMetrics?
+        var evaluatedDominance: [TechnicalQualityDominanceEvaluation] = []
+        var scoped = self
+        scoped.debugMetricsObserver = { observedMetrics = $0 }
+        scoped.debugDominanceObserver = { evaluatedDominance.append($0) }
+        let measured = scoped.measurement(pixelBuffer: pixelBuffer)
+        let diagnostics = observedMetrics.map {
+            TechnicalQualityPixelDiagnostics(
+                schemaVersion: "technical_quality_pixel_diagnostics_v1",
+                metrics: $0, dominanceEvaluations: evaluatedDominance
+            )
+        }
+        return FrameTechnicalQualityDebugCapture(
+            evidence: .init(frameID: frameID, capturedAt: capturedAt, measurement: measured),
+            diagnostics: diagnostics
+        )
+    }
+    #endif
+
     func signal(pixelBuffer: CVPixelBuffer) -> TechnicalQualitySignal {
+        // Compatibility projection for correction-only consumers. A missing
+        // measurement has no observed issues, but cannot confirm frame quality.
+        measurement(pixelBuffer: pixelBuffer).signal ?? .empty
+    }
+
+    func measurement(pixelBuffer: CVPixelBuffer?) -> TechnicalQualityMeasurement {
+        guard let pixelBuffer else { return .unavailable(.missingPixelBuffer) }
         guard CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA else {
-            return .empty
+            return .unavailable(.unsupportedPixelFormat)
         }
 
-        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        guard CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly) == kCVReturnSuccess else {
+            return .unavailable(.pixelBufferLockFailed)
+        }
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
 
         guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
-            return .empty
+            return .unavailable(.baseAddressUnavailable)
         }
 
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        guard width > 0, height > 0, bytesPerRow > 0,
+              width <= bytesPerRow / 4,
+              height <= Int.max / bytesPerRow else {
+            return .unavailable(.invalidBufferLayout)
+        }
         let sampleWidth = min(96, max(1, width))
         let sampleHeight = min(96, max(1, height))
-        let stepX = max(1, width / sampleWidth)
-        let stepY = max(1, height / sampleHeight)
         var lumaGrid: [Double] = []
         lumaGrid.reserveCapacity(sampleWidth * sampleHeight)
 
+        // Sample the center of each equal cell across the entire image. An
+        // integer stride truncates the right/bottom when the dimensions are
+        // not multiples of the grid, changing both coverage and spatial stats.
         for gridY in 0..<sampleHeight {
-            let sourceY = min(height - 1, gridY * stepY)
+            let sourceY = min(height - 1, Int((Double(gridY) + 0.5) * Double(height) / Double(sampleHeight)))
             let row = baseAddress.advanced(by: sourceY * bytesPerRow).assumingMemoryBound(to: UInt8.self)
             for gridX in 0..<sampleWidth {
-                let sourceX = min(width - 1, gridX * stepX)
+                let sourceX = min(width - 1, Int((Double(gridX) + 0.5) * Double(width) / Double(sampleWidth)))
                 let offset = sourceX * 4
                 let blue = Double(row[offset])
                 let green = Double(row[offset + 1])
@@ -1492,7 +1366,7 @@ struct TechnicalQualityAnalyzer {
             }
         }
 
-        guard !lumaGrid.isEmpty else { return .empty }
+        guard !lumaGrid.isEmpty else { return .unavailable(.invalidBufferLayout) }
 
         let pixelCount = Double(lumaGrid.count)
         let meanLuma = (lumaGrid.reduce(0, +) / pixelCount) / 255.0
@@ -1514,12 +1388,35 @@ struct TechnicalQualityAnalyzer {
             gradientVariance: gradientVariance
         )
 
+        #if DEBUG
+        debugMetricsObserver?(TechnicalQualityPixelMetrics(
+            sourceWidth: width, sourceHeight: height,
+            sampleWidth: sampleWidth, sampleHeight: sampleHeight,
+            meanLuma: metrics.meanLuma, darkRatio: metrics.darkRatio,
+            deepShadowRatio: metrics.deepShadowRatio,
+            clippedBrightRatio: metrics.clippedBrightRatio,
+            brightHotspotRatio: metrics.brightHotspotRatio,
+            centerMeanLuma: metrics.centerMeanLuma,
+            maxSideBrightRatio: metrics.maxSideBrightRatio,
+            gradientMean: metrics.gradientMean, gradientVariance: metrics.gradientVariance
+        ))
+        #endif
+
         var issues: [TechnicalQualityIssueSignal] = []
         issues.append(contentsOf: exposureIssues(metrics))
-        issues.append(contentsOf: sharpnessIssues(metrics))
-        issues.append(contentsOf: lowLightTextureIssues(metrics))
+        // Darkness and sampled gradients describe exposure/detail, not digital
+        // noise or sensor ISO. Keep those observations and their partial coverage
+        // below; no noise correction is supported without a qualified estimator.
 
-        return TechnicalQualitySignal(issues: deduplicatedIssues(issues))
+        let signal = TechnicalQualitySignal(issues: deduplicatedIssues(issues))
+        if sampleWidth < 3 || sampleHeight < 3 || hasUnresolvedImageDetail(metrics) {
+            return .partial(signal, reason: .sharpnessCauseUnobservable, detail: .init(
+                sampleWidth: sampleWidth, sampleHeight: sampleHeight,
+                meanLuma: metrics.meanLuma, gradientMean: metrics.gradientMean,
+                gradientVariance: metrics.gradientVariance
+            ))
+        }
+        return .measured(signal)
     }
 
     private func exposureIssues(_ metrics: ImageQualityMetrics) -> [TechnicalQualityIssueSignal] {
@@ -1568,100 +1465,62 @@ struct TechnicalQualityAnalyzer {
     }
 
     private func isDominantOverexposure(_ metrics: ImageQualityMetrics) -> Bool {
-        metrics.clippedBrightRatio >= 0.10
-            || metrics.brightHotspotRatio >= 0.16
-            || metrics.meanLuma >= 0.68
-            || (metrics.clippedBrightRatio >= 0.055 && metrics.meanLuma >= 0.48)
-            || (metrics.brightHotspotRatio >= 0.090 && metrics.meanLuma >= 0.48)
+        let clippedArea = metrics.clippedBrightRatio >= 0.10
+        let hotspotArea = metrics.brightHotspotRatio >= 0.16
+        let brightMean = metrics.meanLuma >= 0.68
+        let clippedWithBrightMean = metrics.clippedBrightRatio >= 0.055 && metrics.meanLuma >= 0.48
+        let hotspotWithBrightMean = metrics.brightHotspotRatio >= 0.090 && metrics.meanLuma >= 0.48
+        let result = clippedArea || hotspotArea || brightMean || clippedWithBrightMean || hotspotWithBrightMean
+        #if DEBUG
+        debugDominanceObserver?(.init(
+            issueType: .overexposure, combination: .any,
+            conditions: [
+                "clippedBrightRatio >= 0.10": clippedArea,
+                "brightHotspotRatio >= 0.16": hotspotArea,
+                "meanLuma >= 0.68": brightMean,
+                "clippedBrightRatio >= 0.055 && meanLuma >= 0.48": clippedWithBrightMean,
+                "brightHotspotRatio >= 0.090 && meanLuma >= 0.48": hotspotWithBrightMean
+            ],
+            result: result
+        ))
+        #endif
+        return result
     }
 
     private func isDominantUnderexposure(_ metrics: ImageQualityMetrics) -> Bool {
-        metrics.meanLuma <= 0.36
-            && metrics.deepShadowRatio >= 0.40
-            && metrics.centerMeanLuma <= 0.30
-            && metrics.maxSideBrightRatio >= 0.20
+        let darkMean = metrics.meanLuma <= 0.36
+        let shadowArea = metrics.deepShadowRatio >= 0.40
+        let darkCenter = metrics.centerMeanLuma <= 0.30
+        let brightSide = metrics.maxSideBrightRatio >= 0.20
+        let result = darkMean && shadowArea && darkCenter && brightSide
+        #if DEBUG
+        debugDominanceObserver?(.init(
+            issueType: .underexposure, combination: .all,
+            conditions: [
+                "meanLuma <= 0.36": darkMean,
+                "deepShadowRatio >= 0.40": shadowArea,
+                "centerMeanLuma <= 0.30": darkCenter,
+                "maxSideBrightRatio >= 0.20": brightSide
+            ],
+            result: result
+        ))
+        #endif
+        return result
     }
 
-    private func sharpnessIssues(_ metrics: ImageQualityMetrics) -> [TechnicalQualityIssueSignal] {
-        guard metrics.meanLuma >= 0.08 else { return [] }
-        var issues: [TechnicalQualityIssueSignal] = []
-        let lowTextureDefocus = metrics.meanLuma >= 0.12
+    private func hasUnresolvedImageDetail(_ metrics: ImageQualityMetrics) -> Bool {
+        // Retain the existing detail ranges as an uncertainty boundary. A low
+        // gradient may be a flat/low-contrast scene, sampling alias or softened
+        // texture; these pixels alone identify neither defocus nor camera shake.
+        guard metrics.meanLuma >= 0.08 else { return true }
+        let lowDetail = metrics.meanLuma >= 0.12
             && ((metrics.gradientVariance <= 780 && metrics.gradientMean <= 38)
                 || metrics.gradientMean <= 13)
-        let motionSoftness = (metrics.gradientVariance <= 1150 && metrics.gradientMean <= 32)
+        let limitedGradients = (metrics.gradientVariance <= 1150 && metrics.gradientMean <= 32)
             || metrics.gradientMean <= 14
-
-        if lowTextureDefocus {
-            let severity = max(
-                normalized(780 - metrics.gradientVariance, lower: 0, upper: 780),
-                normalized(38 - metrics.gradientMean, lower: 0, upper: 38)
-            )
-            issues.append(
-                TechnicalQualityIssueSignal(
-                    type: .defocus,
-                    actionType: .refocusSubject,
-                    confidence: max(0.55, severity),
-                    severity: max(0.50, severity),
-                    isDominant: isDominantSharpnessFailure(metrics)
-                )
-            )
-        }
-
-        if motionSoftness {
-            let severity = max(
-                normalized(1150 - metrics.gradientVariance, lower: 0, upper: 1150),
-                normalized(32 - metrics.gradientMean, lower: 0, upper: 32)
-            )
-            issues.append(
-                TechnicalQualityIssueSignal(
-                    type: .motionBlur,
-                    actionType: .stabilizeCamera,
-                    confidence: max(0.50, severity),
-                    severity: max(0.45, severity),
-                    isDominant: isDominantSharpnessFailure(metrics)
-                )
-            )
-        }
-        return issues
-    }
-
-    private func isDominantSharpnessFailure(_ metrics: ImageQualityMetrics) -> Bool {
-        guard metrics.meanLuma >= 0.12 else { return false }
-        return metrics.gradientVariance <= 850 || metrics.gradientMean <= 13
-    }
-
-    private func lowLightTextureIssues(_ metrics: ImageQualityMetrics) -> [TechnicalQualityIssueSignal] {
-        var issues: [TechnicalQualityIssueSignal] = []
-        if metrics.meanLuma <= 0.30,
-           metrics.deepShadowRatio >= 0.30,
-           metrics.gradientMean <= 42 {
-            let severity = max(
-                normalized(0.30 - metrics.meanLuma, lower: 0, upper: 0.24),
-                normalized(metrics.deepShadowRatio, lower: 0.30, upper: 0.75)
-            )
-            issues.append(
-                TechnicalQualityIssueSignal(
-                    type: .noise,
-                    actionType: .reduceIsoNoise,
-                    confidence: max(0.45, severity),
-                    severity: max(0.40, severity)
-                )
-            )
-        }
-
-        if metrics.meanLuma <= 0.30,
-           metrics.deepShadowRatio >= 0.45,
-           metrics.gradientMean >= 30 {
-            issues.append(
-                TechnicalQualityIssueSignal(
-                    type: .motionBlur,
-                    actionType: .stabilizeCamera,
-                    confidence: 0.50,
-                    severity: 0.45
-                )
-            )
-        }
-        return issues
+        let ambiguousLowLightDetail = metrics.meanLuma <= 0.30
+            && metrics.deepShadowRatio >= 0.45 && metrics.gradientMean >= 30
+        return lowDetail || limitedGradients || ambiguousLowLightDetail
     }
 
     private func deduplicatedIssues(_ issues: [TechnicalQualityIssueSignal]) -> [TechnicalQualityIssueSignal] {
@@ -1876,6 +1735,34 @@ private struct DemoCoachingRule {
 }
 
 struct RecommendationPlanner {
+    /// Canonical reframe_subject review preference, not an inferred defect or
+    /// qualified CORRECT action. Scene-arranger permissions are irrelevant to
+    /// an image-space preference addressed to the camera operator.
+    func makeImagePlacementProposal(intent: CaptureIntent, snapshotID: String,
+                                    frameID: String, presentation: PauseCritiquePresentation) -> PauseImagePlacementProposal? {
+        guard intent.validate().isEmpty, let goal = intent.imagePlacementGoal,
+              goal.snapshotID == snapshotID, goal.frameID == frameID,
+              presentation.frameId == frameID else { return nil }
+        return .init(goal: goal, intentRevision: intent.intentRevision,
+                     isActiveReviewSuggestion: !reservesPauseAdvicePriority(presentation)
+                        && !goal.isNumericallyCentered)
+    }
+
+    /// An accepted dominant technical explanation retains attention even when
+    /// scene-control filtering leaves no executable row (e.g. unowned light).
+    /// Match the displayed local technical identity to its typed measurement;
+    /// a latent signal behind a different summary is not a displayed command.
+    private func reservesPauseAdvicePriority(_ presentation: PauseCritiquePresentation) -> Bool {
+        if presentation.actions.contains(where: { $0.semanticActionType != .keepCurrentSetup }) { return true }
+        guard !presentation.intentionalStylePreserved,
+              let signal = presentation.technicalQualityMeasurement.signal else { return false }
+        return signal.issues.contains { issue in
+            let identity = "technical_quality_\(issue.type.rawValue)"
+            return issue.isDominant && presentation.summaryId == identity
+                && presentation.traceRootIds.contains(identity)
+        }
+    }
+
     func makePlan(snapshot: FrameFeatureSnapshot, critique: CritiqueReport) -> RecommendationPlan {
         let rankedIssues = critique.issues.sorted { lhs, rhs in
             if lhs.severity != rhs.severity {
@@ -2773,7 +2660,11 @@ struct FeatureSnapshotAggregator {
 
         let objects = FrameFeatureSnapshot.ObjectDetectionsSummary(
             totalCount: foregroundDetections.count,
-            topKLabels: Array(foregroundDetections.prefix(3).map(\.label))
+            topKLabels: Array(foregroundDetections.prefix(3).map(\.label)),
+            localComponentInventory: makeLocalComponentInventory(
+                from: input, sourceAvailable: sourceStatuses.detr.available,
+                detections: foregroundDetections
+            )
         )
 
         let technicalFlags = makeTechnicalFlags(
@@ -2941,6 +2832,56 @@ struct FeatureSnapshotAggregator {
             }
             return Double(lhs.boundingBox.midY) < Double(rhs.boundingBox.midY)
         }
+    }
+
+    private func makeLocalComponentInventory(
+        from input: FeatureAggregationInput,
+        sourceAvailable: Bool,
+        detections: [FeatureSnapshotDetectedObject]
+    ) -> LocalObjectComponentInventory? {
+        guard sourceAvailable,
+              let sample = input.detr,
+              sample.hasValidTrackingLinkage,
+              let provenance = sample.provenance, provenance.isKnown,
+              provenance.frameID == input.frameId else { return nil }
+
+        // Check the raw coordinates before NormalizedRect can clamp them. This
+        // lane records regions; invalid input cannot become a confident border.
+        let retainedCandidates = detections.filter { detection in
+            let box = detection.boundingBox
+            return !detection.label.isEmpty
+                && detection.confidence.isFinite && (0...1).contains(detection.confidence)
+                && box.minX.isFinite && box.minY.isFinite && box.width.isFinite && box.height.isFinite
+                && box.minX >= 0 && box.minY >= 0 && box.width > 0 && box.height > 0
+                && box.maxX <= 1 && box.maxY <= 1
+        }
+        let components = retainedCandidates.prefix(LocalObjectComponentInventory.maximumRetainedComponents)
+            .enumerated().map { index, detection in
+                LocalObjectComponentEvidence(
+                    entityRef: LocalObjectComponentInventory.entityRef(
+                        frameID: input.frameId, captureGeneration: provenance.captureGeneration,
+                        ordinal: index
+                    ),
+                    detectorLabel: detection.label,
+                    region: NormalizedRect(x: Double(detection.boundingBox.minX),
+                                           y: Double(detection.boundingBox.minY),
+                                           width: Double(detection.boundingBox.width),
+                                           height: Double(detection.boundingBox.height)),
+                    segmentationSupport: detection.confidence
+                )
+            }
+        let tracking = sample.value.tracking
+        return LocalObjectComponentInventory(
+            frameID: input.frameId,
+            detectorSourceFrameID: tracking?.source.frameID ?? provenance.frameID,
+            captureGeneration: provenance.captureGeneration,
+            coordinateSpace: .vision,
+            geometrySource: tracking == nil ? .semanticComponent : .trackedSemanticComponent,
+            detectorMeasuredAt: sample.measuredAt,
+            geometryMeasuredAt: tracking?.geometryMeasuredAt ?? sample.measuredAt,
+            componentCandidateCount: retainedCandidates.count,
+            components: components
+        )
     }
 
     /// R03 observation lane: the same foreground detections the snapshot
@@ -3461,7 +3402,10 @@ struct PrimarySubjectResolver {
     private func buildCoreCandidates(snapshot: FrameFeatureSnapshot) -> [Candidate] {
         var candidates: [Candidate] = []
 
-        if let region = snapshot.subjectSignals.primaryCandidateRegion, isValidRegion(region) {
+        // A known DETR candidate belongs to the object lane below. Person/face
+        // presence elsewhere in the image cannot retype its region as a person.
+        if snapshot.subjectSignals.primaryCandidateSource != .detr,
+           let region = snapshot.subjectSignals.primaryCandidateRegion, isValidRegion(region) {
             let kind: SubjectKind
             if snapshot.subjectSignals.faceDetected,
                let faceRegion = snapshot.subjectSignals.faceRegion,
@@ -3715,14 +3659,22 @@ struct SceneTypeClassifier {
         let subjectPresence = primarySubject.kind == .unknown ? 0.0 : primarySubject.confidence
         let areaScore = clamp01((snapshot.composition.subjectAreaRatio - 0.08) / 0.22)
         let lowClutterScore = clamp01(1 - (Double(snapshot.objects.totalCount) / 5.0))
-        let personSignal = snapshot.subjectSignals.personDetected ? 1.0 : 0.0
+        // SubjectSignals retains zero-valued defaults for unavailable sources.
+        // Only a completed Vision measurement can establish person absence.
+        let hasPersonObservation = snapshot.sources.vision.available
+        let observedPersonPresence = hasPersonObservation && snapshot.subjectSignals.personDetected
+        let observedPersonAbsence = hasPersonObservation && !snapshot.subjectSignals.personDetected
+            && snapshot.subjectSignals.personCount == 0
+        let personSignal = observedPersonPresence ? 1.0 : 0.0
         let mediumAreaScore = max(0.0, 1.0 - (abs(snapshot.composition.subjectAreaRatio - 0.18) / 0.10))
         let focusScore = dominance.hasClearFocus ? 1.0 : clamp01(1 - dominance.focusCompetitionScore)
-        let multiPersonScore = clamp01(Double(snapshot.subjectSignals.personCount) / 2.0)
+        let multiPersonScore = hasPersonObservation
+            ? clamp01(Double(snapshot.subjectSignals.personCount) / 2.0) : 0.0
         let balanceScore = clamp01(1.0 - abs(snapshot.composition.horizontalOffset))
         let objectConfidenceScore = clamp01(snapshot.subjectSignals.topObjectConfidence ?? 0.0)
-        let isolationScore = clamp01(1.0 - Double(snapshot.subjectSignals.personCount > 0 ? 1 : 0) - Double(snapshot.objects.totalCount > 4 ? 0.3 : 0.0))
-        let lowPersonScore = snapshot.subjectSignals.personDetected ? 0.0 : 1.0
+        let isolationScore = observedPersonAbsence
+            ? clamp01(1.0 - Double(snapshot.objects.totalCount > 4 ? 0.3 : 0.0)) : 0.0
+        let lowPersonScore = observedPersonAbsence ? 1.0 : 0.0
         let wideCompositionScore = clamp01(1.0 - (snapshot.composition.subjectAreaRatio / 0.10))
         let multiObjectScore = clamp01(Double(snapshot.objects.totalCount) / 6.0)
         let lowPrimaryDominance = clamp01(1.0 - primarySubject.confidence)
@@ -3733,16 +3685,16 @@ struct SceneTypeClassifier {
         let dialogueGate = (primarySubject.kind == .face || primarySubject.kind == .person) &&
             snapshot.composition.subjectAreaRatio >= 0.22 &&
             snapshot.objects.totalCount <= 3
-        let singleMediumGate = snapshot.subjectSignals.personDetected &&
+        let singleMediumGate = observedPersonPresence &&
             snapshot.composition.subjectAreaRatio >= 0.08 &&
             snapshot.composition.subjectAreaRatio <= 0.28
-        let twoCharacterGate = snapshot.subjectSignals.personCount >= 2
+        let twoCharacterGate = hasPersonObservation && snapshot.subjectSignals.personCount >= 2
         let objectInsertGate = primarySubject.kind == .object &&
             (snapshot.subjectSignals.topObjectConfidence ?? 0) >= 0.45 &&
-            !snapshot.subjectSignals.personDetected
+            observedPersonAbsence
         let establishingGate = snapshot.composition.subjectAreaRatio <= 0.08 &&
-            (snapshot.objects.totalCount >= 3 || !snapshot.subjectSignals.personDetected)
-        let moodyGate = snapshot.subjectSignals.personDetected &&
+            (snapshot.objects.totalCount >= 3 || observedPersonAbsence)
+        let moodyGate = observedPersonPresence &&
             snapshot.lighting.backlightIndex >= 0.62 &&
             snapshot.lighting.exposureBiasHint <= 0.05
 
@@ -3889,6 +3841,31 @@ final class AnalysisPipeline: ObservableObject {
     /// CC-I05: the style cue waiting for a yes/no answer, if any.
     @Published private(set) var pendingIntentClarificationCue: CameraStyleCue?
     @Published private(set) var currentPauseCritique: PauseCritiquePresentation?
+    /// Retains only the accepted local review. Cloud transport is initiated by
+    /// CameraViewModel after a separate, exact-image approval.
+    @MainActor private var cloudPauseReviewState: CloudPauseReviewState?
+    @MainActor private var pauseSceneControlSnapshotID: String?
+    @MainActor private var storedPauseSceneControlFacts = PauseSceneControlFacts.unknown
+    @MainActor private var pauseSceneControlRevision: UInt64 = 0
+    @MainActor private var pauseCaptureIntentSnapshotID: String?
+    @MainActor private var storedPauseCaptureIntent = CaptureIntent.unknown()
+    @MainActor private var currentPauseImagePlacementProposal: PauseImagePlacementProposal?
+
+    private struct CloudPauseReviewState {
+        let acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot
+        let publicationFence: PauseAnalysisPublicationFence
+        let generation: UInt64
+        let revision: Int
+        let intentRevision: UInt64
+        let intentAnswers: [CameraStyleCue: Bool]
+        let snapshot: FrameFeatureSnapshot
+        let semantics: SceneSemanticsReport
+        let critique: CritiqueReport
+        let plan: RecommendationPlan
+        let technicalSignal: TechnicalQualitySignal
+        let technicalEvidence: FrameTechnicalQualityEvidence
+        let localRequest: VLMVisualEvidenceRequest
+    }
     @Published private(set) var currentOverlayAnnotations: [OverlayAnnotationPresentation] = []
     /// Immutable handoff from the bounded planner + AdviceStabilizer into the
     /// episode owner. The value contains one frame's evidence, typed subject
@@ -4453,9 +4430,27 @@ final class AnalysisPipeline: ObservableObject {
         sceneTapEvidenceLock.unlock()
     }
 
-    private func makeDetrFeatureSample(from detections: [DETRDetection],
+    private func makeVisionFeatureSample(from result: VisionTrackingResult,
+                                         measuredAt: Date) -> FeatureSample<FeatureSnapshotVisionPayload>? {
+        guard result.processingStatus == .completed else { return nil }
+        let subjects = result.subjects.map {
+            FeatureSnapshotVisionSubject(boundingBox: $0.boundingBox,
+                                         confidence: Double($0.confidence), isFace: $0.isFace)
+        }
+        return FeatureSample(
+            value: FeatureSnapshotVisionPayload(
+                subjects: subjects, saliencyCenter: result.saliencyCenter,
+                saliencyRegion: result.saliencyRegion, faceCount: result.faceCount,
+                personCount: result.personCount),
+            measuredAt: measuredAt,
+            baseConfidence: subjects.map(\.confidence).max() ?? (result.saliencyRegion == nil ? nil : 0.48)
+        )
+    }
+
+    private func makeDetrFeatureSample(from result: DETRDetectionResult,
                                        measuredAt: Date,
-                                       provenance: FeatureSampleProvenance? = nil) -> FeatureSample<FeatureSnapshotDetrPayload> {
+                                       provenance: FeatureSampleProvenance? = nil) -> FeatureSample<FeatureSnapshotDetrPayload>? {
+        guard case .success(let detections) = result else { return nil }
         let sortedDetections = sortedDetectionsForPriority(detections)
         let payload = FeatureSnapshotDetrPayload(
             detections: sortedDetections.map {
@@ -4481,6 +4476,42 @@ final class AnalysisPipeline: ObservableObject {
             measuredAt: measuredAt,
             baseConfidence: nil
         )
+    }
+
+    /// Apply an exact-frame pause observation without reconstructing a failed
+    /// request from prior debug detections. Successful empty means this model
+    /// produced no eligible detection, not proof that physical objects are absent.
+    private func applyPauseDetrResult(_ result: DETRDetectionResult, measuredAt: Date,
+                                      features: inout CoachingFeatures, debugData: inout DebugData) {
+        // Face/person fields belong to the independent Vision observation.
+        // A prior DETR object must be replaced by this request, including empty.
+        let shouldUpdateSubject = !features.subject.isPerson && !features.subject.isFace
+        debugData.detrDetections = []
+        debugData.detrMeasuredAt = nil
+        guard case .success(let detections) = result else {
+            if shouldUpdateSubject {
+                features.subject.objectName = nil
+                features.subject.count = 0
+                features.composition.subjectAreaRatio = 0
+            }
+            return
+        }
+        debugData.detrDetections = detections
+        debugData.detrMeasuredAt = measuredAt
+        if shouldUpdateSubject, let top = compositionPriorityDetections(detections).first {
+            features.composition = compositionFeatures(from: top.boundingBox)
+            features.composition.subjectAreaRatio = top.boundingBox.width * top.boundingBox.height
+            features.subject.objectName = top.label
+            features.subject.isFace = top.label.lowercased() == "person"
+            features.subject.isPerson = top.label.lowercased() == "person"
+            features.subject.count = detections.count
+        } else if shouldUpdateSubject {
+            features.composition.subjectAreaRatio = 0
+            features.subject.objectName = nil
+            features.subject.isFace = false
+            features.subject.isPerson = false
+            features.subject.count = 0
+        }
     }
 
     private lazy var highConsumer = HighStream(pipeline: self)
@@ -4923,10 +4954,15 @@ final class AnalysisPipeline: ObservableObject {
 
     /// Callback delivery owns no overlay/feature mutation. The serial high lane
     /// checks lifecycle again and orders both positive and empty source batches.
-    private func enqueueLiveDetrSeed(_ detections: [DETRDetection],
+    private func enqueueLiveDetrResult(_ result: DETRDetectionResult,
                                      context: FrameContext, generation: UInt64) {
         highQueue.async { [weak self] in
             guard let self, self.isFrameWorkActive(generation) else { return }
+            guard case .success(let detections) = result else {
+                self.visionTracking.invalidateObjectSource(
+                    frame: self.objectTrackingFrame(context: context, generation: generation))
+                return
+            }
             let seed = VisionObjectSeed(
                 frame: self.objectTrackingFrame(context: context, generation: generation),
                 pixelBuffer: context.pixelBuffer,
@@ -5021,25 +5057,12 @@ final class AnalysisPipeline: ObservableObject {
         let saliencyBalance = computeSaliencyBalance(from: primarySubject?.boundingBox ?? .zero,
                                                     saliencyCenter: trackingResult.saliencyCenter)
         let measurementTime = Date()
-        let visionSubjectsPayload = trackingResult.subjects.map {
-            FeatureSnapshotVisionSubject(
-                boundingBox: $0.boundingBox,
-                confidence: Double($0.confidence),
-                isFace: $0.isFace
-            )
-        }
-        let visionBaseConfidence = visionSubjectsPayload.map(\.confidence).max()
+        let visionSample = makeVisionFeatureSample(from: trackingResult, measuredAt: measurementTime)
         let selectionSnapshot = featureSnapshotAggregator.makeSnapshot(from: FeatureAggregationInput(
             frameId: sourceFrameId, mode: .live, capturedAt: context.capturedAt,
             evaluatedAt: measurementTime, motionState: context.motionState.cameraAnalysisMotionState,
             shakeLevel: context.shakeLevel,
-            vision: FeatureSample(
-                value: FeatureSnapshotVisionPayload(
-                    subjects: visionSubjectsPayload, saliencyCenter: trackingResult.saliencyCenter,
-                    saliencyRegion: trackingResult.saliencyRegion,
-                    faceCount: trackingResult.faceCount, personCount: trackingResult.personCount),
-                measuredAt: measurementTime,
-                baseConfidence: visionBaseConfidence ?? (trackingResult.saliencyRegion == nil ? nil : 0.48)),
+            vision: visionSample,
             horizon: nil, lighting: nil, detr: currentObjectSample, aesthetic: nil
         ))
         let objectSubject: DETRDetection? = {
@@ -5105,20 +5128,10 @@ final class AnalysisPipeline: ObservableObject {
                     confidence: subject.confidence
                 )
             }
-            self.debugData.visionMeasuredAt = measurementTime
+            self.debugData.visionMeasuredAt = visionSample?.measuredAt
             self.debugData.saliencyCenter = trackingResult.saliencyCenter
             self.debugData.saliencyRegion = trackingResult.saliencyRegion
-            self.latestVisionSample = FeatureSample(
-                value: FeatureSnapshotVisionPayload(
-                    subjects: visionSubjectsPayload,
-                    saliencyCenter: trackingResult.saliencyCenter,
-                    saliencyRegion: trackingResult.saliencyRegion,
-                    faceCount: trackingResult.faceCount,
-                    personCount: trackingResult.personCount
-                ),
-                measuredAt: measurementTime,
-                baseConfidence: visionBaseConfidence ?? (trackingResult.saliencyRegion == nil ? nil : 0.48)
-            )
+            self.latestVisionSample = visionSample
             // M2-013: an unavailable horizon stores a zeroed payload so no
             // stale angle reaches downstream feature consumers.
             let horizonAvailable = horizon.isAvailable
@@ -5360,13 +5373,13 @@ final class AnalysisPipeline: ObservableObject {
             )
 
             detector.detect(pixelBuffer: context.pixelBuffer,
-                             orientation: context.orientation) { [weak self] detections in
+                             orientation: context.orientation) { [weak self] result in
                 let detrLatency = CACurrentMediaTime() - detrStart
                 Telemetry.shared.recordLatency(label: "DETR", duration: detrLatency)
                 Telemetry.shared.setActiveModule("DETR", active: false)
 
-                if CameraLog.detr {
-                    os_log("✅ DETR callback: %d detections received in %.0fms",
+                if CameraLog.detr, case .success(let detections) = result {
+                    os_log("DETR completed: %d detections received in %.0fms",
                            log: OSLog(subsystem: "com.multitool2.pipeline", category: "AnalysisPipeline"),
                            type: .debug, detections.count, detrLatency * 1000)
                 }
@@ -5374,13 +5387,15 @@ final class AnalysisPipeline: ObservableObject {
                 guard let self else { return }
                 guard self.isGenerationCurrent(generation) else { return }
 
-                let priorityDetections = self.compositionPriorityDetections(detections)
-                print(
-                    "[CA_DEBUG][DETR_RESULT] count=\(detections.count) priority=\(priorityDetections.count) " +
-                    "latencyMs=\(self.debugDouble(detrLatency * 1000)) detections=\(self.debugDetections(detections)) " +
-                    "priorityTop=\(self.debugDetection(priorityDetections.first))"
-                )
-                self.enqueueLiveDetrSeed(detections, context: context, generation: generation)
+                if case .success(let detections) = result {
+                    let priorityDetections = self.compositionPriorityDetections(detections)
+                    print(
+                        "[CA_DEBUG][DETR_RESULT] status=completed count=\(detections.count) priority=\(priorityDetections.count) " +
+                        "latencyMs=\(self.debugDouble(detrLatency * 1000)) detections=\(self.debugDetections(detections)) " +
+                        "priorityTop=\(self.debugDetection(priorityDetections.first))"
+                    )
+                }
+                self.enqueueLiveDetrResult(result, context: context, generation: generation)
             }
         }
 
@@ -5526,7 +5541,16 @@ final class AnalysisPipeline: ObservableObject {
             adapterState: adapterState
         )
         let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
-        let deterministicCritique = frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
+        let technicalMeasurement = technicalQualityAnalyzer.measurement(pixelBuffer: frameEvidence.pixelBuffer)
+        let technicalQualitySignal = technicalMeasurement.signal ?? .empty
+        let technicalEvidence = FrameTechnicalQualityEvidence(
+            frameID: frameEvidence.sourceFrameId,
+            capturedAt: frameEvidence.capturedAt,
+            measurement: technicalMeasurement
+        )
+        let deterministicCritique = frameCritiqueEngine.analyze(
+            snapshot: snapshot, semantics: semantics, technicalEvidence: technicalEvidence
+        )
         let (fusionOutput, liveNeuralOutcome): (HybridFusionOutput, NeuralEvidenceRecordedOutcome?)
         if liveHybridFusionEnabled {
             (fusionOutput, liveNeuralOutcome) = await resolveCritiqueWithHybridFusion(
@@ -5577,10 +5601,8 @@ final class AnalysisPipeline: ObservableObject {
         guard isCurrentLiveEvidence(frameEvidence, generation: generation) else { return }
         let critique = fusionOutput.critique
         let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
-        // Reuse the technical signal already consumed by live presentation.
-        // The episode handoff must not rescan the full-resolution buffer on
-        // the main actor merely to recompute exposure contradiction.
-        let technicalQualitySignal = technicalQualitySignal(for: frameEvidence.pixelBuffer)
+        // Reuse the same pixel measurement already bound to this critique.
+        // Presentation and the episode handoff must not rescan the buffer.
         let semanticTips = semanticTipPlanner.plan(
             input: SemanticTipPlannerInput(
                 frameId: snapshot.frameId,
@@ -5621,6 +5643,7 @@ final class AnalysisPipeline: ObservableObject {
             legacySuggestion: currentSuggestion,
             structuredAvailable: structuredDecision.isAvailable,
             technicalQualitySignal: technicalQualitySignal,
+            technicalEvidence: technicalEvidence,
             allowStabilityWhileMoving: false
         )
     }
@@ -5635,6 +5658,7 @@ final class AnalysisPipeline: ObservableObject {
                                          legacySuggestion: Suggestion?,
                                          structuredAvailable: Bool,
                                          technicalQualitySignal: TechnicalQualitySignal = .empty,
+                                         technicalEvidence: FrameTechnicalQualityEvidence,
                                          now: Date,
                                          selectionContext: LiveFrameSelectionContext) {
         updateIntentClarification(snapshot: snapshot, semantics: semantics)
@@ -5648,6 +5672,7 @@ final class AnalysisPipeline: ObservableObject {
             legacySuggestion: legacySuggestion,
             structuredAvailable: structuredAvailable,
             technicalQualitySignal: technicalQualitySignal,
+            technicalEvidence: technicalEvidence,
             now: now
         )
         let visibleHintCandidate = bindLiveHintCandidate(
@@ -5747,6 +5772,7 @@ final class AnalysisPipeline: ObservableObject {
         legacySuggestion: Suggestion?,
         structuredAvailable: Bool,
         technicalQualitySignal: TechnicalQualitySignal,
+        technicalEvidence: FrameTechnicalQualityEvidence,
         allowStabilityWhileMoving: Bool
     ) {
         guard let selectionContext = prepareLiveFrameSelectionContext(
@@ -5766,6 +5792,7 @@ final class AnalysisPipeline: ObservableObject {
             legacySuggestion: legacySuggestion,
             structuredAvailable: structuredAvailable,
             technicalQualitySignal: technicalQualitySignal,
+            technicalEvidence: technicalEvidence,
             now: presentationNow,
             selectionContext: selectionContext
         )
@@ -5811,6 +5838,7 @@ final class AnalysisPipeline: ObservableObject {
         legacySuggestion: Suggestion?,
         structuredAvailable: Bool,
         technicalQualitySignal: TechnicalQualitySignal,
+        technicalEvidence: FrameTechnicalQualityEvidence? = nil,
         now: Date
     ) -> (hint: LiveHintPresentation?, demoAnnotations: [OverlayAnnotationPresentation]) {
         let hintCandidate = makeLiveHintPresentation(
@@ -5825,13 +5853,31 @@ final class AnalysisPipeline: ObservableObject {
             snapshot: snapshot,
             semantics: semantics
         )
+        let hasCurrentTechnicalMeasurement = technicalEvidence?
+            .resolvedMeasurement(for: snapshot).supportsPositiveConfirmation == true
+        let admittedHint = hintCandidate?.actionType == .leaveFrameAsIs && !hasCurrentTechnicalMeasurement
+            ? nil : hintCandidate
         let demoDecision = makeDemoCoachingDecision(
             frameId: frameId,
             snapshot: snapshot,
             semantics: semantics,
             now: now
         )
+        // Preserve the regular owner's technical priority on every frame.
+        // Recipe waiting/spatial output must not interrupt the three-frame
+        // technical confirmation window. The tracker still advances above.
+        if let admittedHint, admittedHint.technicalIssueType != nil {
+            return (admittedHint, [])
+        }
         if let demoDecision {
+            let hasPositiveDemoOutput = demoDecision.hint?.actionType == .leaveFrameAsIs
+                || demoDecision.annotations.contains { $0.tone == .success }
+            // The regular owner has already applied verdict, confidence,
+            // grounding, technical precedence and quality gates. A recipe may
+            // confirm only the same admitted KEEP, including held-subject output.
+            if hasPositiveDemoOutput && admittedHint?.actionType != .leaveFrameAsIs {
+                return (admittedHint, [])
+            }
             if let demoHint = demoDecision.hint {
                 let demoAccepted = LiveCoachQualityGate.allows(
                     action: demoHint.actionType,
@@ -5841,15 +5887,15 @@ final class AnalysisPipeline: ObservableObject {
                 )
                 return demoAccepted
                     ? (demoHint, demoDecision.annotations)
-                    : (hintCandidate, [])
+                    : (admittedHint, [])
             } else {
                 return (
-                    demoDecision.suppressesPipelineHint ? nil : hintCandidate,
+                    demoDecision.suppressesPipelineHint ? nil : admittedHint,
                     []
                 )
             }
         }
-        return (hintCandidate, [])
+        return (admittedHint, [])
     }
 
     private enum LiveHintBindingDisposition {
@@ -7054,8 +7100,9 @@ final class AnalysisPipeline: ObservableObject {
 #if DEBUG
         clearPauseAnalysisTimeoutTriggerForTesting()
 #endif
-        featureQueue.sync {
+        let clearedRevision = featureQueue.sync { () -> Int in
             pauseAnalysisRevision += 1
+            return pauseAnalysisRevision
         }
         taskLock.lock()
         let hasPauseReasoningTask = pauseReasoningTask != nil
@@ -7074,7 +7121,13 @@ final class AnalysisPipeline: ObservableObject {
         }
         let generation = currentGeneration()
         DispatchQueue.main.async {
-            guard self.isGenerationCurrent(generation) else { return }
+            // A newer accepted review can be installed in the same lifecycle
+            // generation before this queued cleanup reaches the main actor.
+            guard self.isGenerationCurrent(generation),
+                  self.featureQueue.sync(execute: { self.pauseAnalysisRevision == clearedRevision }) else { return }
+            self.cloudPauseReviewState = nil
+            self.clearPauseSceneControlFacts()
+            self.clearPauseImagePlacement()
             if !preservingCurrentCritique {
                 self.currentPauseCritique = nil
             }
@@ -8321,6 +8374,10 @@ final class AnalysisPipeline: ObservableObject {
             return pauseAnalysisRevision
         }
         let analysisCapturedAt = frameEvidence.capturedAt
+        // A cloud review must use the intent attached to this local analysis,
+        // never fresh answers paired with a critique completed before them.
+        let pauseIntentRevision = intentClarification.revision
+        let pauseIntentAnswers = intentClarification.answers
         let pauseSourceFrameId = frameEvidence.sourceFrameId
         let pauseDetrProvenance = FeatureSampleProvenance(
             frameID: pauseSourceFrameId,
@@ -8338,12 +8395,17 @@ final class AnalysisPipeline: ObservableObject {
             let pauseStateQueue = DispatchQueue(label: "AnalysisPipeline.pauseState")
             var localFeatures = baseAdapterState.features
             var localDebugData = baseAdapterState.debugData
-            var pauseDetectionsOverride: [DETRDetection]?
+            var pauseDetrResult: DETRDetectionResult = .failure(.modelUnavailable)
             var pauseDetectionsMeasuredAt: Date?
             var pauseAestheticScoreOverride: Double?
             var pauseAestheticMeasuredAt: Date?
-            let shouldUpdateLegacySubjectFromDetr = localFeatures.composition.subjectAreaRatio == 0
-            let technicalQualitySignal = self.technicalQualityAnalyzer.signal(pixelBuffer: frameEvidence.pixelBuffer)
+            let technicalMeasurement = self.technicalQualityAnalyzer.measurement(pixelBuffer: frameEvidence.pixelBuffer)
+            let technicalQualitySignal = technicalMeasurement.signal ?? .empty
+            let technicalEvidence = FrameTechnicalQualityEvidence(
+                frameID: pauseSourceFrameId,
+                capturedAt: analysisCapturedAt,
+                measurement: technicalMeasurement
+            )
 
             let group = DispatchGroup()
 
@@ -8351,30 +8413,19 @@ final class AnalysisPipeline: ObservableObject {
             if let detector = self.detrDetector {
                 group.enter()
                 detector.detect(pixelBuffer: frameEvidence.pixelBuffer,
-                               orientation: frameEvidence.orientation) { detections in
+                               orientation: frameEvidence.orientation) { result in
                     pauseStateQueue.sync {
                         let measuredAt = Date()
-                        pauseDetectionsOverride = detections
-                        pauseDetectionsMeasuredAt = measuredAt
-                        localDebugData.detrDetections = detections
-                        localDebugData.detrMeasuredAt = measuredAt
-                        if shouldUpdateLegacySubjectFromDetr,
-                           let top = self.compositionPriorityDetections(detections).first {
-                            localFeatures.composition = self.compositionFeatures(from: top.boundingBox)
-                            localFeatures.composition.subjectAreaRatio = top.boundingBox.width * top.boundingBox.height
-                            localFeatures.subject.objectName = top.label
-                            localFeatures.subject.isFace = (top.label.lowercased() == "person")
-                            localFeatures.subject.isPerson = (top.label.lowercased() == "person")
-                            localFeatures.subject.count = detections.count
-                        } else if shouldUpdateLegacySubjectFromDetr {
-                            localFeatures.subject.objectName = nil
-                            localFeatures.subject.isFace = false
-                            localFeatures.subject.isPerson = false
-                            localFeatures.subject.count = 0
-                        }
+                        pauseDetrResult = result
+                        if case .success = result { pauseDetectionsMeasuredAt = measuredAt }
+                        self.applyPauseDetrResult(result, measuredAt: measuredAt,
+                                                  features: &localFeatures, debugData: &localDebugData)
                     }
                     group.leave()
                 }
+            } else {
+                self.applyPauseDetrResult(.failure(.modelUnavailable), measuredAt: analysisCapturedAt,
+                                          features: &localFeatures, debugData: &localDebugData)
             }
 
             // Эстетика (off‑by‑default в live, но в preview считаем)
@@ -8401,7 +8452,7 @@ final class AnalysisPipeline: ObservableObject {
 
                     let pauseFeatures = pauseStateQueue.sync { localFeatures }
                     let pauseDebugData = pauseStateQueue.sync { localDebugData }
-                    let pauseDetections = pauseStateQueue.sync { pauseDetectionsOverride }
+                    let completedPauseDetrResult = pauseStateQueue.sync { pauseDetrResult }
                     let pauseDetectionsMeasuredAt = pauseStateQueue.sync { pauseDetectionsMeasuredAt }
                     let pauseAestheticScore = pauseStateQueue.sync { pauseAestheticScoreOverride }
                     let pauseAestheticMeasuredAt = pauseStateQueue.sync { pauseAestheticMeasuredAt }
@@ -8439,13 +8490,11 @@ final class AnalysisPipeline: ObservableObject {
                         horizon: horizonSample,
                         lightingMeasuredAt: lightingMeasuredAt,
                         lighting: lightingSample,
-                        detr: pauseDetections.map {
-                            self.makeDetrFeatureSample(
-                                from: $0,
-                                measuredAt: pauseDetectionsMeasuredAt ?? analysisCapturedAt,
-                                provenance: pauseDetrProvenance
-                            )
-                        } ?? baseAdapterState.detr,
+                        detr: self.makeDetrFeatureSample(
+                            from: completedPauseDetrResult,
+                            measuredAt: pauseDetectionsMeasuredAt ?? analysisCapturedAt,
+                            provenance: pauseDetrProvenance
+                        ),
                         aestheticMeasuredAt: pauseAestheticScore.map { _ in pauseAestheticMeasuredAt ?? analysisCapturedAt } ?? (evidencePackage.isSourceUsable(.aesthetic) ? baseAdapterState.aestheticMeasuredAt : nil),
                         aesthetic: pauseAestheticScore.map {
                             self.makeAestheticFeatureSample(score10: $0, measuredAt: pauseAestheticMeasuredAt ?? analysisCapturedAt)
@@ -8462,7 +8511,9 @@ final class AnalysisPipeline: ObservableObject {
                         adapterState: pauseAdapterState
                     )
                     let semantics = self.sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
-                    let deterministicCritique = self.frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
+                    let deterministicCritique = self.frameCritiqueEngine.analyze(
+                        snapshot: snapshot, semantics: semantics, technicalEvidence: technicalEvidence
+                    )
                     let (fusionOutput, pauseNeuralOutcome) = await self.resolveCritiqueWithHybridFusion(
                         mode: .pause,
                         capturedAt: analysisCapturedAt,
@@ -8505,6 +8556,20 @@ final class AnalysisPipeline: ObservableObject {
                             validatedEvidence: validatedVisualEvidence
                         )
                     )
+                    let cloudReviewState = acceptedSnapshot.flatMap { selected -> CloudPauseReviewState? in
+                        guard let publicationFence else { return nil }
+                        return CloudPauseReviewState(
+                            acceptedSnapshot: selected, publicationFence: publicationFence,
+                            generation: generation, revision: revision,
+                            intentRevision: pauseIntentRevision, intentAnswers: pauseIntentAnswers,
+                            snapshot: snapshot, semantics: semantics, critique: critique, plan: plan,
+                            technicalSignal: technicalQualitySignal, technicalEvidence: technicalEvidence,
+                            localRequest: self.makePauseVisualEvidenceRequest(
+                                snapshot: snapshot, semantics: semantics, critique: critique,
+                                plan: plan, neuralOutcome: pauseNeuralOutcome
+                            )
+                        )
+                    }
                     let structuredDecision = self.structuredPathDecision(
                         mode: .pause,
                         critique: critique,
@@ -8524,7 +8589,8 @@ final class AnalysisPipeline: ObservableObject {
                             issue: technicalPauseIssue,
                             signal: technicalQualitySignal,
                             snapshot: snapshot,
-                            semantics: semantics
+                            semantics: semantics,
+                            technicalEvidence: technicalEvidence
                     ) {
                         guard self.isGenerationCurrent(generation) else { return }
                         #if DEBUG
@@ -8538,6 +8604,7 @@ final class AnalysisPipeline: ObservableObject {
                             guard self.featureQueue.sync(execute: { self.pauseAnalysisRevision == revision }) else { return }
                             self.currentPauseTraceBundle = nil
                             self.currentPauseCritique = technicalPauseCritique
+                            self.cloudPauseReviewState = cloudReviewState
                             self.currentOverlayAnnotations = []
                             didPublish = true
                         }
@@ -8567,6 +8634,7 @@ final class AnalysisPipeline: ObservableObject {
                         let fenceWasValid = self.withPausePublicationFence(publicationFence) {
                             guard self.featureQueue.sync(execute: { self.pauseAnalysisRevision == revision }) else { return }
                             self.currentPauseCritique = nil
+                            self.cloudPauseReviewState = cloudReviewState
                             self.currentOverlayAnnotations = fallbackAnnotations
                             self.currentPauseTraceBundle = nil
                             didPublish = true
@@ -8583,7 +8651,8 @@ final class AnalysisPipeline: ObservableObject {
                         semanticFallbackUsed: semanticTips.fallbackUsed,
                         snapshot: snapshot,
                         semantics: semantics,
-                        technicalQualitySignal: technicalQualitySignal
+                        technicalQualitySignal: technicalQualitySignal,
+                        technicalEvidence: technicalEvidence
                     )
                     let pauseTrace = self.makePauseTraceBundle(
                         critique: critique,
@@ -8611,6 +8680,7 @@ final class AnalysisPipeline: ObservableObject {
                         guard self.featureQueue.sync(execute: { self.pauseAnalysisRevision == revision }) else { return }
                         self.currentPauseTraceBundle = pauseTrace
                         self.currentPauseCritique = pauseCritique
+                        self.cloudPauseReviewState = cloudReviewState
                         self.currentOverlayAnnotations = pauseAnnotations
                         didPublish = true
                     }
@@ -9730,9 +9800,11 @@ final class AnalysisPipeline: ObservableObject {
                                                         signal: TechnicalQualitySignal = .empty,
                                                         snapshot: FrameFeatureSnapshot? = nil,
                                                         semantics: SceneSemanticsReport? = nil,
-                                                        allowsAmbiguousTechnicalSilenceLowConfidence: Bool = true) -> PauseCritiquePresentation? {
+                                                        technicalEvidence: FrameTechnicalQualityEvidence? = nil,
+                                                        allowsAmbiguousTechnicalSilenceLowConfidence: Bool = true,
+                                                        sceneControlFacts: PauseSceneControlFacts = .unknown) -> PauseCritiquePresentation? {
         let traceId = "technical_quality_\(issue.type.rawValue)"
-        return PauseCritiquePresentation(
+        return applyingPauseIntent(to: PauseCritiquePresentation(
             frameId: frameId,
             verdict: technicalPauseVerdict(for: issue),
             verdictConfidence: technicalPauseConfidence(
@@ -9748,19 +9820,22 @@ final class AnalysisPipeline: ObservableObject {
             whyProblematic: technicalPauseWhyProblematic(for: issue),
             strengths: [],
             issues: [],
-            actions: technicalPauseActions(
+            actions: permittedPauseActions(technicalPauseActions(
                 for: issue,
                 traceId: traceId,
                 snapshot: snapshot,
                 semantics: semantics
-            ),
+            ), frameID: frameId, facts: sceneControlFacts),
             noChangeRationale: nil,
             assumptions: [
                 "Техническая проверка кадра обнаружила доминирующую проблему качества изображения до семантической оценки композиции."
             ],
             traceRootIds: [traceId],
-            fallbackUsed: false
-        )
+            fallbackUsed: false,
+            technicalQualityMeasurement: snapshot.flatMap {
+                technicalEvidence?.resolvedMeasurement(for: $0)
+            } ?? .unavailable(.notMeasured)
+        ), technicalAction: issue.actionType)
     }
 
     private func technicalPauseVerdict(for issue: TechnicalQualityIssueSignal) -> FrameVerdict {
@@ -10483,15 +10558,34 @@ final class AnalysisPipeline: ObservableObject {
         return 3.0
     }
 
+    /// Shared semantic and technical pause boundary. Camera technical metadata
+    /// and measured quality are preserved when a scene operation is withheld.
+    private func permittedPauseActions(_ actions: [PauseActionRow], frameID: String,
+                                       facts: PauseSceneControlFacts) -> [PauseActionRow] {
+        actions.filter {
+            facts.permits($0.semanticActionType, forFrameID: frameID)
+                && ($0.concreteSemanticActionType.map { facts.permits($0, forFrameID: frameID) } ?? true)
+        }
+    }
+
     private func makePauseCritiquePresentation(critique: CritiqueReport,
                                                plan: RecommendationPlan,
                                                semanticTips: [SemanticTipCandidate],
                                                semanticFallbackUsed: Bool,
                                                snapshot: FrameFeatureSnapshot? = nil,
                                                semantics: SceneSemanticsReport? = nil,
-                                               technicalQualitySignal: TechnicalQualitySignal = .empty) -> PauseCritiquePresentation {
+                                               technicalQualitySignal: TechnicalQualitySignal = .empty,
+                                               technicalEvidence: FrameTechnicalQualityEvidence? = nil,
+                                               semanticEntityGrounding: PauseSemanticEntityGrounding? = nil,
+                                               sceneControlFacts: PauseSceneControlFacts = .unknown) -> PauseCritiquePresentation {
         let fallbackUsed = critique.fallbackUsed || semanticFallbackUsed
-        let preservesGoodFrameActions = shouldPreserveGoodFrameSemanticActions(
+        let resolvedTechnicalMeasurement = snapshot.flatMap {
+            technicalEvidence?.resolvedMeasurement(for: $0)
+        } ?? .unavailable(.notMeasured)
+        let hasCurrentTechnicalMeasurement = resolvedTechnicalMeasurement.supportsPositiveConfirmation
+        // A stylistic override must not promote an unavailable frame back to
+        // good after the critique owner has correctly preserved uncertainty.
+        let preservesGoodFrameActions = hasCurrentTechnicalMeasurement && shouldPreserveGoodFrameSemanticActions(
             snapshot: snapshot,
             semantics: semantics,
             verdict: critique.verdict,
@@ -10535,10 +10629,38 @@ final class AnalysisPipeline: ObservableObject {
             )
         }
 
-        let semanticActionRows = semanticTips.prefix(4).enumerated().compactMap { index, tip -> PauseActionRow? in
+        let permittedSemanticTips = semanticTips.filter {
+            sceneControlFacts.permits($0.actionType, forFrameID: critique.frameId)
+        }
+        let semanticActionRows = permittedSemanticTips.prefix(4).enumerated().compactMap { index, tip -> PauseActionRow? in
             guard critique.verdict != .good else { return nil }
             guard let action = linkedAction(for: tip, plan: plan) else { return nil }
-            let targetRegion = action.targetRegion ?? firstIssueRegion(linkedIssueIds: tip.linkedIssueIds, critique: critique)
+            let plannedTargetRegion = action.targetRegion ?? firstIssueRegion(linkedIssueIds: tip.linkedIssueIds, critique: critique)
+            let targetRegion: NormalizedRect?
+            if let semanticEntityGrounding {
+                let resolved = semanticEntityGrounding.resolve(
+                    targetEntityRef: tip.targetEntityRef,
+                    targetEntityKind: tip.targetEntityKind,
+                    actionType: tip.actionType,
+                    actionFrame: tip.actionFrame,
+                    plannedSubjectRegion: tip.linkedIssueIds.count == 1
+                        ? firstIssueRegion(linkedIssueIds: tip.linkedIssueIds, critique: critique) : nil,
+                    expectedFrameID: critique.frameId
+                )
+                guard resolved.allowsAction else { return nil }
+                if tip.actionType.subjectDisplacementDirection != nil {
+                    // Keep observation and destination distinct. The existing
+                    // geometry owner applies camera→subject direction exactly once.
+                    targetRegion = resolved.region.flatMap {
+                        tip.actionType.subjectTargetRegion(from: $0, sourceSpace: .vision)
+                    }
+                    guard targetRegion != nil else { return nil }
+                } else {
+                    targetRegion = resolved.region
+                }
+            } else {
+                targetRegion = plannedTargetRegion
+            }
             return PauseActionRow(
                 actionId: "\(action.id)_semantic_\(semanticTipPlanner.stableKey(for: tip))_\(index)",
                 actionType: action.actionType,
@@ -10553,14 +10675,16 @@ final class AnalysisPipeline: ObservableObject {
                 linkedIssueIds: tip.linkedIssueIds,
                 expectedOutcome: CameraAcceptedActionCopy.instruction(for: tip.actionType),
                 targetRegion: targetRegion,
-                overlayHintId: action.overlayHint?.id,
+                overlayHintId: semanticEntityGrounding == nil ? action.overlayHint?.id : nil,
                 traceRefId: tip.linkedTraceIds.first ?? traceRefIdForAction(action: action, critique: critique),
                 // C05/N9.4: a generic simplify/rebalance/hotspot label is a
                 // goal, not an actuator. It expands to a concrete operation
                 // only with a grounded target; otherwise it is not executable.
                 concreteSemanticActionType: CameraAdviceActionExpansion.concreteActuator(
                     for: tip.actionType,
-                    hasGroundedTarget: tip.targetEntityRef != nil || targetRegion != nil
+                    hasGroundedTarget: semanticEntityGrounding == nil
+                        ? tip.targetEntityRef != nil || targetRegion != nil
+                        : targetRegion != nil
                 )
             )
         }
@@ -10602,9 +10726,16 @@ final class AnalysisPipeline: ObservableObject {
         // Decision Trace presents rows by this same order. Canonicalizing at
         // the producer keeps `actions.first` and the displayed first row the
         // same identity before linked evidence is created.
-        let canonicalActions = actions.sorted(by: PauseActionRow.canonicalOrder)
+        // The common boundary covers semantic, contextual and local fallback
+        // paths. Observing an object or accepting a cloud request is not control
+        // over a museum object, another person, or an existing light source.
+        let canonicalActions = permittedPauseActions(actions, frameID: critique.frameId, facts: sceneControlFacts)
+            .filter { $0.semanticActionType != .keepCurrentSetup || hasCurrentTechnicalMeasurement }
+            .sorted(by: PauseActionRow.canonicalOrder)
 
-        let effectiveVerdict = preservesGoodFrameActions ? FrameVerdict.good : (contextualCorrection?.verdict ?? critique.verdict)
+        let proposedVerdict = preservesGoodFrameActions ? FrameVerdict.good : (contextualCorrection?.verdict ?? critique.verdict)
+        let withholdsPositiveVerdict = proposedVerdict == .good && !hasCurrentTechnicalMeasurement
+        let effectiveVerdict = withholdsPositiveVerdict ? FrameVerdict.mixed : proposedVerdict
         let noChangeRationale: String?
         if effectiveVerdict == .good && canonicalActions.isEmpty {
             noChangeRationale = nonEmpty(semanticTips.first?.pauseText)
@@ -10622,25 +10753,31 @@ final class AnalysisPipeline: ObservableObject {
             }
             return values
         }()
-        let verdictConfidence = contextualCorrection?.confidence ?? pauseVerdictConfidence(
+        let proposedConfidence = contextualCorrection?.confidence ?? pauseVerdictConfidence(
             verdict: effectiveVerdict,
             baseConfidence: critique.verdictConfidence,
             strengths: strengths,
             actions: canonicalActions
         )
+        let verdictConfidence = withholdsPositiveVerdict
+            ? FrameCritiqueEngine.limitedCoverageVerdictConfidence(proposedConfidence)
+            : proposedConfidence
         let traceRootIds = preservesGoodFrameActions
             ? ["cinematic_good_frame_action_preservation"] + critique.traceRefs
             : (contextualCorrection.map { [$0.traceId] } ?? critique.traceRefs)
 
-        return PauseCritiquePresentation(
+        return applyingPauseIntent(to: PauseCritiquePresentation(
             frameId: critique.frameId,
             verdict: effectiveVerdict,
             verdictConfidence: verdictConfidence,
             summaryId: preservesGoodFrameActions ? "cinematic_good_frame_action_preservation" : (contextualCorrection?.traceId ?? critique.summary.id),
-            shortVerdict: preservesGoodFrameActions
+            shortVerdict: withholdsPositiveVerdict
+                ? "Недостаточно данных для полной оценки кадра."
+                : preservesGoodFrameActions
                 ? (critique.summary.whyGood ?? "Кадр выглядит собранно — сохраняем текущую постановку.")
                 : (contextualCorrection?.pauseSummary ?? critique.summary.shortVerdict),
-            whyGood: contextualCorrection == nil ? (critique.summary.whyGood ?? noChangeRationale) : nil,
+            whyGood: hasCurrentTechnicalMeasurement && contextualCorrection == nil
+                ? (critique.summary.whyGood ?? noChangeRationale) : nil,
             whyProblematic: contextualCorrection?.whyProblematic ?? critique.summary.whyProblematic,
             strengths: Array(strengths),
             issues: Array(issues),
@@ -10653,8 +10790,9 @@ final class AnalysisPipeline: ObservableObject {
                 critique: critique,
                 plan: plan,
                 actions: canonicalActions
-            )
-        )
+            ),
+            technicalQualityMeasurement: resolvedTechnicalMeasurement
+        ))
     }
 
     /// Keeps the pause explanation and marker on the same typed action/issue
@@ -10749,6 +10887,7 @@ final class AnalysisPipeline: ObservableObject {
                                                         allowsMixedVerdict: Bool = false) -> Bool {
         guard let snapshot,
               let semantics,
+              FrameCritiqueEngine.hasPositiveSemanticCoverage(snapshot: snapshot, semantics: semantics),
               let aestheticScore = snapshot.aesthetics.score else {
             return false
         }
@@ -11214,6 +11353,12 @@ final class AnalysisPipeline: ObservableObject {
         }
 
         if hasTightReadableEdgePressure {
+            var semanticActions: [SemanticActionType] = [.stepBack]
+            if let direction = observedHorizontalEdgeReframingAction(
+                snapshot: snapshot, semantics: semantics, expectedFrameID: critique.frameId
+            ) {
+                semanticActions.append(direction)
+            }
             return ContextualSemanticCorrection(
                 idSuffix: "tight_readable_edge_step_back",
                 traceId: "contextual_tight_readable_edge_step_back",
@@ -11222,12 +11367,18 @@ final class AnalysisPipeline: ObservableObject {
                 pauseSummary: "Главный объект слишком тесно прижат к рамке",
                 whyProblematic: "Читаемый объект занимает почти весь кадр: такой crop легко режет важные части и оставляет слишком мало воздуха вокруг формы.",
                 liveActionType: .changeAngle,
-                semanticActionTypes: [.stepBack, .shiftFrameRight]
+                semanticActionTypes: semanticActions
             )
         }
 
         if hasReadableSmallEdgeCropPressure {
-            var semanticActions: [SemanticActionType] = [.stepBack, .shiftFrameRight, .removeDistractingObject]
+            var semanticActions: [SemanticActionType] = [.stepBack]
+            if let direction = observedHorizontalEdgeReframingAction(
+                snapshot: snapshot, semantics: semantics, expectedFrameID: critique.frameId
+            ) {
+                semanticActions.append(direction)
+            }
+            semanticActions.append(.removeDistractingObject)
             if futureActions.contains(TechnicalQualityActionType.reduceExposure.rawValue)
                 || snapshot.lighting.exposureBiasHint > 0.10 {
                 semanticActions.append(.removeBackgroundHotspot)
@@ -11661,6 +11812,49 @@ final class AnalysisPipeline: ObservableObject {
                 $0 == TechnicalQualityActionType.refocusSubject.rawValue
         })
         return hasTechnicalFuture || snapshot.lighting.exposureBiasHint <= -0.70
+    }
+
+    /// Adds a horizontal camera action only when the resolved observed subject
+    /// has pressure on one side and room on the other. This establishes an
+    /// image-plane reframing direction, not physical access or action success.
+    private func observedHorizontalEdgeReframingAction(
+        snapshot: FrameFeatureSnapshot,
+        semantics: SceneSemanticsReport,
+        expectedFrameID: String
+    ) -> SemanticActionType? {
+        guard snapshot.frameId == expectedFrameID,
+              semantics.frameId == expectedFrameID,
+              semantics.primarySubject.kind != .unknown,
+              !semantics.ambiguities.contains(where: {
+                  $0.type == .multipleSubjectsSimilarConfidence || $0.type == .weakSignal
+              }),
+              let region = semantics.primarySubject.region?
+                .converted(from: .vision, to: .subjectTarget) else {
+            return nil
+        }
+        let sourceAvailable: Bool
+        switch semantics.primarySubject.kind {
+        case .object:
+            sourceAvailable = snapshot.sources.detr.available
+        case .face, .person, .group:
+            sourceAvailable = snapshot.sources.vision.available
+        case .unknown:
+            return nil
+        }
+        guard sourceAvailable else { return nil }
+
+        // Reuse SemanticReadabilityAnalyzer's normalized 10% edge band. Both
+        // constrained sides (including a frame-filling box) cannot justify a
+        // horizontal choice, and neither constrained side supplies edge evidence.
+        let leftMargin = region.x
+        let rightMargin = 1 - region.x - region.width
+        let leftConstrained = leftMargin < 0.10
+        let rightConstrained = rightMargin < 0.10
+        guard leftConstrained != rightConstrained else { return nil }
+
+        // Existing contract: camera-left moves the subject right in the image;
+        // camera-right moves it left. Display mirroring remains display-owned.
+        return leftConstrained ? .shiftFrameLeft : .shiftFrameRight
     }
 
     private func shouldCorrectTightReadableEdge(snapshot: FrameFeatureSnapshot,
@@ -12316,23 +12510,13 @@ final class AnalysisPipeline: ObservableObject {
         let nowMs = Int(Date().timeIntervalSince1970 * 1000)
         let requestId = "vlm_evd_\(snapshot.frameId)_\(nowMs)"
         let providerConfigVersion = ProcessInfo.processInfo.environment["CAMERA_VLM_VISUAL_EVIDENCE_PROVIDER"] ?? "disabled"
-        let allowRedactedVisual = isEnabledEnvironmentFlag("CAMERA_VLM_VISUAL_EVIDENCE_ALLOW_VISUAL_INPUT")
-        let configuredPrivacyTier = ProcessInfo.processInfo.environment["CAMERA_VLM_VISUAL_EVIDENCE_PRIVACY_TIER"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let useRedactedVisual = allowRedactedVisual && configuredPrivacyTier == VLMPrivacyTier.redactedVisual.rawValue
-        let privacyTier: VLMPrivacyTier = useRedactedVisual ? .redactedVisual : .structuredOnly
-        let visualInput: VLMVisualInput? = useRedactedVisual
-            ? VLMVisualInput(
-                attachmentKind: .redactedStill,
-                mediaRef: "redacted://\(snapshot.frameId)",
-                longEdgePx: 768,
-                exifStripped: true,
-                redactionApplied: true,
-                redactionNotes: ["subject_only_redacted_still"]
-            )
-            : nil
-        let trigger: VLMTrigger = useRedactedVisual ? .explicitUserRequest : .ambiguousLocalCase
+        // This ambient pause/replay seam owns structured local context only.
+        // It has neither prepared image bytes nor a request-specific transfer
+        // approval. Environment flags cannot attest redaction or a user action.
+        // Explicit cloud still analysis must use an accepted-frame transport owner.
+        let privacyTier: VLMPrivacyTier = .structuredOnly
+        let visualInput: VLMVisualInput? = nil
+        let trigger: VLMTrigger = .ambiguousLocalCase
         let localContext = VLMVisualEvidenceLocalContext(
             frameFeatureSnapshotExcerpt: makeFrameFeatureSnapshotExcerpt(snapshot: snapshot),
             sceneSemantics: semantics,
@@ -12367,7 +12551,7 @@ final class AnalysisPipeline: ObservableObject {
     }
 
     private func makeFrameFeatureSnapshotExcerpt(snapshot: FrameFeatureSnapshot) -> [String: String] {
-        [
+        var excerpt = [
             "mode": snapshot.mode.rawValue,
             "scene_subject_kind": snapshot.subjectSignals.faceDetected ? "face" : (snapshot.subjectSignals.personDetected ? "person" : "object_or_unknown"),
             "subject_area_ratio": String(format: "%.3f", snapshot.composition.subjectAreaRatio),
@@ -12375,6 +12559,16 @@ final class AnalysisPipeline: ObservableObject {
             "backlight_index": String(format: "%.3f", snapshot.lighting.backlightIndex),
             "object_count": "\(snapshot.objects.totalCount)"
         ]
+        if let inventory = snapshot.objects.localComponentInventory,
+           inventory.frameID == snapshot.frameId, inventory.isValid {
+            excerpt["local_component_candidate_count"] = "\(inventory.componentCandidateCount)"
+            excerpt["local_component_omitted_count"] = "\(inventory.omittedComponentCount)"
+            excerpt["local_component_geometry_source"] = inventory.geometrySource.rawValue
+            excerpt["local_component_coordinate_space"] = inventory.coordinateSpace.rawValue
+            excerpt["local_component_score_semantics"] = "segmentation_area_support_not_probability"
+            excerpt["local_component_identity_scope"] = "current_frame_component_not_physical_instance"
+        }
+        return excerpt
     }
 
     private func makeSemanticTipDrafts(critique: CritiqueReport,
@@ -12437,6 +12631,10 @@ final class AnalysisPipeline: ObservableObject {
                                       semantics: SceneSemanticsReport,
                                       critique: CritiqueReport) -> [VLMGroundedEntity] {
         var entities: [VLMGroundedEntity] = []
+        let localInventory = snapshot.objects.localComponentInventory.flatMap { inventory in
+            snapshot.sources.detr.available && inventory.frameID == snapshot.frameId
+                && inventory.isValid ? inventory : nil
+        }
 
         let subjectKind = targetEntityKind(for: semantics.primarySubject.kind)
         let subjectLabel = SemanticDisplayLabelPolicy.displayLabel(
@@ -12458,14 +12656,17 @@ final class AnalysisPipeline: ObservableObject {
             )
         )
 
-        if let objectLabel = snapshot.subjectSignals.topObjectLabel {
+        if localInventory == nil, snapshot.sources.detr.available,
+           let objectLabel = snapshot.subjectSignals.topObjectLabel,
+           let objectRegion = snapshot.subjectSignals.topObjectRegion,
+           PauseSemanticEntityGrounding.isValidRegion(objectRegion) {
             let groundedLabel = groundedObjectLabelCandidate(from: objectLabel)
-            let objectConfidence = snapshot.subjectSignals.topObjectConfidence ?? 0.60
+            let objectConfidence = snapshot.subjectSignals.topObjectConfidence
             let displayLabel = SemanticDisplayLabelPolicy.displayLabel(
                 entityKind: .object,
                 role: .foregroundObject,
                 groundedLabel: groundedLabel,
-                confidence: objectConfidence
+                confidence: objectConfidence ?? 0
             )
 
             entities.append(
@@ -12473,13 +12674,26 @@ final class AnalysisPipeline: ObservableObject {
                     entityRef: "ent-top-object",
                     kind: .object,
                     role: .foregroundObject,
-                    region: nil,
+                    region: objectRegion,
                     detectorLabel: objectLabel,
                     detectorConfidence: objectConfidence,
                     displayLabelCandidate: displayLabel,
-                    displayLabelConfidence: objectConfidence
+                    displayLabelConfidence: objectConfidence ?? 0
                 )
             )
+        }
+
+        if let localInventory {
+            let primary = entities.first
+            let componentEntities = localInventory.groundedEntities(aliasing: primary)
+            // The single exact primary alias already names this component;
+            // carrying it twice could be mistaken for two visible objects. An
+            // unmatched aggregate object cannot invent another component or
+            // promote its old area-derived score to detector probability.
+            if primary?.kind == .object || primary?.kind == .prop {
+                entities.removeAll { $0.entityRef == primary?.entityRef }
+            }
+            entities.append(contentsOf: componentEntities)
         }
 
         if critique.issues.contains(where: { $0.type == .backgroundCompetesWithSubject || $0.type == .frameVisuallyOverloaded }) {
@@ -12791,12 +13005,14 @@ final class AnalysisPipeline: ObservableObject {
                 guard isCurrentRevision, self.isGenerationCurrent(effectiveGeneration) else { return }
 
                 await MainActor.run {
+                    guard !Task.isCancelled else { return }
                     guard self.isGenerationCurrent(effectiveGeneration) else { return }
                     guard self.lastRefinedPauseFrameId != request.frameId else { return }
                     guard let current = self.currentPauseCritique, current.frameId == request.frameId else { return }
                     let merged = self.mergePauseCritiqueRefinement(current: current, refined: presentation)
                     guard merged != current else { return }
                     _ = self.withPausePublicationFence(publicationFence) {
+                        guard !Task.isCancelled else { return }
                         guard self.featureQueue.sync(execute: { self.pauseAnalysisRevision == revision }) else { return }
                         self.currentPauseCritique = merged
                         if let baseTrace = self.currentPauseTraceBundle ?? request.trace,
@@ -12871,9 +13087,9 @@ final class AnalysisPipeline: ObservableObject {
             verdict: current.verdict,
             verdictConfidence: current.verdictConfidence,
             summaryId: current.summaryId,
-            shortVerdict: refined.shortVerdict,
+            shortVerdict: current.intentionalStylePreserved ? current.shortVerdict : refined.shortVerdict,
             whyGood: refined.whyGood ?? current.whyGood,
-            whyProblematic: refined.whyProblematic ?? current.whyProblematic,
+            whyProblematic: current.intentionalStylePreserved ? current.whyProblematic : (refined.whyProblematic ?? current.whyProblematic),
             strengths: mergedStrengths,
             issues: mergedIssues,
             actions: mergedActions,
@@ -12883,7 +13099,9 @@ final class AnalysisPipeline: ObservableObject {
             fallbackUsed: current.fallbackUsed,
             // Text refinement cannot replace the accepted frame/action/evidence
             // identity, even if a malformed presentation reaches this merge.
-            linkedEvidence: current.linkedEvidence
+            linkedEvidence: current.linkedEvidence,
+            technicalQualityMeasurement: current.technicalQualityMeasurement,
+            intentionalStylePreserved: current.intentionalStylePreserved
         )
     }
 
@@ -13254,7 +13472,8 @@ final class AnalysisPipeline: ObservableObject {
                                         legacySuggestions: [Suggestion],
                                         forceLegacyOnly: Bool = false,
                                         liveHint: LiveHintPresentation? = nil,
-                                        selectionContext: LiveFrameSelectionContext? = nil) -> [OverlayAnnotationPresentation] {
+                                        selectionContext: LiveFrameSelectionContext? = nil,
+                                        sceneControlFacts: PauseSceneControlFacts = .unknown) -> [OverlayAnnotationPresentation] {
         var annotations: [OverlayAnnotationPresentation] = []
 
         if mode == .live {
@@ -13288,7 +13507,9 @@ final class AnalysisPipeline: ObservableObject {
 
         if !forceLegacyOnly {
             let actions = [plan.primaryAction].compactMap { $0 } + Array(plan.secondaryActions.prefix(2))
-            annotations = actions.compactMap { action in
+            annotations = actions.filter {
+                sceneControlFacts.permits($0.actionType.semanticActionType, forFrameID: frameId)
+            }.compactMap { action in
                 makeActionAnnotation(frameId: frameId, action: action, critique: critique, mode: mode)
             }
         }
@@ -13300,7 +13521,11 @@ final class AnalysisPipeline: ObservableObject {
         }
 
         if annotations.isEmpty {
-            annotations = legacySuggestions.prefix(2).enumerated().compactMap { index, suggestion in
+            let permittedSuggestions = legacySuggestions.filter {
+                sceneControlFacts.permits(actionTypeForSuggestion($0, features: features).semanticActionType,
+                                          forFrameID: frameId)
+            }
+            annotations = permittedSuggestions.prefix(2).enumerated().compactMap { index, suggestion in
                 makeLegacyAnnotation(
                     frameId: frameId,
                     suggestion: suggestion,
@@ -14201,6 +14426,450 @@ final class AnalysisPipeline: ObservableObject {
     }
 }
 
+// MARK: - Explicit selected-pause cloud admission
+
+extension AnalysisPipeline {
+    private func pauseIntentAllows(_ action: SemanticActionType) -> Bool {
+        let family: CameraAdviceActionFamily?
+        switch action {
+        case .keepCurrentSetup, .waitForBackgroundClearance:
+            family = nil
+        case .levelHorizon:
+            family = .horizon
+        case .rotateSubjectTowardLight, .addFrontFillLight, .addBackgroundLight, .removeBackgroundHotspot:
+            family = .exposure
+        default:
+            family = .composition
+        }
+        return family.map { !intentClarification.suppressedFamilies.contains($0) } ?? true
+    }
+
+    private func applyingPauseIntent(
+        to presentation: PauseCritiquePresentation,
+        technicalAction: TechnicalQualityActionType? = nil
+    ) -> PauseCritiquePresentation {
+        let technicalSuppressed = technicalAction
+            .flatMap(UserMovementObserver.actionFamily(for:))
+            .flatMap(cameraAdviceActionFamily(for:))
+            .map(intentClarification.suppressedFamilies.contains) ?? false
+        let actions = technicalSuppressed ? [] : presentation.actions.filter {
+            pauseIntentAllows($0.semanticActionType)
+                && ($0.concreteSemanticActionType.map(pauseIntentAllows) ?? true)
+        }
+        guard technicalSuppressed || actions.count != presentation.actions.count else { return presentation }
+        let removedIssueIDs = Set(presentation.actions.filter { old in
+            !actions.contains { $0.actionId == old.actionId }
+        }.flatMap(\.linkedIssueIds)).subtracting(actions.flatMap(\.linkedIssueIds))
+        let issues = presentation.issues.filter { !removedIssueIDs.contains($0.issueId) }
+        let keptEvidence = presentation.linkedEvidence.flatMap { evidence in
+            actions.contains { $0.actionId == evidence.actionID } ? evidence : nil
+        }
+        return PauseCritiquePresentation(
+            frameId: presentation.frameId, verdict: presentation.verdict,
+            verdictConfidence: presentation.verdictConfidence, summaryId: presentation.summaryId,
+            shortVerdict: SETCopyKey.pauseIntentPreserved.localizedString(locale: .current),
+            whyGood: presentation.whyGood,
+            whyProblematic: issues.isEmpty ? nil : issues.map(\.rationale).joined(separator: " "),
+            strengths: presentation.strengths, issues: issues, actions: actions,
+            noChangeRationale: nil, assumptions: presentation.assumptions,
+            traceRootIds: presentation.traceRootIds, fallbackUsed: presentation.fallbackUsed,
+            linkedEvidence: keptEvidence, technicalQualityMeasurement: presentation.technicalQualityMeasurement,
+            intentionalStylePreserved: true
+        )
+    }
+
+    @MainActor
+    func canRefreshAcceptedPause(_ accepted: LatestFrameEvidenceStore.AcceptedSnapshot) -> Bool {
+        guard let state = cloudPauseReviewState,
+              isGenerationCurrent(state.generation),
+              featureQueue.sync(execute: { pauseAnalysisRevision == state.revision }),
+              state.acceptedSnapshot.snapshotID == accepted.snapshotID,
+              state.snapshot.frameId == accepted.sourceFrameId,
+              state.acceptedSnapshot.capturedAt == accepted.capturedAt,
+              state.acceptedSnapshot.orientation == accepted.orientation,
+              state.acceptedSnapshot.sessionGeneration == accepted.sessionGeneration,
+              state.acceptedSnapshot.evidence.lensGeneration == accepted.evidence.lensGeneration,
+              CMTimeCompare(state.acceptedSnapshot.samplePresentationTimestamp, accepted.samplePresentationTimestamp) == 0,
+              ObjectIdentifier(state.acceptedSnapshot.pixelBuffer as AnyObject)
+                == ObjectIdentifier(accepted.pixelBuffer as AnyObject) else { return false }
+        // Publication still checks its fence. Read eligibility must not enter
+        // that non-recursive lock from a synchronous published-value subscriber.
+        return true
+    }
+
+    @MainActor
+    func pauseSceneControlFacts(for accepted: LatestFrameEvidenceStore.AcceptedSnapshot) -> PauseSceneControlFacts {
+        guard canRefreshAcceptedPause(accepted), pauseSceneControlSnapshotID == accepted.snapshotID,
+              storedPauseSceneControlFacts.frameID == accepted.sourceFrameId else {
+            return PauseSceneControlFacts(frameID: accepted.sourceFrameId)
+        }
+        return storedPauseSceneControlFacts
+    }
+
+    @MainActor
+    func pauseCaptureIntent(for accepted: LatestFrameEvidenceStore.AcceptedSnapshot) -> CaptureIntent {
+        guard canRefreshAcceptedPause(accepted), pauseCaptureIntentSnapshotID == accepted.snapshotID else {
+            return .unknown(intentRevision: storedPauseCaptureIntent.intentRevision)
+        }
+        return storedPauseCaptureIntent
+    }
+
+    @MainActor
+    func pauseImagePlacementCandidates(for accepted: LatestFrameEvidenceStore.AcceptedSnapshot) -> [PauseImagePlacementCandidate] {
+        guard canRefreshAcceptedPause(accepted), let state = cloudPauseReviewState else { return [] }
+        return PauseImagePlacementCandidate.admitted(from: state.localRequest.localContext.groundedEntities)
+    }
+
+    @MainActor
+    func pauseImagePlacementProposal(for accepted: LatestFrameEvidenceStore.AcceptedSnapshot) -> PauseImagePlacementProposal? {
+        guard canRefreshAcceptedPause(accepted),
+              currentPauseImagePlacementProposal?.goal.snapshotID == accepted.snapshotID else { return nil }
+        return currentPauseImagePlacementProposal
+    }
+
+    /// Only the accepted-image editor supplies this intent. An explicit user ROI
+    /// names that image region; it does not create a detector label or track.
+    @MainActor
+    func updatePauseImagePlacement(_ goal: CaptureImagePlacementGoal?,
+                                   acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot) -> PauseCritiquePresentation? {
+        guard canRefreshAcceptedPause(acceptedSnapshot), let state = cloudPauseReviewState,
+              let presentation = currentPauseCritique,
+              presentation.frameId == acceptedSnapshot.sourceFrameId else { return nil }
+        if let goal {
+            guard goal.isValid, goal.snapshotID == acceptedSnapshot.snapshotID,
+                  goal.frameID == acceptedSnapshot.sourceFrameId else { return nil }
+            switch goal.source {
+            case .observedRegion:
+                let matches = pauseImagePlacementCandidates(for: acceptedSnapshot).filter { $0.id == goal.entityRef }
+                guard matches.count == 1, matches.first?.region == goal.observedRegion else { return nil }
+            case .userRegion:
+                guard goal.entityRef.hasPrefix("user-roi-"),
+                      UUID(uuidString: String(goal.entityRef.dropFirst("user-roi-".count))) != nil else { return nil }
+            }
+        }
+        let current = pauseCaptureIntent(for: acceptedSnapshot)
+        let next = current.withImagePlacementGoal(goal)
+        guard next != current else { return presentation }
+        let proposal = recommendationPlanner.makeImagePlacementProposal(
+            intent: next, snapshotID: acceptedSnapshot.snapshotID,
+            frameID: state.snapshot.frameId, presentation: presentation
+        )
+        // A placement-only edit adds no evidence about frame quality. Preserve
+        // the exact accepted local/cloud critique, including its current action
+        // and wording, instead of rebuilding it from the older local snapshot.
+        cancelPauseReasoningTask()
+        var published = false
+        let admitted = withPausePublicationFence(state.publicationFence) {
+            guard featureQueue.sync(execute: { pauseAnalysisRevision == state.revision }) else { return }
+            pauseCaptureIntentSnapshotID = acceptedSnapshot.snapshotID
+            storedPauseCaptureIntent = next
+            currentPauseImagePlacementProposal = proposal
+            currentPauseCritique = presentation
+            published = true
+        }
+        return admitted && published ? presentation : nil
+    }
+
+    @MainActor
+    private func clearPauseImagePlacement() {
+        pauseCaptureIntentSnapshotID = nil
+        storedPauseCaptureIntent = .unknown(intentRevision: storedPauseCaptureIntent.intentRevision &+ 1)
+        currentPauseImagePlacementProposal = nil
+    }
+
+    /// Only the explicit local UI answer/reset path calls this method. Provider
+    /// content and image-transfer approval cannot update scene control.
+    @MainActor
+    func updatePauseSceneControl(_ facts: PauseSceneControlFacts,
+                                 acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot) -> PauseCritiquePresentation? {
+        guard canRefreshAcceptedPause(acceptedSnapshot), facts.frameID == acceptedSnapshot.sourceFrameId else { return nil }
+        if pauseSceneControlFacts(for: acceptedSnapshot) == facts { return currentPauseCritique }
+        pauseSceneControlSnapshotID = acceptedSnapshot.snapshotID
+        storedPauseSceneControlFacts = facts
+        pauseSceneControlRevision &+= 1
+        return refreshAcceptedPausePresentation(acceptedSnapshot: acceptedSnapshot, requiresChangedIntent: false)
+    }
+
+    @MainActor
+    private func clearPauseSceneControlFacts() {
+        pauseSceneControlSnapshotID = nil
+        storedPauseSceneControlFacts = .unknown
+        pauseSceneControlRevision &+= 1
+    }
+
+    private func applyingPauseSceneControl(to presentation: PauseCritiquePresentation,
+                                           facts: PauseSceneControlFacts) -> PauseCritiquePresentation {
+        let actions = permittedPauseActions(presentation.actions, frameID: presentation.frameId, facts: facts)
+        guard actions != presentation.actions else { return presentation }
+        let evidence = presentation.linkedEvidence.flatMap { linked in
+            actions.contains { $0.actionId == linked.actionID } ? linked : nil
+        }
+        return PauseCritiquePresentation(
+            frameId: presentation.frameId, verdict: presentation.verdict,
+            verdictConfidence: presentation.verdictConfidence, summaryId: presentation.summaryId,
+            shortVerdict: presentation.shortVerdict, whyGood: presentation.whyGood,
+            whyProblematic: presentation.whyProblematic, strengths: presentation.strengths,
+            issues: presentation.issues, actions: actions, noChangeRationale: presentation.noChangeRationale,
+            assumptions: presentation.assumptions, traceRootIds: presentation.traceRootIds,
+            fallbackUsed: presentation.fallbackUsed, linkedEvidence: evidence,
+            technicalQualityMeasurement: presentation.technicalQualityMeasurement,
+            intentionalStylePreserved: presentation.intentionalStylePreserved
+        )
+    }
+
+    /// Reuses the accepted local evidence after an intent answer. It does not
+    /// capture pixels, execute a model, send a request or establish new quality.
+    /// The cloud cache remains pinned to its old intent until a fresh review.
+    @MainActor
+    func refreshAcceptedPauseForIntent(
+        acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot
+    ) -> PauseCritiquePresentation? {
+        refreshAcceptedPausePresentation(acceptedSnapshot: acceptedSnapshot, requiresChangedIntent: true)
+    }
+
+    @MainActor
+    private func refreshAcceptedPausePresentation(
+        acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot, requiresChangedIntent: Bool
+    ) -> PauseCritiquePresentation? {
+        guard let state = cloudPauseReviewState,
+              !requiresChangedIntent || state.intentRevision != intentClarification.revision,
+              isGenerationCurrent(state.generation),
+              featureQueue.sync(execute: { pauseAnalysisRevision == state.revision }),
+              state.acceptedSnapshot.snapshotID == acceptedSnapshot.snapshotID,
+              state.snapshot.frameId == acceptedSnapshot.sourceFrameId,
+              ObjectIdentifier(state.acceptedSnapshot.pixelBuffer as AnyObject)
+                == ObjectIdentifier(acceptedSnapshot.pixelBuffer as AnyObject) else { return nil }
+        let facts = pauseSceneControlFacts(for: acceptedSnapshot)
+        let plan = recommendationPlanner.makePlan(snapshot: state.snapshot, critique: state.critique)
+        let tips = semanticTipPlanner.plan(input: SemanticTipPlannerInput(
+            frameId: state.snapshot.frameId, mode: .pause, critique: state.critique,
+            recommendationPlan: plan, semantics: state.semantics, validatedEvidence: nil,
+            sceneControlFacts: facts
+        ))
+        let structured = structuredPathDecision(
+            mode: .pause, critique: state.critique, plan: plan, motionState: state.snapshot.motion.state
+        )
+        let updated: PauseCritiquePresentation
+        if !structured.isAvailable,
+           let current = currentPauseCritique, current.frameId == state.snapshot.frameId {
+            updated = applyingPauseSceneControl(to: applyingPauseIntent(to: current), facts: facts)
+        } else if let issue = technicalPauseIssue(
+            signal: state.technicalSignal, snapshot: state.snapshot, semantics: state.semantics,
+            semanticTips: tips.pauseExpandedTips, structuredAvailable: structured.isAvailable,
+            structuredVerdict: state.critique.verdict
+        ), let technical = makeTechnicalPauseCritiquePresentation(
+            frameId: state.snapshot.frameId, issue: issue, signal: state.technicalSignal,
+            snapshot: state.snapshot, semantics: state.semantics, technicalEvidence: state.technicalEvidence,
+            sceneControlFacts: facts
+        ) {
+            updated = technical
+        } else {
+            updated = makePauseCritiquePresentation(
+                critique: state.critique, plan: plan,
+                semanticTips: tips.pauseExpandedTips, semanticFallbackUsed: tips.fallbackUsed,
+                snapshot: state.snapshot, semantics: state.semantics,
+                technicalQualitySignal: state.technicalSignal, technicalEvidence: state.technicalEvidence,
+                sceneControlFacts: facts
+            )
+        }
+        cancelPauseReasoningTask()
+        var published = false
+        let admitted = withPausePublicationFence(state.publicationFence) {
+            guard featureQueue.sync(execute: { pauseAnalysisRevision == state.revision }) else { return }
+            currentPauseImagePlacementProposal = recommendationPlanner.makeImagePlacementProposal(
+                intent: pauseCaptureIntent(for: acceptedSnapshot), snapshotID: acceptedSnapshot.snapshotID,
+                frameID: state.snapshot.frameId, presentation: updated
+            )
+            currentPauseCritique = updated
+            currentOverlayAnnotations = []
+            published = true
+        }
+        return admitted && published ? updated : nil
+    }
+
+    @MainActor
+    func makeCloudPauseContext(
+        acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot
+    ) -> CameraCloudPauseContext? {
+        guard let state = cloudPauseReviewState,
+              isGenerationCurrent(state.generation),
+              state.intentRevision == intentClarification.revision,
+              state.intentAnswers == intentClarification.answers,
+              featureQueue.sync(execute: { pauseAnalysisRevision == state.revision }),
+              state.acceptedSnapshot.snapshotID == acceptedSnapshot.snapshotID,
+              state.snapshot.frameId == acceptedSnapshot.sourceFrameId,
+              state.acceptedSnapshot.capturedAt == acceptedSnapshot.capturedAt,
+              state.acceptedSnapshot.orientation == acceptedSnapshot.orientation,
+              state.acceptedSnapshot.sessionGeneration == acceptedSnapshot.sessionGeneration,
+              state.acceptedSnapshot.evidence.lensGeneration == acceptedSnapshot.evidence.lensGeneration,
+              CMTimeCompare(state.acceptedSnapshot.samplePresentationTimestamp,
+                            acceptedSnapshot.samplePresentationTimestamp) == 0,
+              ObjectIdentifier(state.acceptedSnapshot.pixelBuffer as AnyObject)
+                == ObjectIdentifier(acceptedSnapshot.pixelBuffer as AnyObject) else { return nil }
+
+        let base = state.localRequest
+        // A class name with no image region is not an identified physical object.
+        // Generic frame/background context can remain non-spatial.
+        let knownEntities = base.localContext.groundedEntities.filter { entity in
+            if entity.kind == .frame || entity.kind == .backgroundArea { return true }
+            guard let region = entity.region,
+                  [region.x, region.y, region.width, region.height].allSatisfy({ $0.isFinite }),
+                  region.x >= 0, region.y >= 0, region.width > 0, region.height > 0,
+                  region.x + region.width <= 1, region.y + region.height <= 1 else { return false }
+            return true
+        }
+        let local = base.localContext
+        let request = VLMVisualEvidenceRequest(
+            schemaVersion: base.schemaVersion, requestId: base.requestId, frameId: base.frameId,
+            mode: .pause, locale: base.locale, privacyTier: .structuredOnly,
+            trigger: .ambiguousLocalCase, visualInput: nil,
+            localContext: .init(
+                frameFeatureSnapshotExcerpt: local.frameFeatureSnapshotExcerpt,
+                sceneSemantics: local.sceneSemantics, critique: local.critique,
+                recommendationPlan: local.recommendationPlan, semanticTipDrafts: local.semanticTipDrafts,
+                groundedEntities: knownEntities, localNeuralEvidenceSummary: local.localNeuralEvidenceSummary
+            ),
+            allowedCatalog: base.allowedCatalog, constraints: base.constraints,
+            correlation: base.correlation
+        )
+        return CameraCloudPauseContext(
+            snapshotID: acceptedSnapshot.snapshotID, pipelineGeneration: state.generation,
+            pauseRevision: state.revision, intentRevision: state.intentRevision,
+            intentAnswers: Dictionary(uniqueKeysWithValues: state.intentAnswers.map { ($0.key.rawValue, $0.value) }),
+            localRequest: request, sceneControlRevision: pauseSceneControlRevision,
+            imagePlacementRevision: storedPauseCaptureIntent.intentRevision
+        )
+    }
+
+    @MainActor
+    func isCurrentCloudPauseContext(
+        _ context: CameraCloudPauseContext,
+        acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot
+    ) -> Bool {
+        makeCloudPauseContext(acceptedSnapshot: acceptedSnapshot) == context
+    }
+
+    /// Service parsing returns an untrusted S1 observation proposal. The existing
+    /// validator and planner retain local object, action and verdict ownership.
+    /// nil means stale/mismatched context; zero means no usable extra evidence.
+    @MainActor
+    func applyCloudPauseEvidence(
+        response: VLMVisualEvidenceResponse,
+        request: VLMVisualEvidenceRequest,
+        context: CameraCloudPauseContext,
+        acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot
+    ) -> Int? {
+        guard isCurrentCloudPauseContext(context, acceptedSnapshot: acceptedSnapshot),
+              let state = cloudPauseReviewState,
+              request.frameId == state.snapshot.frameId,
+              request.mode == .pause, request.privacyTier == .authorizedSelectedStill,
+              request.trigger == .explicitUserRequest,
+              request.localContext == context.localRequest.localContext,
+              request.allowedCatalog == context.localRequest.allowedCatalog,
+              request.constraints == context.localRequest.constraints,
+              response.suggestedActionIds.isEmpty,
+              response.observations.allSatisfy({ $0.suggestedActionIds.isEmpty }) else { return nil }
+        guard response.status == .completed, !response.observations.isEmpty else { return 0 }
+        let validation = response.validate(against: request)
+        // Empty/abstained proposals preserve the exact local presentation,
+        // including any pending or completed local reasoning refinement.
+        guard validation.accepted, !validation.acceptedObservations.isEmpty else { return 0 }
+        let tips = semanticTipPlanner.plan(input: SemanticTipPlannerInput(
+            frameId: state.snapshot.frameId, mode: .pause,
+            critique: state.critique, recommendationPlan: state.plan,
+            semantics: state.semantics, validatedEvidence: validation,
+            sceneControlFacts: pauseSceneControlFacts(for: acceptedSnapshot)
+        ))
+        let structured = structuredPathDecision(
+            mode: .pause, critique: state.critique, plan: state.plan,
+            motionState: state.snapshot.motion.state
+        )
+        // Keep the same measured technical precedence as the ordinary pause
+        // path. An image-language observation cannot remove a measured fault.
+        guard structured.isAvailable,
+              technicalPauseIssue(
+                signal: state.technicalSignal, snapshot: state.snapshot,
+                semantics: state.semantics, semanticTips: tips.pauseExpandedTips,
+                structuredAvailable: structured.isAvailable,
+                structuredVerdict: state.critique.verdict
+              ) == nil else { return 0 }
+        let updated = makePauseCritiquePresentation(
+            critique: state.critique, plan: state.plan,
+            semanticTips: tips.pauseExpandedTips, semanticFallbackUsed: tips.fallbackUsed,
+            snapshot: state.snapshot, semantics: state.semantics,
+            technicalQualitySignal: state.technicalSignal, technicalEvidence: state.technicalEvidence,
+            semanticEntityGrounding: PauseSemanticEntityGrounding(
+                frameID: request.frameId, entities: request.localContext.groundedEntities
+            ),
+            sceneControlFacts: pauseSceneControlFacts(for: acceptedSnapshot)
+        )
+        guard updated.verdict == state.critique.verdict,
+              isCurrentCloudPauseContext(context, acceptedSnapshot: acceptedSnapshot) else { return nil }
+        cancelPauseReasoningTask()
+        var didPublish = false
+        let fenceWasValid = withPausePublicationFence(state.publicationFence) {
+            guard featureQueue.sync(execute: { pauseAnalysisRevision == state.revision }) else { return }
+            currentPauseImagePlacementProposal = recommendationPlanner.makeImagePlacementProposal(
+                intent: pauseCaptureIntent(for: acceptedSnapshot), snapshotID: acceptedSnapshot.snapshotID,
+                frameID: state.snapshot.frameId, presentation: updated
+            )
+            currentPauseCritique = updated
+            didPublish = true
+        }
+        guard fenceWasValid, didPublish else { return nil }
+        // Existing local overlays, live tracking and episode completion are not
+        // authored by this proposal; none are replaced with provider object IDs.
+        return validation.acceptedObservations.count
+    }
+}
+
+
+
+#if DEBUG
+extension AnalysisPipeline {
+    /// Injects only the completed local analysis boundary for deterministic integration
+    /// tests. Encoding, wire validation, S1 admission, planning and publication remain real.
+    /// This seam supplies no evidence about perception/model accuracy.
+    @MainActor
+    func testingInstallCloudPauseReview(
+        acceptedSnapshot: LatestFrameEvidenceStore.AcceptedSnapshot,
+        snapshot: FrameFeatureSnapshot, semantics: SceneSemanticsReport,
+        critique: CritiqueReport, plan: RecommendationPlan,
+        technicalSignal: TechnicalQualitySignal, technicalEvidence: FrameTechnicalQualityEvidence
+    ) {
+        precondition(snapshot.frameId == acceptedSnapshot.sourceFrameId)
+        precondition(critique.frameId == snapshot.frameId && plan.frameId == snapshot.frameId)
+        let fence = PauseAnalysisPublicationFence()
+        installPausePublicationFence(fence)
+        let revision = featureQueue.sync { () -> Int in
+            pauseAnalysisRevision += 1
+            return pauseAnalysisRevision
+        }
+        cloudPauseReviewState = CloudPauseReviewState(
+            acceptedSnapshot: acceptedSnapshot, publicationFence: fence,
+            generation: currentGeneration(), revision: revision,
+            intentRevision: intentClarification.revision, intentAnswers: intentClarification.answers,
+            snapshot: snapshot, semantics: semantics, critique: critique, plan: plan,
+            technicalSignal: technicalSignal, technicalEvidence: technicalEvidence,
+            localRequest: makePauseVisualEvidenceRequest(
+                snapshot: snapshot, semantics: semantics, critique: critique,
+                plan: plan, neuralOutcome: nil
+            )
+        )
+        let tips = semanticTipPlanner.plan(input: SemanticTipPlannerInput(
+            frameId: snapshot.frameId, mode: .pause, critique: critique,
+            recommendationPlan: plan, semantics: semantics, validatedEvidence: nil
+        ))
+        currentPauseCritique = makePauseCritiquePresentation(
+            critique: critique, plan: plan, semanticTips: tips.pauseExpandedTips,
+            semanticFallbackUsed: tips.fallbackUsed, snapshot: snapshot, semantics: semantics,
+            technicalQualitySignal: technicalSignal, technicalEvidence: technicalEvidence
+        )
+    }
+}
+#endif
+
+
 // MARK: - CC-I05 intent clarification (production path)
 
 extension AnalysisPipeline {
@@ -14220,10 +14889,13 @@ extension AnalysisPipeline {
     }
 
     /// Records the user's answer for the currently pending cue and clears it.
-    func answerIntentClarification(intended: Bool) {
-        guard let cue = pendingIntentClarificationCue else { return }
+    @discardableResult
+    func answerIntentClarification(intended: Bool) -> Bool {
+        guard let cue = pendingIntentClarificationCue else { return false }
+        let previousRevision = intentClarification.revision
         intentClarification.record(cue: cue, intended: intended)
         pendingIntentClarificationCue = nil
+        return intentClarification.revision != previousRevision
     }
 
     /// Per-frame cue detection: publishes the first unanswered detected style
@@ -14281,8 +14953,34 @@ extension AnalysisPipeline {
 
     func testingDeliverLiveDetrSeed(_ detections: [DETRDetection], context: FrameContext,
                                     generation: UInt64? = nil) {
-        enqueueLiveDetrSeed(detections, context: context,
+        enqueueLiveDetrResult(.success(detections), context: context,
                             generation: generation ?? currentGeneration())
+    }
+
+    func testingDeliverLiveDetrFailure(_ failure: DETRDetectionFailure, context: FrameContext,
+                                       generation: UInt64? = nil) {
+        enqueueLiveDetrResult(.failure(failure), context: context,
+                             generation: generation ?? currentGeneration())
+    }
+
+    @MainActor
+    func testingApplyDetrResult(_ result: DETRDetectionResult, pixelBuffer: CVPixelBuffer,
+                               measuredAt: Date) -> PipelineFeatureSnapshotAdapterState {
+        testingApplyDetrForReplay(result: result, pixelBuffer: pixelBuffer, measuredAt: measuredAt)
+        return currentAdapterState()
+    }
+
+    func testingApplyPauseDetrResult(_ result: DETRDetectionResult, measuredAt: Date,
+                                    state: PipelineFeatureSnapshotAdapterState) -> PipelineFeatureSnapshotAdapterState {
+        var features = state.features
+        var debugData = state.debugData
+        applyPauseDetrResult(result, measuredAt: measuredAt, features: &features, debugData: &debugData)
+        return PipelineFeatureSnapshotAdapterState(
+            features: features, debugData: debugData, vision: state.vision,
+            horizonMeasuredAt: state.horizonMeasuredAt, horizon: state.horizon,
+            lightingMeasuredAt: state.lightingMeasuredAt, lighting: state.lighting,
+            detr: makeDetrFeatureSample(from: result, measuredAt: measuredAt),
+            aestheticMeasuredAt: state.aestheticMeasuredAt, aesthetic: state.aesthetic)
     }
 
     func testingTriggerPauseAnalysisTimeout() {
@@ -14306,13 +15004,16 @@ extension AnalysisPipeline {
             orientation: orientation,
             capturedAt: capturedAt
         )
-        await testingExtractStillImageReplayFeatures(
+        let stillModelExecution = await testingExtractStillImageReplayFeatures(
+            frameId: frameId,
             pixelBuffer: pixelBuffer,
             orientation: orientation,
             capturedAt: capturedAt,
             options: options
         )
-        let technicalQualitySignal = technicalQualityAnalyzer.signal(pixelBuffer: pixelBuffer)
+        let technicalCapture = technicalQualityAnalyzer.debugMeasurement(
+            pixelBuffer: pixelBuffer, frameID: frameId, capturedAt: capturedAt
+        )
 
         let liveRow = await testingMakeLiveSemanticEvalRow(
             recordId: recordId,
@@ -14322,7 +15023,8 @@ extension AnalysisPipeline {
             orientation: orientation,
             capturedAt: capturedAt,
             options: options,
-            technicalQualitySignal: technicalQualitySignal
+            technicalCapture: technicalCapture,
+            stillModelExecution: stillModelExecution
         )
         let pauseRow = await testingMakePauseSemanticEvalRow(
             recordId: recordId,
@@ -14332,7 +15034,8 @@ extension AnalysisPipeline {
             orientation: orientation,
             capturedAt: capturedAt,
             options: options,
-            technicalQualitySignal: technicalQualitySignal
+            technicalCapture: technicalCapture,
+            stillModelExecution: stillModelExecution
         )
 
         return SemanticEvalStillImageReplayResult(
@@ -14404,11 +15107,13 @@ extension AnalysisPipeline {
     }
 
     @MainActor
-    private func testingExtractStillImageReplayFeatures(pixelBuffer: CVPixelBuffer,
+    private func testingExtractStillImageReplayFeatures(frameId: String,
+                                                        pixelBuffer: CVPixelBuffer,
                                                         orientation: CGImagePropertyOrientation,
                                                         capturedAt: Date,
-                                                        options: SemanticEvalStillImageReplayOptions) async {
-        let trackingResult = visionTracking.process(pixelBuffer: pixelBuffer, orientation: orientation)
+                                                        options: SemanticEvalStillImageReplayOptions) async -> SemanticEvalStillModelExecution {
+        let trackingResult = visionResultProviderForTesting?(pixelBuffer, orientation)
+            ?? visionTracking.process(pixelBuffer: pixelBuffer, orientation: orientation)
         let primarySubject = primaryVisionSubject(from: trackingResult)
         let horizon = horizonEstimator.estimate(
             pixelBuffer: pixelBuffer,
@@ -14436,24 +15141,33 @@ extension AnalysisPipeline {
             )
         }
 
-        guard options.runHeavyModels else { return }
+        guard options.runHeavyModels else {
+            return .notRequested(frameId: frameId, capturedAt: capturedAt)
+        }
 
-        let detections = await testingDetectForReplay(
+        let detrResult = await testingDetectForReplay(
             pixelBuffer: pixelBuffer,
             orientation: orientation
         )
         testingApplyDetrForReplay(
-            detections: detections,
+            result: detrResult,
             pixelBuffer: pixelBuffer,
             measuredAt: capturedAt
         )
 
-        if let score = await testingScoreAestheticForReplay(
+        let score = await testingScoreAestheticForReplay(
             pixelBuffer: pixelBuffer,
             orientation: orientation
-        ) {
+        )
+        if let score {
             testingApplyAestheticForReplay(score10: score, measuredAt: capturedAt)
         }
+        return SemanticEvalStillModelExecution(
+            frameId: frameId,
+            capturedAt: capturedAt,
+            detr: .detrResult(detrResult),
+            nima: .nimaCallback(score10: score)
+        )
     }
 
     @MainActor
@@ -14462,14 +15176,7 @@ extension AnalysisPipeline {
                                                        horizon: HorizonEstimate,
                                                        saliencyBalance: CGFloat,
                                                        measuredAt: Date) {
-        let visionSubjectsPayload = trackingResult.subjects.map {
-            FeatureSnapshotVisionSubject(
-                boundingBox: $0.boundingBox,
-                confidence: Double($0.confidence),
-                isFace: $0.isFace
-            )
-        }
-        let visionBaseConfidence = visionSubjectsPayload.map(\.confidence).max()
+        let visionSample = makeVisionFeatureSample(from: trackingResult, measuredAt: measuredAt)
 
         updateFeatures { features in
             features.horizon.angle = horizon.isAvailable ? horizon.angleDegrees : 0
@@ -14500,20 +15207,10 @@ extension AnalysisPipeline {
                     confidence: subject.confidence
                 )
             }
-            self.debugData.visionMeasuredAt = measuredAt
+            self.debugData.visionMeasuredAt = visionSample?.measuredAt
             self.debugData.saliencyCenter = trackingResult.saliencyCenter
             self.debugData.saliencyRegion = trackingResult.saliencyRegion
-            self.latestVisionSample = FeatureSample(
-                value: FeatureSnapshotVisionPayload(
-                    subjects: visionSubjectsPayload,
-                    saliencyCenter: trackingResult.saliencyCenter,
-                    saliencyRegion: trackingResult.saliencyRegion,
-                    faceCount: trackingResult.faceCount,
-                    personCount: trackingResult.personCount
-                ),
-                measuredAt: measuredAt,
-                baseConfidence: visionBaseConfidence ?? (trackingResult.saliencyRegion == nil ? nil : 0.48)
-            )
+            self.latestVisionSample = visionSample
             self.latestHorizonSample = FeatureSample(
                 value: FeatureSnapshotHorizonPayload(
                     angleDegrees: horizon.isAvailable ? Double(horizon.angleDegrees) : 0,
@@ -14566,9 +15263,26 @@ extension AnalysisPipeline {
     }
 
     @MainActor
-    private func testingApplyDetrForReplay(detections: [DETRDetection],
+    private func testingApplyDetrForReplay(result: DETRDetectionResult,
                                            pixelBuffer: CVPixelBuffer,
                                            measuredAt: Date) {
+        guard case .success(let detections) = result else {
+            var preserveVision = false
+            updateFeatures { features in
+                self.debugData.detrDetections = []
+                self.debugData.detrMeasuredAt = nil
+                self.latestDetrSample = nil
+                preserveVision = self.shouldPreserveVisionSubjectForLiveDetr(features)
+                guard !preserveVision else { return }
+                features.composition.subjectAreaRatio = 0
+                features.subject.objectName = nil
+                features.subject.isFace = false
+                features.subject.isPerson = false
+                features.subject.count = 0
+            }
+            if !preserveVision { overlayState.primaryBoundingBox = nil }
+            return
+        }
         let priorityDetections = compositionPriorityDetections(detections)
         var updatedPrimaryBoundingBox: CGRect?
         var shouldClearPrimaryBoundingBox = false
@@ -14577,7 +15291,7 @@ extension AnalysisPipeline {
             self.debugData.detrDetections = detections
             self.debugData.detrMeasuredAt = measuredAt
             self.latestDetrSample = self.makeDetrFeatureSample(
-                from: detections,
+                from: result,
                 measuredAt: measuredAt
             )
 
@@ -14629,11 +15343,11 @@ extension AnalysisPipeline {
     }
 
     private func testingDetectForReplay(pixelBuffer: CVPixelBuffer,
-                                        orientation: CGImagePropertyOrientation) async -> [DETRDetection] {
-        guard let detector = detrDetector else { return [] }
+                                        orientation: CGImagePropertyOrientation) async -> DETRDetectionResult {
+        guard let detector = detrDetector else { return .failure(.modelUnavailable) }
         return await withCheckedContinuation { continuation in
-            detector.detect(pixelBuffer: pixelBuffer, orientation: orientation) { detections in
-                continuation.resume(returning: detections)
+            detector.detect(pixelBuffer: pixelBuffer, orientation: orientation) { result in
+                continuation.resume(returning: result)
             }
         }
     }
@@ -14655,15 +15369,24 @@ extension AnalysisPipeline {
                                                 orientation: CGImagePropertyOrientation,
                                                 capturedAt: Date,
                                                 options: SemanticEvalStillImageReplayOptions,
-                                                technicalQualitySignal: TechnicalQualitySignal) async -> SemanticEvalCandidateOutput {
+                                                technicalCapture: FrameTechnicalQualityDebugCapture,
+                                                stillModelExecution: SemanticEvalStillModelExecution) async -> SemanticEvalCandidateOutput {
         let snapshot = makeFeatureSnapshot(
             mode: .live,
             frameId: frameId,
             capturedAt: capturedAt
         )
         let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
-        let deterministicCritique = frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
-        let (fusionOutput, _) = await resolveCritiqueWithHybridFusion(
+        let technicalEvidence = technicalCapture.evidence
+        let technicalQualitySignal = technicalEvidence.resolvedMeasurement(for: snapshot).signal ?? .empty
+        let technicalMetadata = SemanticEvalTechnicalMeasurementMetadata(
+            evidence: technicalEvidence, snapshot: snapshot, debugCapture: technicalCapture
+        )
+        let deterministicCritique = frameCritiqueEngine.analyze(
+            snapshot: snapshot, semantics: semantics,
+            technicalEvidence: technicalEvidence
+        )
+        let (fusionOutput, liveNeuralOutcome) = await resolveCritiqueWithHybridFusion(
             mode: .live,
             capturedAt: capturedAt,
             pixelBuffer: options.runNeuralEvidence ? pixelBuffer : nil,
@@ -14673,6 +15396,11 @@ extension AnalysisPipeline {
             semantics: semantics,
             deterministicCritique: deterministicCritique,
             forcePauseExecution: false
+        )
+        let modelExecution = SemanticEvalModelExecutionMetadata(
+            frameId: frameId, mode: .live, capturedAt: capturedAt,
+            neuralRequested: options.runNeuralEvidence, neuralOutcome: liveNeuralOutcome,
+            stillFeatures: stillModelExecution
         )
         let critique = fusionOutput.critique
         let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
@@ -14724,23 +15452,20 @@ extension AnalysisPipeline {
                 technicalQualitySignal: technicalQualitySignal
             ),
             dominantFutureActions: technicalQualitySignal.dominantFutureActionIds,
-            technicalConfidenceFloor: testingSemanticEvalTechnicalConfidenceFloor(
-                technicalQualitySignal,
-                snapshot: snapshot,
-                semantics: semantics,
-                allowsAmbiguousTechnicalSilenceLowConfidence: options.runHeavyModels
-            ),
+            critiqueVerdictConfidence: critique.verdictConfidence,
+            confidenceContext: .stillReplayCandidate,
             debugNumericFeatures: testingSemanticEvalDebugNumericFeatures(
                 snapshot: snapshot,
                 semantics: semantics,
                 critique: critique,
+                technicalMetadata: technicalMetadata,
                 pixelBuffer: pixelBuffer
             ),
             debugSemanticLabels: testingSemanticEvalDebugSemanticLabels(
                 semantics: semantics,
                 critique: critique
             )
-        )
+        ).withModelExecution(modelExecution).withTechnicalMeasurement(technicalMetadata)
     }
 
     @MainActor
@@ -14751,14 +15476,23 @@ extension AnalysisPipeline {
                                                  orientation: CGImagePropertyOrientation,
                                                  capturedAt: Date,
                                                  options: SemanticEvalStillImageReplayOptions,
-                                                 technicalQualitySignal: TechnicalQualitySignal) async -> SemanticEvalCandidateOutput {
+                                                 technicalCapture: FrameTechnicalQualityDebugCapture,
+                                                 stillModelExecution: SemanticEvalStillModelExecution) async -> SemanticEvalCandidateOutput {
         let snapshot = makeFeatureSnapshot(
             mode: .pause,
             frameId: frameId,
             capturedAt: capturedAt
         )
         let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
-        let deterministicCritique = frameCritiqueEngine.analyze(snapshot: snapshot, semantics: semantics)
+        let technicalEvidence = technicalCapture.evidence
+        let technicalQualitySignal = technicalEvidence.resolvedMeasurement(for: snapshot).signal ?? .empty
+        let technicalMetadata = SemanticEvalTechnicalMeasurementMetadata(
+            evidence: technicalEvidence, snapshot: snapshot, debugCapture: technicalCapture
+        )
+        let deterministicCritique = frameCritiqueEngine.analyze(
+            snapshot: snapshot, semantics: semantics,
+            technicalEvidence: technicalEvidence
+        )
         let legacySuggestions = suggestionEngine.rankedSuggestions(
             from: featureQueue.sync { features },
             topN: 6,
@@ -14780,6 +15514,11 @@ extension AnalysisPipeline {
             semantics: semantics,
             deterministicCritique: deterministicCritique,
             forcePauseExecution: true
+        )
+        let modelExecution = SemanticEvalModelExecutionMetadata(
+            frameId: frameId, mode: .pause, capturedAt: capturedAt,
+            neuralRequested: options.runNeuralEvidence, neuralOutcome: pauseNeuralOutcome,
+            stillFeatures: stillModelExecution
         )
         let critique = fusionOutput.critique
         let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
@@ -14809,63 +15548,12 @@ extension AnalysisPipeline {
                 validatedEvidence: validatedVisualEvidence
             )
         )
-        let structuredDecision = structuredPathDecision(
-            mode: .pause,
-            critique: critique,
-            plan: plan,
-            motionState: snapshot.motion.state
-        )
-        let contextualCorrection = contextualSemanticCorrection(
-            snapshot: snapshot,
-            semantics: semantics,
-            critique: critique,
-            technicalQualitySignal: technicalQualitySignal
-        )
-        if contextualCorrection == nil,
-           let technicalPauseIssue = technicalPauseIssue(
-            signal: technicalQualitySignal,
-            snapshot: snapshot,
-            semantics: semantics,
-            semanticTips: semanticTips.pauseExpandedTips,
-            structuredAvailable: structuredDecision.isAvailable,
-            structuredVerdict: critique.verdict
-        ),
-           let technicalPauseCritique = makeTechnicalPauseCritiquePresentation(
-                frameId: snapshot.frameId,
-                issue: technicalPauseIssue,
-                signal: technicalQualitySignal,
-                snapshot: snapshot,
-                semantics: semantics,
-                allowsAmbiguousTechnicalSilenceLowConfidence: options.runHeavyModels
-           ) {
-            return SemanticEvalCandidateOutput.pause(
-                recordId: recordId,
-                filename: filename,
-                critique: technicalPauseCritique,
-                source: options.source,
-                runtimeClaim: options.runtimeClaim,
-                futureActions: futureActions,
-                dominantFutureActions: technicalQualitySignal.dominantFutureActionIds,
-                technicalConfidenceFloor: testingSemanticEvalTechnicalConfidenceFloor(
-                    technicalQualitySignal,
-                    snapshot: snapshot,
-                    semantics: semantics,
-                    allowsAmbiguousTechnicalSilenceLowConfidence: options.runHeavyModels
-                ),
-                debugNumericFeatures: testingSemanticEvalDebugNumericFeatures(
-                    snapshot: snapshot,
-                    semantics: semantics,
-                    critique: critique,
-                    pixelBuffer: pixelBuffer
-                ),
-                debugSemanticLabels: testingSemanticEvalDebugSemanticLabels(
-                    semantics: semantics,
-                    critique: critique
-                )
-            )
-        }
-
-        guard structuredDecision.isAvailable else {
+        guard let pauseCritique = selectPreparedPauseReplayPresentation(
+            snapshot: snapshot, semantics: semantics, critique: critique, plan: plan,
+            semanticTips: semanticTips, technicalQualitySignal: technicalQualitySignal,
+            technicalEvidence: technicalEvidence,
+            allowsAmbiguousTechnicalSilenceLowConfidence: options.runHeavyModels
+        ) else {
             return SemanticEvalCandidateOutput.hidden(
                 recordId: recordId,
                 filename: filename,
@@ -14873,28 +15561,22 @@ extension AnalysisPipeline {
                 source: options.source,
                 runtimeClaim: options.runtimeClaim,
                 futureActions: futureActions,
+                critiqueVerdictConfidence: critique.verdictConfidence,
+                confidenceContext: .stillReplayCandidate,
                 traceIds: critique.traceRefs,
                 debugNumericFeatures: testingSemanticEvalDebugNumericFeatures(
                     snapshot: snapshot,
                     semantics: semantics,
                     critique: critique,
+                    technicalMetadata: technicalMetadata,
                     pixelBuffer: pixelBuffer
                 ),
                 debugSemanticLabels: testingSemanticEvalDebugSemanticLabels(
                     semantics: semantics,
                     critique: critique
                 )
-            )
+            ).withModelExecution(modelExecution).withTechnicalMeasurement(technicalMetadata)
         }
-        let pauseCritique = makePauseCritiquePresentation(
-            critique: critique,
-            plan: plan,
-            semanticTips: semanticTips.pauseExpandedTips,
-            semanticFallbackUsed: semanticTips.fallbackUsed,
-            snapshot: snapshot,
-            semantics: semantics,
-            technicalQualitySignal: technicalQualitySignal
-        )
         return SemanticEvalCandidateOutput.pause(
             recordId: recordId,
             filename: filename,
@@ -14903,28 +15585,78 @@ extension AnalysisPipeline {
             runtimeClaim: options.runtimeClaim,
             futureActions: futureActions,
             dominantFutureActions: technicalQualitySignal.dominantFutureActionIds,
-            technicalConfidenceFloor: testingSemanticEvalTechnicalConfidenceFloor(
-                technicalQualitySignal,
-                snapshot: snapshot,
-                semantics: semantics,
-                allowsAmbiguousTechnicalSilenceLowConfidence: options.runHeavyModels
-            ),
+            critiqueVerdictConfidence: critique.verdictConfidence,
+            confidenceContext: .stillReplayCandidate,
             debugNumericFeatures: testingSemanticEvalDebugNumericFeatures(
                 snapshot: snapshot,
                 semantics: semantics,
                 critique: critique,
+                technicalMetadata: technicalMetadata,
                 pixelBuffer: pixelBuffer
             ),
             debugSemanticLabels: testingSemanticEvalDebugSemanticLabels(
                 semantics: semantics,
                 critique: critique
             )
+        ).withModelExecution(modelExecution).withTechnicalMeasurement(technicalMetadata)
+    }
+
+    /// The actual still replay and deterministic completed-analysis controls use
+    /// this same selector. Production pause remains the independent reference.
+    private func selectPreparedPauseReplayPresentation(
+        snapshot: FrameFeatureSnapshot, semantics: SceneSemanticsReport,
+        critique: CritiqueReport, plan: RecommendationPlan,
+        semanticTips: SemanticTipPlannerOutput, technicalQualitySignal: TechnicalQualitySignal,
+        technicalEvidence: FrameTechnicalQualityEvidence,
+        allowsAmbiguousTechnicalSilenceLowConfidence: Bool
+    ) -> PauseCritiquePresentation? {
+        let structuredDecision = structuredPathDecision(
+            mode: .pause, critique: critique, plan: plan, motionState: snapshot.motion.state
+        )
+        // Match production pause: select eligible technical advice before
+        // constructing the semantic presentation.
+        if let issue = technicalPauseIssue(
+            signal: technicalQualitySignal, snapshot: snapshot, semantics: semantics,
+            semanticTips: semanticTips.pauseExpandedTips,
+            structuredAvailable: structuredDecision.isAvailable, structuredVerdict: critique.verdict
+        ), let presentation = makeTechnicalPauseCritiquePresentation(
+            frameId: snapshot.frameId, issue: issue, signal: technicalQualitySignal,
+            snapshot: snapshot, semantics: semantics, technicalEvidence: technicalEvidence,
+            allowsAmbiguousTechnicalSilenceLowConfidence: allowsAmbiguousTechnicalSilenceLowConfidence
+        ) {
+            return presentation
+        }
+        guard structuredDecision.isAvailable else { return nil }
+        return makePauseCritiquePresentation(
+            critique: critique, plan: plan, semanticTips: semanticTips.pauseExpandedTips,
+            semanticFallbackUsed: semanticTips.fallbackUsed, snapshot: snapshot, semantics: semantics,
+            technicalQualitySignal: technicalQualitySignal, technicalEvidence: technicalEvidence
+        )
+    }
+
+    /// Supplies completed evidence only; performs no capture, detector, model,
+    /// pixel measurement or provider request. Planning and replay selection are real.
+    func testingMakePreparedPauseReplayPresentation(
+        snapshot: FrameFeatureSnapshot, semantics: SceneSemanticsReport,
+        critique: CritiqueReport, technicalEvidence: FrameTechnicalQualityEvidence
+    ) -> PauseCritiquePresentation? {
+        guard let signal = technicalEvidence.measuredSignal(for: snapshot) else { return nil }
+        let plan = recommendationPlanner.makePlan(snapshot: snapshot, critique: critique)
+        let tips = semanticTipPlanner.plan(input: SemanticTipPlannerInput(
+            frameId: snapshot.frameId, mode: .pause, critique: critique,
+            recommendationPlan: plan, semantics: semantics
+        ))
+        return selectPreparedPauseReplayPresentation(
+            snapshot: snapshot, semantics: semantics, critique: critique, plan: plan,
+            semanticTips: tips, technicalQualitySignal: signal, technicalEvidence: technicalEvidence,
+            allowsAmbiguousTechnicalSilenceLowConfidence: true
         )
     }
 
     private func testingSemanticEvalDebugNumericFeatures(snapshot: FrameFeatureSnapshot,
                                                          semantics: SceneSemanticsReport,
                                                          critique: CritiqueReport,
+                                                         technicalMetadata: SemanticEvalTechnicalMeasurementMetadata,
                                                          pixelBuffer: CVPixelBuffer? = nil) -> [String: Double] {
         var features: [String: Double] = [
             "aesthetic_score": snapshot.aesthetics.score ?? -1,
@@ -14938,6 +15670,7 @@ extension AnalysisPipeline {
             "horizon_confidence": snapshot.horizon.confidence,
             "object_count": Double(snapshot.objects.totalCount),
             "person_count": Double(snapshot.subjectSignals.personCount),
+            "vision_available": snapshot.sources.vision.available ? 1 : 0,
             "primary_subject_confidence": semantics.primarySubject.confidence,
             "scene_type_confidence": semantics.sceneTypeConfidence,
             "separation_score": semantics.readability.separationScore,
@@ -14952,16 +15685,28 @@ extension AnalysisPipeline {
         }
         if let pixelBuffer {
             features["frame_aspect_ratio"] = testingSemanticEvalFrameAspectRatio(pixelBuffer: pixelBuffer)
-            let signal = technicalQualitySignal(for: pixelBuffer)
-            features["technical_issue_count"] = Double(signal.issues.count)
-            features["technical_dominant_count"] = Double(signal.issues.filter(\.isDominant).count)
-            features["technical_max_severity"] = signal.issues.map(\.severity).max() ?? 0
-            features["technical_max_confidence"] = signal.issues.map(\.confidence).max() ?? 0
         }
+        features.merge(technicalMetadata.numericFeatures) { _, measured in measured }
         for issue in critique.issues {
             features["severity_\(issue.type.rawValue)"] = issue.severity
         }
         return features
+    }
+
+    /// Calls the same numeric export owner used by all three replay return paths.
+    func testingTechnicalMeasurementExport(snapshot: FrameFeatureSnapshot,
+                                           evidence: FrameTechnicalQualityEvidence,
+                                           pixelBuffer: CVPixelBuffer) ->
+        (metadata: SemanticEvalTechnicalMeasurementMetadata, numericFeatures: [String: Double]) {
+        let semantics = sceneSemanticsAnalyzer.analyze(snapshot: snapshot)
+        let critique = frameCritiqueEngine.analyze(
+            snapshot: snapshot, semantics: semantics, technicalEvidence: evidence
+        )
+        let metadata = SemanticEvalTechnicalMeasurementMetadata(evidence: evidence, snapshot: snapshot)
+        return (metadata, testingSemanticEvalDebugNumericFeatures(
+            snapshot: snapshot, semantics: semantics, critique: critique,
+            technicalMetadata: metadata, pixelBuffer: pixelBuffer
+        ))
     }
 
     /// Edge density from a downsampled luma grid — proxy for background
@@ -15022,41 +15767,6 @@ extension AnalysisPipeline {
             }
         }
         return labels
-    }
-
-    private func testingSemanticEvalTechnicalConfidenceFloor(_ signal: TechnicalQualitySignal,
-                                                             snapshot: FrameFeatureSnapshot,
-                                                             semantics: SceneSemanticsReport,
-                                                             allowsAmbiguousTechnicalSilenceLowConfidence: Bool = true) -> Double? {
-        if let dominantIssue = dominantTechnicalQualityIssue(from: signal),
-           shouldUseLowConfidenceForAmbiguousTechnicalSilence(
-                issue: dominantIssue,
-                signal: signal,
-                snapshot: snapshot,
-                semantics: semantics,
-                isEnabled: allowsAmbiguousTechnicalSilenceLowConfidence
-           ) {
-            return nil
-        }
-        let strongestIssue = signal.issues.max { lhs, rhs in
-            max(lhs.confidence, lhs.severity) < max(rhs.confidence, rhs.severity)
-        }
-        guard let strongestIssue else { return nil }
-        if shouldUseLowConfidenceForAmbiguousTechnicalSilence(
-            issue: strongestIssue,
-            signal: signal,
-            snapshot: snapshot,
-            semantics: semantics,
-            isEnabled: allowsAmbiguousTechnicalSilenceLowConfidence
-        ) {
-            return nil
-        }
-        let strongest = max(strongestIssue.confidence, strongestIssue.severity)
-        guard strongest >= 0.55 else { return nil }
-        if strongestIssue.type == .underexposure {
-            return min(0.74, max(0.55, strongest))
-        }
-        return max(0.75, strongest)
     }
 
     private func testingSemanticEvalFutureActions(snapshot: FrameFeatureSnapshot,
@@ -15367,6 +16077,7 @@ extension AnalysisPipeline {
                                         semantics: SceneSemanticsReport? = nil,
                                         legacySuggestion: Suggestion?,
                                         structuredAvailable: Bool,
+                                        technicalEvidence: FrameTechnicalQualityEvidence? = nil,
                                         now: Date = Date()) {
         let resolvedSemantics = semantics ?? SceneSemanticsReport(
             frameId: frameId,
@@ -15402,7 +16113,8 @@ extension AnalysisPipeline {
             semanticTips: semanticTips,
             legacySuggestion: legacySuggestion,
             structuredAvailable: structuredAvailable,
-            technicalQualitySignal: .empty,
+            technicalQualitySignal: technicalEvidence?.measuredSignal(for: snapshot) ?? .empty,
+            technicalEvidence: technicalEvidence,
             now: now
         )
         // DEBUG-only formatting seam: without immutable frame evidence this
@@ -15432,6 +16144,7 @@ extension AnalysisPipeline {
                                         semantics: SceneSemanticsReport,
                                         legacySuggestion: Suggestion?,
                                         structuredAvailable: Bool,
+                                        technicalEvidence: FrameTechnicalQualityEvidence? = nil,
                                         now: Date = Date()) {
         let semanticTips = semanticTipPlanner.plan(
             input: SemanticTipPlannerInput(
@@ -15452,7 +16165,8 @@ extension AnalysisPipeline {
             semanticTips: semanticTips,
             legacySuggestion: legacySuggestion,
             structuredAvailable: structuredAvailable,
-            technicalQualitySignal: .empty,
+            technicalQualitySignal: technicalEvidence?.measuredSignal(for: snapshot) ?? .empty,
+            technicalEvidence: technicalEvidence,
             now: now
         )
         // DEBUG-only formatting seam: no production identity or binding is
@@ -15530,6 +16244,11 @@ extension AnalysisPipeline {
             legacySuggestion: legacySuggestion,
             structuredAvailable: structuredAvailable,
             technicalQualitySignal: technicalQualitySignal,
+            technicalEvidence: FrameTechnicalQualityEvidence(
+                frameID: frameEvidence.sourceFrameId,
+                capturedAt: frameEvidence.capturedAt,
+                measurement: technicalQualityAnalyzer.measurement(pixelBuffer: frameEvidence.pixelBuffer)
+            ),
             allowStabilityWhileMoving: allowStabilityWhileMoving
         )
     }
@@ -15703,12 +16422,24 @@ extension AnalysisPipeline {
     func testingMakePauseCritiquePresentation(critique: CritiqueReport,
                                               plan: RecommendationPlan,
                                               semanticTips: [SemanticTipCandidate] = [],
-                                              semanticFallbackUsed: Bool = false) -> PauseCritiquePresentation {
+                                              semanticFallbackUsed: Bool = false,
+                                              snapshot: FrameFeatureSnapshot? = nil,
+                                              semantics: SceneSemanticsReport? = nil,
+                                              technicalQualitySignal: TechnicalQualitySignal = .empty,
+                                              technicalEvidence: FrameTechnicalQualityEvidence? = nil,
+                                              semanticEntityGrounding: PauseSemanticEntityGrounding? = nil,
+                                              sceneControlFacts: PauseSceneControlFacts = .unknown) -> PauseCritiquePresentation {
         makePauseCritiquePresentation(
             critique: critique,
             plan: plan,
             semanticTips: semanticTips,
-            semanticFallbackUsed: semanticFallbackUsed
+            semanticFallbackUsed: semanticFallbackUsed,
+            snapshot: snapshot,
+            semantics: semantics,
+            technicalQualitySignal: technicalQualitySignal,
+            technicalEvidence: technicalEvidence,
+            semanticEntityGrounding: semanticEntityGrounding,
+            sceneControlFacts: sceneControlFacts
         )
     }
 

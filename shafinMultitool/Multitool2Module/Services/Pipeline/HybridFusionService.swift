@@ -187,11 +187,19 @@ struct HybridFusionService {
             return HybridFusionOutput(critique: input.critique, decisions: decisions)
         }
 
-        let summary = summaryBuilder.makeSummary(
+        let rebuiltSummary = summaryBuilder.makeSummary(
             summaryId: input.critique.summary.id,
             verdict: input.critique.verdict,
             rankedStrengths: strengthValues,
             rankedIssues: issueValues
+        )
+        // Fusion changes finding support/order, never the deterministic verdict.
+        // Keep its availability-aware sentence while rebuilding the explanations.
+        let summary = CritiqueSummary(
+            id: rebuiltSummary.id,
+            shortVerdict: input.critique.summary.shortVerdict,
+            whyGood: rebuiltSummary.whyGood,
+            whyProblematic: rebuiltSummary.whyProblematic
         )
         let summaryTraceRef = input.critique.traceRefs.first(where: { $0.contains("_crit_summary_") })
             ?? "trc_\(input.critique.frameId)_crit_summary_main"

@@ -1,6 +1,1030 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "set.camera.placement.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Position in frame"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Расположение в кадре"
+          }
+        }
+      }
+    },
+    "set.camera.placement.scope": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a numbered region or mark an area yourself. Your goal is to place that area closer to the center in the next frame by reframing. This sets a composition preference; it does not confirm that anything has moved."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выберите область с номером или выделите свою. Ваша цель — при следующей съёмке изменить кадрирование так, чтобы эта область оказалась ближе к центру. Это пожелание к композиции, а не подтверждение перемещения."
+          }
+        }
+      }
+    },
+    "set.camera.placement.apply": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save goal"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить цель"
+          }
+        }
+      }
+    },
+    "set.camera.placement.cancel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отмена"
+          }
+        }
+      }
+    },
+    "set.camera.placement.reset": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear goal"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать цель"
+          }
+        }
+      }
+    },
+    "set.camera.placement.observed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected area now"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбранная область сейчас"
+          }
+        }
+      }
+    },
+    "set.camera.placement.goal": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desired position: center"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Желаемое положение: центр"
+          }
+        }
+      }
+    },
+    "set.camera.placement.saved": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Centering goal saved"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Цель расположения в центре сохранена"
+          }
+        }
+      }
+    },
+    "set.camera.placement.reframe": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For the next frame, reframe so the selected area appears closer to the center."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Для следующего кадра измените кадрирование, чтобы выбранная область оказалась ближе к центру."
+          }
+        }
+      }
+    },
+    "set.camera.placement.region": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Region"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Область"
+          }
+        }
+      }
+    },
+    "set.camera.placement.manual": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select an area manually"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выделить область вручную"
+          }
+        }
+      }
+    },
+    "set.camera.placement.ambiguous": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a numbered region or mark your own area."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выберите область с номером или выделите свою."
+          }
+        }
+      }
+    },
+    "set.camera.placement.left": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Left edge in the image"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Левый край на изображении"
+          }
+        }
+      }
+    },
+    "set.camera.placement.bottom": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bottom edge in the image"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нижний край на изображении"
+          }
+        }
+      }
+    },
+    "set.camera.placement.width": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Area width"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ширина области"
+          }
+        }
+      }
+    },
+    "set.camera.placement.height": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Area height"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Высота области"
+          }
+        }
+      }
+    },
+    "set.camera.scene_control.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scene control"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Управление сценой"
+          }
+        }
+      }
+    },
+    "set.camera.scene_control.scope": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These answers apply only to this frame and help choose useful advice."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ответы относятся только к этому кадру и помогают выбрать подходящие советы."
+          }
+        }
+      }
+    },
+    "set.camera.scene_control.objects": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can you move the objects?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Можно переставлять предметы?"
+          }
+        }
+      }
+    },
+    "set.camera.scene_control.participants": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can you direct the people in the frame?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Можно давать указания людям в кадре?"
+          }
+        }
+      }
+    },
+    "set.camera.scene_control.lighting": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can you change the lighting?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Можно менять освещение?"
+          }
+        }
+      }
+    },
+    "set.camera.scene_control.unknown": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not specified"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не указано"
+          }
+        }
+      }
+    },
+    "set.camera.scene_control.allowed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yes"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Да"
+          }
+        }
+      }
+    },
+    "set.camera.scene_control.forbidden": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет"
+          }
+        }
+      }
+    },
+    "set.camera.scene_control.reset": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset answers"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сбросить ответы"
+          }
+        }
+      }
+    },
+    "set.camera.scene_control.done": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Готово"
+          }
+        }
+      }
+    },
+    "set.camera.cloud.analyze": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Analyze selected frame online"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разобрать выбранный кадр онлайн"
+          }
+        }
+      }
+    },
+    "set.camera.cloud.preparing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing the selected frame…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подготовка выбранного кадра…"
+          }
+        }
+      }
+    },
+    "set.camera.cloud.awaiting_consent": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for your approval"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ожидается ваше согласие"
+          }
+        }
+      }
+    },
+    "set.camera.cloud.analyzing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Analyzing the selected frame…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Анализ выбранного кадра…"
+          }
+        }
+      }
+    },
+    "set.camera.cloud.complete": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Additional analysis received"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дополнительный разбор получен"
+          }
+        }
+      }
+    },
+    "set.camera.cloud.no_evidence": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No additional observations could be confirmed"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось подтвердить дополнительные наблюдения"
+          }
+        }
+      }
+    },
+    "set.camera.cloud.error.preparation": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This frame cannot be prepared. Return to the camera and pause again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось подготовить этот кадр. Вернитесь к камере и снова поставьте на паузу."
+          }
+        }
+      }
+    },
+    "set.camera.cloud.error.authentication": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not authorize this device for online analysis."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось авторизовать устройство для онлайн-анализа."
+          }
+        }
+      }
+    },
+    "set.camera.cloud.error.network": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connection was interrupted. You can try again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Соединение прервано. Можно повторить попытку."
+          }
+        }
+      }
+    },
+    "set.camera.cloud.error.service": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Online analysis is unavailable right now. You can continue shooting."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Онлайн-анализ сейчас недоступен. Можно продолжить съёмку."
+          }
+        }
+      }
+    },
+    "set.camera.cloud.error.response": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The response could not be confirmed for this frame."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось подтвердить ответ для этого кадра."
+          }
+        }
+      }
+    },
+    "set.camera.cloud.consent.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send this frame for online analysis?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправить этот кадр для онлайн-анализа?"
+          }
+        }
+      }
+    },
+    "set.camera.cloud.consent.scope": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One selected image and its local analysis context will be sent. Faces, visible text and objects remain in the image. Location and EXIF metadata are removed; large images are reduced in size. This does not anonymize its contents."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Будут отправлены одно выбранное изображение и контекст его локального анализа. Лица, видимый текст и предметы остаются на изображении. Геоданные и EXIF удаляются; большие изображения уменьшаются. Это не делает его содержимое анонимным."
+          }
+        }
+      }
+    },
+    "set.camera.cloud.consent.image_retention": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Image retention by the service"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хранение изображения в сервисе"
+          }
+        }
+      }
+    },
+    "set.camera.cloud.consent.request_retention": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Analysis request records"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Записи запросов анализа"
+          }
+        }
+      }
+    },
+    "set.camera.cloud.consent.selected_image": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected image to send"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбранное изображение для отправки"
+          }
+        }
+      }
+    },
+    "set.camera.cloud.consent.send": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send this frame"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправить этот кадр"
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete service content"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удаление данных из сервиса"
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.scope": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request deletion of stored scene content and cached camera-analysis responses for this installation, and stop its active service requests. Service credentials are removed from this device after confirmation. Saved projects, recordings and other local media remain on your device."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Можно запросить удаление сохранённого содержимого сцен и временно сохранённых ответов анализа кадров этой установки, а также остановить её активные запросы. После подтверждения приложение удалит данные входа в сервис с устройства. Сохранённые проекты, записи и другие локальные медиа останутся на устройстве."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.retained": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Security records, request history used to enforce quotas and prevent repeat requests, and expense records remain subject to the service policy. Data already received by an AI provider follows that provider's separate retention terms."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Служебные записи безопасности, история запросов для контроля квот и защиты от повторных запросов, а также учёт расходов сохраняются согласно политике сервиса. Данные, уже полученные ИИ-провайдером, хранятся по его отдельным условиям."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.confirm.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete this installation's service content?"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить данные этой установки из сервиса?"
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.confirm.body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service will stop active scene and camera-analysis requests and clear stored scene content and cached analysis responses. After confirmation, the app removes its service credentials. Server scene generation and online camera analysis will be disabled for this installation. This cannot be undone. Local projects and media stay. The retained records and provider terms on this page still apply."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сервис остановит запросы сцен и анализа кадров, удалит сохранённое содержимое сцен и временные ответы анализа. После подтверждения приложение удалит данные входа в сервис. Серверная генерация сцен и онлайн-анализ кадров будут отключены для этой установки. Отменить удаление нельзя. Локальные проекты и медиа останутся. Указанные на странице правила сохранения служебных записей и условия провайдера продолжают действовать."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.action": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete service content"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить данные из сервиса"
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.cancel": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep data"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оставить данные"
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.check": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check or retry deletion"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверить или повторить запрос"
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.loading": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking this device's saved service state…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверяем сохранённое состояние сервиса на устройстве…"
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deletion is unavailable in this service configuration. No deletion has been confirmed."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удаление недоступно в этой конфигурации сервиса. Подтверждения удаления нет."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.no_installation": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No service credentials for this installation were found on this device. This does not confirm deletion of data held by a service."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "На устройстве не найдены данные входа в сервис для этой установки. Это не подтверждает удаление данных, хранящихся в сервисе."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.ready": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can request deletion for the service installation saved on this device. Deletion will disable server scene generation and online camera analysis for this installation. Local projects and media will remain on your device."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Можно запросить удаление для установки сервиса, сохранённой на этом устройстве. После удаления серверная генерация сцен и онлайн-анализ кадров будут отключены для этой установки. Локальные проекты и медиа останутся на устройстве."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.working": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The deletion request is being processed. Completion is not yet confirmed."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запрос удаления обрабатывается. Завершение пока не подтверждено."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.pending": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service has not finished deletion. You can close this page and check again later. Closing this page does not cancel the request."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сервис ещё не завершил удаление. Можно закрыть страницу и проверить статус позже. Закрытие страницы не отменяет запрос."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.complete": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service confirmed deletion of this installation's scene content and cleanup of its camera-analysis requests and cached responses. The app removed its service credentials. Server scene generation and online camera analysis are disabled for this installation. Local projects and media remain. The retained records and provider terms above still apply."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сервис подтвердил удаление содержимого сцен этой установки, остановку анализа кадров и очистку временных ответов. Приложение удалило данные входа в сервис. Серверная генерация сцен и онлайн-анализ кадров отключены для этой установки. Локальные проекты и медиа остались. Указанные выше правила сохранения служебных записей и условия провайдера продолжают действовать."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.uncertain": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deletion could not be confirmed. The saved request has been kept so you can check or retry it. Missing confirmation does not mean the data was deleted."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось подтвердить удаление. Сохранённый запрос можно проверить или повторить. Отсутствие подтверждения не означает, что данные удалены."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.error.network": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service could not be reached. Deletion is not confirmed. Check your connection, then check or retry the saved request."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось связаться с сервисом. Удаление не подтверждено. Проверьте подключение и повторите проверку или сохранённый запрос."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.error.storage": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The app could not access the securely stored deletion state. Deletion is not confirmed. Unlock the device and try again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось получить доступ к защищённому состоянию удаления на устройстве. Удаление не подтверждено. Разблокируйте устройство и повторите попытку."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.error.policy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service policy does not match the saved request. Deletion is not confirmed. Review the service's current policy and deletion procedure."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Политика сервиса не совпадает с сохранённым запросом. Удаление не подтверждено. Проверьте действующую политику сервиса и порядок удаления данных."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.error.receipt": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The deletion receipt is unavailable or expired. This does not confirm deletion. Use the deletion procedure in the service policy for further verification."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подтверждение запроса удаления недоступно или срок его действия истёк. Это не подтверждает удаление. Для дальнейшей проверки используйте порядок удаления данных из политики сервиса."
+          }
+        }
+      }
+    },
+    "set.privacy.deletion.error.failed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service did not provide a valid deletion confirmation. The app has not marked this request complete. You can check or retry the saved request."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сервис не предоставил корректного подтверждения удаления. Приложение не считает запрос завершённым. Можно проверить или повторить сохранённый запрос."
+          }
+        }
+      }
+    },
     "set.generator.transfer.title": {
       "localizations": {
         "en": {
@@ -342,13 +1366,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "You can read this page without allowing camera or microphone access. Opening it does not send a scene or grant permission."
+            "value": "You can read this page without allowing camera or microphone access. Opening it does not send your content or authorize a transfer."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Эта страница доступна без разрешения на камеру и микрофон. Её открытие не отправляет сцену и не даёт разрешений."
+            "value": "Эта страница доступна без разрешения на камеру и микрофон. Её открытие не отправляет ваши материалы и не разрешает их передачу."
           }
         }
       }
@@ -406,13 +1430,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Camera Coach analyses camera frames on this device. AR uses the camera and motion sensors to place the scene. These frames and AR maps are not included in a Scene Generator request."
+            "value": "Live Camera Coach analysis runs on this device. If online analysis is connected, you can separately choose one paused frame, review the image and service policy, and approve sending that image with its local analysis context. Video is not sent automatically. AR uses the camera and motion sensors; Scene Generator requests do not include camera frames or AR maps."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Camera Coach анализирует кадры на этом устройстве. AR использует камеру и датчики движения для размещения сцены. Кадры и карты AR не входят в запрос Scene Generator."
+            "value": "Текущий разбор Camera Coach выполняется на устройстве. Если онлайн-анализ подключён, можно отдельно выбрать кадр на паузе, проверить изображение и политику сервиса и разрешить отправку этого изображения с контекстом локального анализа. Видео автоматически не отправляется. AR использует камеру и датчики движения; кадры и карты AR не входят в запрос Scene Generator."
           }
         }
       }
@@ -486,13 +1510,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The service uses Apple App Attest and an identifier for this installation to authenticate requests and enforce usage limits. Job identifiers and security records can link requests from the same installation. They are not an advertising identifier."
+            "value": "The service uses Apple App Attest and an identifier for this installation to authenticate requests and enforce usage limits. Request identifiers and security records can link requests from the same installation. They are not an advertising identifier."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сервис использует Apple App Attest и идентификатор этой установки для проверки запросов и ограничений использования. Идентификаторы заданий и записи безопасности могут связывать запросы одной установки. Это не рекламный идентификатор."
+            "value": "Сервис использует Apple App Attest и идентификатор этой установки для проверки запросов и ограничений использования. Идентификаторы запросов и записи безопасности могут связывать запросы одной установки. Это не рекламный идентификатор."
           }
         }
       }
@@ -2214,13 +3238,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move the phone to the chosen spot while keeping the main subject in the preview"
+            "value": "Try another camera position while keeping the main subject in frame"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сместись с телефоном к выбранной точке, удерживая главное в превью"
+            "value": "Попробуй другую точку съёмки, сохраняя главный объект в кадре"
           }
         }
       }
@@ -5863,6 +6887,38 @@
         }
       }
     },
+    "set.pause.assessment_unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not enough information to assess this frame."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недостаточно данных для оценки кадра."
+          }
+        }
+      }
+    },
+    "set.pause.no_supported_action": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No supported adjustment for this frame."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет подходящего совета для этого кадра."
+          }
+        }
+      }
+    },
     "set.pause.no_action": {
       "localizations": {
         "en": {
@@ -7116,13 +8172,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cannot move during playback or recording"
+            "value": "Finish the current operation before moving the actor"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Нельзя перемещать во время воспроизведения или записи"
+            "value": "Завершите текущее действие перед перемещением актёра"
           }
         }
       }
@@ -8044,13 +9100,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move the phone to the chosen spot while keeping the person in the preview"
+            "value": "Try another camera position while keeping the main subject in frame"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сместись с телефоном к выбранной точке, удерживая человека в превью"
+            "value": "Попробуй другую точку съёмки, сохраняя главный объект в кадре"
           }
         }
       }
@@ -8252,13 +9308,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aim the camera so this distraction leaves the frame"
+            "value": "Try another camera position so the bright spot draws less attention"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Направь камеру так, чтобы эта помеха вышла за край кадра"
+            "value": "Попробуй другую точку съёмки, чтобы яркое пятно меньше отвлекало"
           }
         }
       }
@@ -8364,13 +9420,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Move to the chosen spot where the background behind the person is cleaner"
+            "value": "Try another camera position so the background distracts less from the subject"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сместись к выбранной точке, где фон за человеком чище"
+            "value": "Попробуй другую точку съёмки, чтобы фон меньше отвлекал от главного"
           }
         }
       }
@@ -9701,6 +10757,13 @@
             "value": "Да, так и задумано"
           }
         }
+      }
+    },
+    "set.pause.intent_preserved": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Your intended style is preserved." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Сохраняем выбранный вами стиль." } }
       }
     },
     "set.camera.intent.deny": {

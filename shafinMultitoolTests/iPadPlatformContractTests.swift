@@ -2,7 +2,8 @@ import XCTest
 @testable import shafinMultitool
 
 /// M10-001: the iPad platform contract — universal binary, full
-/// orientations, fullscreen-only windowing, no compatibility mode.
+/// orientations and native resizable windows. Full-screen compatibility mode
+/// scales controls below their intended hit size on iPadOS 26.
 /// Assertions read the built product's Info.plist (the artifact that ships),
 /// not the repository working directory.
 final class iPadPlatformContractTests: XCTestCase {
@@ -27,9 +28,9 @@ final class iPadPlatformContractTests: XCTestCase {
         }
     }
 
-    func testFullscreenOnlyWindowing() {
-        XCTAssertEqual(info["UIRequiresFullScreen"] as? Bool, true,
-                       "multitasking windowing is out of scope and must not be claimed")
+    func testWindowingDoesNotUseScaledFullScreenCompatibilityMode() {
+        XCTAssertEqual(info["UIRequiresFullScreen"] as? Bool, false,
+                       "master plan §3.8 requires resizable iPad layouts with native control sizes")
     }
 
     func testMinimumOSVersion() {

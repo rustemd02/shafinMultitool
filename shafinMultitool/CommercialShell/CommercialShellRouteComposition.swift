@@ -191,6 +191,7 @@ final class CommercialSceneLibraryRoute: CommercialViewControllerRoute {
     private(set) var lastSceneWorkspaceTeardownResult: SceneWorkspaceTeardownResult?
     let navigationController: UINavigationController
     private let sceneLibraryRootViewController: UIViewController
+    private let originalLibraryTopInset: CGFloat
     private let interactivePopGuard: CommercialNavigationInteractivePopGuard
 
     init(sceneLibraryViewController: UIViewController) {
@@ -202,11 +203,21 @@ final class CommercialSceneLibraryRoute: CommercialViewControllerRoute {
         let interactivePopGuard = CommercialNavigationInteractivePopGuard()
         self.navigationController = navigationController
         self.sceneLibraryRootViewController = sceneLibraryViewController
+        self.originalLibraryTopInset = sceneLibraryViewController.additionalSafeAreaInsets.top
         self.interactivePopGuard = interactivePopGuard
         super.init(viewController: navigationController)
 
         interactivePopGuard.navigationController = navigationController
         navigationController.interactivePopGestureRecognizer?.delegate = interactivePopGuard
+    }
+
+    /// Only the Library header needs this space. The workspace owns its own
+    /// camera geometry and command placement after it is pushed.
+    func updateLibraryChromeInset(top: CGFloat) {
+        let inset = originalLibraryTopInset + top
+        if sceneLibraryRootViewController.additionalSafeAreaInsets.top != inset {
+            sceneLibraryRootViewController.additionalSafeAreaInsets.top = inset
+        }
     }
 
     override func deactivateAndWait() async -> CommercialRouteDeactivationResult {
@@ -270,12 +281,12 @@ final class CommercialSceneLibraryRoute: CommercialViewControllerRoute {
     }
 }
 
-/// Scene Mode keeps its fixed 16:9 workspace in landscape while the application
-/// target remains free to expose portrait for Camera Coach.
+/// The phone workspace uses landscape. iPad windows must lay out at their
+/// actual size instead of entering the system's scaled compatibility layout.
 @MainActor
 final class CommercialSceneNavigationController: UINavigationController {
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        .landscape
+        UIDevice.current.userInterfaceIdiom == .pad ? .all : .landscape
     }
 }
 

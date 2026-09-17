@@ -755,12 +755,12 @@ final class CameraCoachRecordingCoordinator: ObservableObject {
 
     private func requirePermission(_ permission: AppPermission) async throws {
         let permissions = self.permissions
-        var snapshot = try await CameraPermissionWaiter.value {
+        var snapshot = try await PermissionRequestWaiter.value {
             await permissions.snapshot(for: permission)
         }
         try Task.checkCancellation()
         if snapshot.authorization == .notDetermined, snapshot.availability == .available {
-            snapshot = try await CameraPermissionWaiter.value { await permissions.request(permission) }
+            snapshot = try await PermissionRequestWaiter.value { await permissions.request(permission) }
         }
         try Task.checkCancellation()
         guard snapshot.availability == .available, snapshot.authorization == .authorized else {
@@ -890,48 +890,4 @@ private final class CameraRecordingAudioObservation: @unchecked Sendable {
     }
 
     deinit { tokens.forEach { center.removeObserver($0) } }
-}
-
-/// Cancelling an owner must not wait for an OS prompt to be answered. The
-/// shared PermissionClient request may finish later, but its stale result can
-/// only complete this one-shot value; it cannot resume the cancelled owner.
-private final class CameraPermissionWaiter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var result: Result<PermissionSnapshot, Error>?
-    private var continuation: CheckedContinuation<PermissionSnapshot, Error>?
-
-    static func value(
-        _ operation: @escaping @Sendable () async -> PermissionSnapshot
-    ) async throws -> PermissionSnapshot {
-        let waiter = CameraPermissionWaiter()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                waiter.install(continuation)
-                Task { waiter.finish(.success(await operation())) }
-            }
-        } onCancel: {
-            waiter.finish(.failure(CancellationError()))
-        }
-    }
-
-    private func install(_ continuation: CheckedContinuation<PermissionSnapshot, Error>) {
-        lock.lock()
-        if let result {
-            lock.unlock()
-            continuation.resume(with: result)
-        } else {
-            self.continuation = continuation
-            lock.unlock()
-        }
-    }
-
-    private func finish(_ result: Result<PermissionSnapshot, Error>) {
-        lock.lock()
-        guard self.result == nil else { lock.unlock(); return }
-        self.result = result
-        let continuation = self.continuation
-        self.continuation = nil
-        lock.unlock()
-        continuation?.resume(with: result)
-    }
 }

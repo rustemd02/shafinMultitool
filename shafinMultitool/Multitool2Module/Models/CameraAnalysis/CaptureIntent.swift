@@ -131,7 +131,7 @@ struct CaptureIntentOutput: Equatable, Codable, Sendable {
 
 /// N3 `CaptureIntent`: the user's explicit intent for one analysis generation.
 ///
-/// An empty `styles` array means the intent is UNKNOWN.  It is never silently
+/// An empty `styles` array means the style is UNKNOWN. It is never silently
 /// promoted to `natural`.  Multiple explicitly selected styles are preserved
 /// together.  Any change of selection, styles, constraints or output must bump
 /// `intentRevision`; the `with*` helpers enforce that.
@@ -141,6 +141,7 @@ struct CaptureIntent: Equatable, Sendable {
     let styles: [CaptureStyle]
     let constraints: [CaptureIntentUserConstraint]
     let output: CaptureIntentOutput?
+    let imagePlacementGoal: CaptureImagePlacementGoal?
     let intentRevision: UInt64
 
     init(selection: CaptureIntentSelection,
@@ -148,12 +149,14 @@ struct CaptureIntent: Equatable, Sendable {
          styles: [CaptureStyle] = [],
          constraints: [CaptureIntentUserConstraint] = [],
          output: CaptureIntentOutput? = nil,
+         imagePlacementGoal: CaptureImagePlacementGoal? = nil,
          intentRevision: UInt64 = 0) {
         self.selection = selection
         self.subjectRefs = subjectRefs
         self.styles = styles
         self.constraints = constraints
         self.output = output
+        self.imagePlacementGoal = imagePlacementGoal
         self.intentRevision = intentRevision
     }
 
@@ -189,6 +192,10 @@ struct CaptureIntent: Equatable, Sendable {
         if let output {
             errors.append(contentsOf: output.validate())
         }
+        if let imagePlacementGoal,
+           !imagePlacementGoal.isValid || selection != .user || subjectRefs != [imagePlacementGoal.entityRef] {
+            errors.append("captureIntent.imagePlacementGoal requires one exact user-selected region")
+        }
         return errors
     }
 
@@ -204,6 +211,7 @@ struct CaptureIntent: Equatable, Sendable {
                          styles: [CaptureStyle]? = nil,
                          constraints: [CaptureIntentUserConstraint]? = nil,
                          output: CaptureIntentOutput?? = nil,
+                         imagePlacementGoal: CaptureImagePlacementGoal?? = nil,
                          subjectRefs: [String]? = nil) -> CaptureIntent {
         let next = CaptureIntent(
             selection: selection ?? self.selection,
@@ -211,6 +219,7 @@ struct CaptureIntent: Equatable, Sendable {
             styles: styles ?? self.styles,
             constraints: constraints ?? self.constraints,
             output: output ?? self.output,
+            imagePlacementGoal: imagePlacementGoal ?? self.imagePlacementGoal,
             intentRevision: intentRevision
         )
         guard next != self else { return self }
@@ -220,6 +229,7 @@ struct CaptureIntent: Equatable, Sendable {
             styles: next.styles,
             constraints: next.constraints,
             output: next.output,
+            imagePlacementGoal: next.imagePlacementGoal,
             intentRevision: intentRevision &+ 1
         )
     }
@@ -242,6 +252,13 @@ struct CaptureIntent: Equatable, Sendable {
 
     func withSubjectRefs(_ subjectRefs: [String]) -> CaptureIntent {
         revised(subjectRefs: subjectRefs)
+    }
+
+    /// Atomic object + goal selection. Placement is not a ninth style flag.
+    func withImagePlacementGoal(_ goal: CaptureImagePlacementGoal?) -> CaptureIntent {
+        revised(selection: goal == nil ? .unknown : .user,
+                imagePlacementGoal: .some(goal),
+                subjectRefs: goal.map { [$0.entityRef] } ?? [])
     }
 }
 

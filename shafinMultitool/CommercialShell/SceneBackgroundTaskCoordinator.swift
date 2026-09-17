@@ -1,37 +1,78 @@
 import UIKit
 
-/// M7-015 background policy seam. UIKit's `UIApplication.beginBackgroundTask`
-/// cannot be faked directly, so the shell talks to this narrow coordinator
-/// and lifecycle tests inject a deterministic fake.
+/// One lease per background dispatch; all callbacks use the originating lease.
+@MainActor
 protocol SceneBackgroundTaskCoordinating: AnyObject {
     func begin(withName name: String) -> UIBackgroundTaskIdentifier
     func end(_ identifier: UIBackgroundTaskIdentifier)
 }
 
-/// Production coordinator. UIKit calls the expiration handler shortly before
-/// the lease is revoked; ending it there keeps the lease bookkeeping honest.
-/// The recording finalize itself runs on the serialized owners, which are
-/// idempotent, so an expired lease can never produce a second finalize or a
-/// hidden second clip.
+/// Tests exercise the production lease owner while replacing only UIKit calls.
+@MainActor
+protocol SceneBackgroundTaskPlatform: AnyObject {
+    func begin(withName name: String, expirationHandler: @escaping () -> Void) -> UIBackgroundTaskIdentifier
+    func end(_ identifier: UIBackgroundTaskIdentifier)
+}
+
+@MainActor
+private final class UIApplicationBackgroundTaskPlatform: SceneBackgroundTaskPlatform {
+    func begin(withName name: String, expirationHandler: @escaping () -> Void) -> UIBackgroundTaskIdentifier {
+        UIApplication.shared.beginBackgroundTask(withName: name, expirationHandler: expirationHandler)
+    }
+
+    func end(_ identifier: UIBackgroundTaskIdentifier) {
+        UIApplication.shared.endBackgroundTask(identifier)
+    }
+}
+
+@MainActor
 final class UIKitSceneBackgroundTaskCoordinator: SceneBackgroundTaskCoordinating {
-    private var liveIdentifier: UIBackgroundTaskIdentifier = .invalid
+    private final class Lease {
+        let key = UUID()
+        var identifier: UIBackgroundTaskIdentifier = .invalid
+        var ended = false
+    }
+
+    private let platform: any SceneBackgroundTaskPlatform
+    private var leases: [UUID: Lease] = [:]
+
+    init(platform: any SceneBackgroundTaskPlatform) {
+        self.platform = platform
+    }
+
+    convenience init() {
+        self.init(platform: UIApplicationBackgroundTaskPlatform())
+    }
 
     func begin(withName name: String) -> UIBackgroundTaskIdentifier {
-        let identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
-            // UIKit invokes this shortly before revoking the lease; end the
-            // currently live identifier exactly once.
-            guard let self, self.liveIdentifier != .invalid else { return }
-            let current = self.liveIdentifier
-            self.liveIdentifier = .invalid
-            UIApplication.shared.endBackgroundTask(current)
+        let lease = Lease()
+        leases[lease.key] = lease
+        let identifier = platform.begin(withName: name) { [weak self, weak lease] in
+            guard let self, let lease else { return }
+            self.finish(lease)
         }
-        liveIdentifier = identifier
+        lease.identifier = identifier
+        if identifier == .invalid {
+            lease.ended = true
+            leases.removeValue(forKey: lease.key)
+        } else if lease.ended {
+            // Also handle a platform expiration delivered before begin returns.
+            platform.end(identifier)
+        }
         return identifier
     }
 
     func end(_ identifier: UIBackgroundTaskIdentifier) {
-        guard identifier != .invalid, liveIdentifier == identifier else { return }
-        liveIdentifier = .invalid
-        UIApplication.shared.endBackgroundTask(identifier)
+        guard identifier != .invalid,
+              let lease = leases.values.first(where: { $0.identifier == identifier }) else { return }
+        finish(lease)
+    }
+
+    private func finish(_ lease: Lease) {
+        guard !lease.ended else { return }
+        lease.ended = true
+        leases.removeValue(forKey: lease.key)
+        guard lease.identifier != .invalid else { return }
+        platform.end(lease.identifier)
     }
 }

@@ -87,7 +87,7 @@ final class SceneParserService {
         }
         lastRuntimeTrace = output.trace
         lastChunkState = makeChunkState(from: output.result.script, fallbackLocationName: state?.locationName)
-        print("🤖 [PARSER_V8] route=\(output.trace.route.rawValue) reasons=\(output.trace.reasons.joined(separator: ","))")
+        SceneGeneratorDiagnosticsLogger.shared.log("[PARSER_V8] route=\(output.trace.route.rawValue), reasonCount=\(output.trace.reasons.count)")
         return output.result
     }
 
@@ -248,7 +248,7 @@ final class SceneParserService {
         }
         lastRuntimeTrace = output.trace
         lastChunkState = makeChunkState(from: output.result.script, fallbackLocationName: state?.locationName)
-        print("🤖 [PARSER_V8] route=\(output.trace.route.rawValue) reasons=\(output.trace.reasons.joined(separator: ","))")
+        SceneGeneratorDiagnosticsLogger.shared.log("[PARSER_V8] route=\(output.trace.route.rawValue), reasonCount=\(output.trace.reasons.count)")
         return output.result
     }
 
@@ -367,6 +367,11 @@ final class SceneParserService {
     /// Read-only diagnostic: whether a remote provider is currently wired.
     var isRemoteOffloadConfigured: Bool {
         remoteOffloadEnabled && remotePlanProvider != nil
+    }
+
+    /// Keep recovery reachable while generation is disabled for this client.
+    var installationDeletionProvider: SceneInstallationDeletionProviding? {
+        (remotePlanProvider as? SceneGenerationClient)?.installationDeletionProvider
     }
 
     func setV9RuntimeMode(_ mode: V9RuntimeMode) {
@@ -972,7 +977,7 @@ final class SceneParserService {
                 type: .human,
                 name: name
             ))
-            print("🔍 [EXTRACT_ACTORS] Создан именованный актёр: id='actor_\(actorCounter)', name='\(name)'")
+            SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTORS] named actor created count=\(actors.count)")
             actorCounter += 1
         }
         if !namedActors.isEmpty {
@@ -1028,7 +1033,7 @@ final class SceneParserService {
             // Пропускаем если уже обработали этот тип
             if processedTypes.contains(type) {
                 #if DEBUG
-                print("🔍 [EXTRACT_ACTORS] Пропуск ключевого слова '\(keyword)' (тип \(type.rawValue) уже обработан)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTORS] actor type already processed type=\(type.rawValue)")
                 #endif
                 continue
             }
@@ -1044,7 +1049,7 @@ final class SceneParserService {
                                         originalText.contains("ЛЕВ")
                     if isCapitalized {
                         #if DEBUG
-                        print("🔍 [EXTRACT_ACTORS] Слово '\(keyword)' определено как имя персонажа (human)")
+                        SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTORS] character name classified as human")
                         #endif
                         actualType = .human
                     }
@@ -1060,12 +1065,12 @@ final class SceneParserService {
                         name: nil
                     )
                     actors.append(actor)
-                    print("🔍 [EXTRACT_ACTORS] Создан актёр из ключевого слова: id='\(actor.id)', type=\(actualType.rawValue)")
+                    SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTORS] actor created type=\(actualType.rawValue)")
                     actorCounter += 1
                     processedTypes.insert(actualType)
                 } else {
                     #if DEBUG
-                    print("🔍 [EXTRACT_ACTORS] Пропуск '\(keyword)' - есть число перед ним")
+                    SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTORS] numbered reference skipped")
                     #endif
                 }
             }
@@ -1137,7 +1142,7 @@ final class SceneParserService {
 
     private func extractObjects(from text: String, markedObjects: [MarkedObject] = []) -> [SceneObject] {
 #if DEBUG
-        print("🔍 [EXTRACT_OBJECTS] Начало извлечения объектов из текста: '\(text)'")
+        SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_OBJECTS] started inputChars=\(text.count)")
 #endif
         print("🔍 [EXTRACT_OBJECTS] Размеченных объектов для поиска: \(markedObjects.count)")
 
@@ -1153,7 +1158,7 @@ final class SceneParserService {
 
             for (index, reference) in references.enumerated() {
                 #if DEBUG
-                print("🔍 [EXTRACT_OBJECTS]   Reference[\(index)]: markerId=\(reference.markerId.uuidString), markerName='\(reference.markerName)', matchedText='\(reference.matchedText)'")
+                SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_OBJECTS] processing marked reference index=\(index)")
                 #endif
 
                 if let marker = markedObjects.first(where: { $0.id == reference.markerId }) {
@@ -1166,7 +1171,7 @@ final class SceneParserService {
                         relativePosition: relativePosition
                     )
                     objects.append(newObject)
-                    print("🔍 [EXTRACT_OBJECTS] Создан объект из markedObject: id='\(newObject.id)', type=\(newObject.type.rawValue), position=\(newObject.detectedPosition != nil ? "YES" : "NO")")
+                    SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_OBJECTS] marked object created type=\(newObject.type.rawValue), hasPosition=\(newObject.detectedPosition != nil)")
                     objectCounter += 1
                     matchedMarkedObjectIds.insert(marker.id)
                 }
@@ -1186,7 +1191,7 @@ final class SceneParserService {
             // Пропускаем если объект этого типа уже добавлен (из markedObjects или ранее)
             if processedObjectTypes.contains(type) {
                 #if DEBUG
-                print("🔍 [EXTRACT_OBJECTS] Пропуск ключевого слова '\(keyword)' (тип \(type.rawValue) уже добавлен)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_OBJECTS] type already processed type=\(type.rawValue)")
                 #endif
                 continue
             }
@@ -1194,7 +1199,7 @@ final class SceneParserService {
             // Используем лемматизацию для поиска
             if lemmatizer.textContainsKeyword(text, keyword: keyword) {
                 #if DEBUG
-                print("🔍 [EXTRACT_OBJECTS] Найдено ключевое слово '\(keyword)' (тип \(type.rawValue)) через лемматизацию")
+                SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_OBJECTS] lemma match type=\(type.rawValue)")
                 #endif
 
                 let relativePosition = determineRelativePosition(for: keyword, in: text)
@@ -1207,7 +1212,7 @@ final class SceneParserService {
                 )
                 objects.append(newObject)
                 processedObjectTypes.insert(type)
-                print("🔍 [EXTRACT_OBJECTS] Создан стандартный объект: id='\(newObject.id)', type=\(newObject.type.rawValue), relativePosition=\(newObject.relativePosition.rawValue)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_OBJECTS] standard object created type=\(newObject.type.rawValue)")
                 objectCounter += 1
             }
         }
@@ -1225,7 +1230,7 @@ final class SceneParserService {
         markedObjects: [MarkedObject] = []
     ) -> [SceneAction] {
 #if DEBUG
-        print("🔍 [EXTRACT_ACTIONS] Начало извлечения действий из текста: '\(text)'")
+        SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTIONS] started inputChars=\(text.count)")
 #endif
         print("🔍 [EXTRACT_ACTIONS] Доступно актёров: \(actors.count), объектов: \(objects.count)")
 
@@ -1291,12 +1296,12 @@ final class SceneParserService {
 
                 let fromWord = String(text[fromRange])
                 let toWord = String(text[toRange])
-                print("🔍 [EXTRACT_ACTIONS] Паттерн 'от X к Y': from='\(fromWord)', to='\(toWord)'")
+                SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTIONS] directed movement pattern matched")
 
                 // Находим объекты (с учётом markedObjects)
                 let fromObject = findMatchingObject(word: fromWord, objects: objects, markedObjects: markedObjects)
                 let toObject = findMatchingObject(word: toWord, objects: objects, markedObjects: markedObjects)
-                print("🔍 [EXTRACT_ACTIONS] Найденные объекты: fromObject=\(fromObject?.id ?? "nil"), toObject=\(toObject?.id ?? "nil")")
+                SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTIONS] hasOrigin=\(fromObject != nil), hasDestination=\(toObject != nil)")
 
                 // Определяем тип действия (бег или ходьба)
                 let actionType: SceneAction.ActionType = text.contains("бег") ? .run : .walk
@@ -1420,7 +1425,7 @@ final class SceneParserService {
                                     modifier: extractModifier(from: text)
                                 )
                                 actions.append(action)
-                                print("🔍 [EXTRACT_ACTIONS] Создано действие: id='\(action.id)', actorId='\(action.actorId)', type=\(action.type.rawValue), target='\(action.target ?? "nil")'")
+                                SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTIONS] action created type=\(action.type.rawValue)")
                                 actionCounter += 1
                             }
                         } else {
@@ -1434,11 +1439,11 @@ final class SceneParserService {
                                 modifier: extractModifier(from: text)
                             )
                             actions.append(action)
-                            print("🔍 [EXTRACT_ACTIONS] Создано действие: id='\(action.id)', actorId='\(action.actorId)', type=\(action.type.rawValue), target='\(action.target ?? "nil")'")
+                            SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTIONS] action created type=\(action.type.rawValue)")
                             actionCounter += 1
                         }
                     } else {
-                        print("🔍 [EXTRACT_ACTIONS] Объект для слова '\(objectWord)' не найден")
+                        SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTIONS] object reference unresolved")
                     }
                 }
             }
@@ -1489,7 +1494,7 @@ final class SceneParserService {
                                     modifier: nil
                                 )
                                 actions.append(action)
-                                print("🔍 [EXTRACT_ACTIONS] Создано действие stop: id='\(action.id)', actorId='\(action.actorId)', target='\(action.target ?? "nil")'")
+                                SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTIONS] stop action created")
                                 actionCounter += 1
                             }
                         }
@@ -1531,7 +1536,7 @@ final class SceneParserService {
         actions = actions.filter { action in
             let key = "\(action.actorId)_\(action.type.rawValue)_\(action.target ?? "")_\(action.direction?.rawValue ?? "")"
             if seen.contains(key) {
-                print("🔍 [EXTRACT_ACTIONS] Удалён дубликат: \(action.id) (\(key))")
+                SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTIONS] duplicate removed")
                 return false
             }
             seen.insert(key)
@@ -1748,7 +1753,7 @@ final class SceneParserService {
 
     private func findMatchingObject(word: String, objects: [SceneObject], markedObjects: [MarkedObject] = []) -> SceneObject? {
         let lowercasedWord = word.lowercased()
-        print("🔍 [FIND_MATCHING_OBJECT] Поиск объекта для слова: '\(lowercasedWord)'")
+        SceneGeneratorDiagnosticsLogger.shared.log("[FIND_MATCHING_OBJECT] started")
 
         // 1. Сначала ищем в markedObjects по имени (с лемматизацией).
         // Repeated labels are an explicit ambiguity, never a first-match guess.
@@ -1758,7 +1763,7 @@ final class SceneParserService {
             return nil
         }
         if let marker = markerCandidates.first {
-            print("🔍 [FIND_MATCHING_OBJECT] Найден markedObject: id=\(marker.id.uuidString), name='\(marker.name)', type=\(marker.type.rawValue)")
+            SceneGeneratorDiagnosticsLogger.shared.log("[FIND_MATCHING_OBJECT] marker matched type=\(marker.type.rawValue)")
 
             // Ищем соответствующий SceneObject в списке объектов
             let matches = objects.filter { object in
@@ -1772,7 +1777,7 @@ final class SceneParserService {
             }
 
             if matches.count == 1, let found = matches.first {
-                print("🔍 [FIND_MATCHING_OBJECT] Найден SceneObject из markedObject: id='\(found.id)'")
+                SceneGeneratorDiagnosticsLogger.shared.log("[FIND_MATCHING_OBJECT] scene object matched to marker")
                 return found
             } else {
                 print("🔍 [FIND_MATCHING_OBJECT] MarkedObject найден, но соответствующий SceneObject не найден в списке")
@@ -1787,11 +1792,11 @@ final class SceneParserService {
         for (keyword, type) in KeywordsMapping.objectKeywords {
             if lemmatizer.matchesKeyword(lowercasedWord, keyword: keyword) {
                 #if DEBUG
-                print("🔍 [FIND_MATCHING_OBJECT] Совпадение с ключевым словом '\(keyword)' (тип \(type.rawValue))")
+                SceneGeneratorDiagnosticsLogger.shared.log("[FIND_MATCHING_OBJECT] standard type matched type=\(type.rawValue)")
                 #endif
                 let matches = objects.filter { $0.type == type }
                 if matches.count == 1, let found = matches.first {
-                    print("🔍 [FIND_MATCHING_OBJECT] Найден стандартный объект: id='\(found.id)'")
+                    SceneGeneratorDiagnosticsLogger.shared.log("[FIND_MATCHING_OBJECT] standard object matched")
                     return found
                 } else if matches.count > 1 {
                     print("🔍 [FIND_MATCHING_OBJECT] Неоднозначный стандартный объект: кандидатов=\(matches.count)")
@@ -1812,14 +1817,14 @@ final class SceneParserService {
         let uniquePartialMatches = Array(Set(partialMatches.map(\.id))).sorted()
         if uniquePartialMatches.count == 1, let id = uniquePartialMatches.first,
            let object = objects.first(where: { $0.id == id }) {
-            print("🔍 [FIND_MATCHING_OBJECT] Найдено частичное совпадение: id='\(object.id)'")
+            SceneGeneratorDiagnosticsLogger.shared.log("[FIND_MATCHING_OBJECT] partial match found")
             return object
         }
         if uniquePartialMatches.count > 1 {
             print("🔍 [FIND_MATCHING_OBJECT] Неоднозначное частичное совпадение: кандидатов=\(uniquePartialMatches.count)")
         }
 
-        print("🔍 [FIND_MATCHING_OBJECT] Объект не найден для слова '\(lowercasedWord)'")
+        SceneGeneratorDiagnosticsLogger.shared.log("[FIND_MATCHING_OBJECT] unresolved")
         return nil
     }
 
@@ -1934,7 +1939,7 @@ final class SceneParserService {
 
         for word in words {
             if pluralVerbForms.contains(word) {
-                print("🔍 [EXTRACT_ACTIONS] Найден глагол во множественном числе: '\(word)'")
+                SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTIONS] plural verb found")
                 return true
             }
         }
@@ -1960,7 +1965,7 @@ final class SceneParserService {
                 // Проверяем множественное число глаголов в найденном тексте
                 for word in matchedWords {
                     if pluralVerbForms.contains(word) {
-                        print("🔍 [EXTRACT_ACTIONS] Найден глагол во множественном числе в паттерне: '\(word)'")
+                        SceneGeneratorDiagnosticsLogger.shared.log("[EXTRACT_ACTIONS] plural verb pattern found")
                         return true
                     }
                 }

@@ -242,6 +242,8 @@ struct SETPauseReviewBand: View {
     let eventLedger: SETMotionEventLedger?
     let reduceMotion: Bool
     let actionAccessibilityIdentifier: String?
+    /// Scrollable owners can show the complete action at accessibility sizes.
+    var detailLineLimit: Int? = 3
     let onAction: () -> Void
 
     @State private var progress: CGFloat = 0
@@ -264,7 +266,7 @@ struct SETPauseReviewBand: View {
                     .font(SETTypography.uiBodyFont())
                     .foregroundStyle(.setTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .lineLimit(3)
+                    .lineLimit(detailLineLimit)
             }
 
             if isLoading {

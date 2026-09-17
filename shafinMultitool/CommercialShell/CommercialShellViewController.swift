@@ -158,6 +158,15 @@ public final class CommercialShellViewController: UIViewController {
         }
     }
 
+    public override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if let libraryRoute = activeRouteStorage as? CommercialSceneLibraryRoute {
+            let obstruction = modeControl.isHidden
+                ? 0 : max(0, modeControl.frame.maxY - view.safeAreaInsets.top)
+            libraryRoute.updateLibraryChromeInset(top: obstruction)
+        }
+    }
+
     /// Requests a section change. Requests received during teardown are coalesced to the
     /// most recent section and applied after the current route has released.
     public func select(_ section: CommercialSection) {

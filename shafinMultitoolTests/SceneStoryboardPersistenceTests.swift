@@ -555,6 +555,106 @@ final class SceneStoryboardPersistenceTests: XCTestCase {
     }
 
     @MainActor
+    func testActorDragsRejectInterruptedRecoveringAndMarkingWorkspaceWithoutSaving() async throws {
+        for state in ["interrupted", "recovering", "marking"] {
+            for wholeTrack in [false, true] {
+                let (viewModel, store, project) = try fixture(actorMovement: true)
+                let actor = try XCTUnwrap(viewModel.plannedScene?.placedActors.first)
+                let originalEditor = viewModel.activeStoryboardEditDraft
+                if state == "marking" {
+                    viewModel.toggleMarkingMode()
+                    XCTAssertTrue(viewModel.isMarkingMode)
+                } else {
+                    viewModel.handleARSessionInterruption()
+                    if state == "recovering" { viewModel.handleARSessionInterruptionEnded() }
+                    XCTAssertEqual(viewModel.isARSessionInterrupted, state == "interrupted")
+                    XCTAssertEqual(viewModel.isARSessionRecovering, state == "recovering")
+                }
+                let destination = Position3D(x: actor.initialPosition.x + 0.5, y: 0, z: actor.initialPosition.z - 0.4)
+                let committed: Bool
+                if wholeTrack {
+                    committed = await viewModel.commitStoryboardActorTrackDrag(
+                        actorID: actor.actorId, from: actor.initialPosition.simdVector, to: destination)
+                } else {
+                    committed = await viewModel.commitStoryboardActorDrag(
+                        actorID: actor.actorId, beatID: "beat_1", to: destination)
+                }
+                XCTAssertFalse(committed, "State=\(state), wholeTrack=\(wholeTrack)")
+                XCTAssertTrue(store.attempts.isEmpty, "Blocked drag must not reach the persistence owner")
+                XCTAssertEqual(viewModel.plannedScene, project.plannedScene)
+                XCTAssertEqual(viewModel.activeStoryboardEditDraft, originalEditor)
+                XCTAssertEqual(store.loadUnifiedSceneProject(named: project.name)?.0, project)
+                let expectedCopy: SETCopyKey = state == "interrupted" ? .cameraInterrupted
+                    : state == "recovering" ? .cameraResuming : .storyboardDragBusy
+                XCTAssertEqual(viewModel.storyboardDragFeedback, viewModel.localizedCopy(expectedCopy))
+            }
+        }
+    }
+
+    @MainActor
+    func testActorDragsRecheckInterruptionAndRecoveryAfterPendingSnapshot() async throws {
+        for recovering in [false, true] {
+            for wholeTrack in [false, true] {
+                let (viewModel, store, project) = try fixture(actorMovement: true)
+                let actor = try XCTUnwrap(viewModel.plannedScene?.placedActors.first)
+                let captured = expectation(description: "snapshot blocks actor commit")
+                let gate = SnapshotGate(entered: captured)
+                defer { gate.release() }
+                viewModel.testingWorldMapCaptureOverride = { await gate.capture() }
+                let snapshot = Task { await viewModel.testingPersistProjectSnapshot() }
+                await fulfillment(of: [captured], timeout: 3)
+                let drag = Task {
+                    let destination = Position3D(x: actor.initialPosition.x + 0.5, y: 0, z: actor.initialPosition.z - 0.4)
+                    if wholeTrack {
+                        return await viewModel.commitStoryboardActorTrackDrag(
+                            actorID: actor.actorId, from: actor.initialPosition.simdVector, to: destination)
+                    }
+                    return await viewModel.commitStoryboardActorDrag(
+                        actorID: actor.actorId, beatID: "beat_1", to: destination)
+                }
+                try await waitForMutation(viewModel)
+                XCTAssertTrue(store.attempts.isEmpty)
+                viewModel.handleARSessionInterruption()
+                if recovering { viewModel.handleARSessionInterruptionEnded() }
+                gate.release()
+                _ = await snapshot.value
+                let committed = await drag.value
+                XCTAssertFalse(committed, "recovering=\(recovering), wholeTrack=\(wholeTrack)")
+                XCTAssertEqual(store.attempts.count, 1, "Only the original snapshot may save")
+                XCTAssertEqual(viewModel.plannedScene, project.plannedScene)
+                XCTAssertEqual(store.loadUnifiedSceneProject(named: project.name)?.0.plannedScene, project.plannedScene)
+                XCTAssertEqual(viewModel.storyboardDragFeedback,
+                               viewModel.localizedCopy(recovering ? .cameraResuming : .cameraInterrupted))
+            }
+        }
+    }
+
+    @MainActor
+    func testActorPlanEditsRemainAvailableWithoutARViewOrReadySession() async throws {
+        for wholeTrack in [false, true] {
+            let (viewModel, store, project) = try fixture(actorMovement: true)
+            let actor = try XCTUnwrap(viewModel.plannedScene?.placedActors.first)
+            viewModel.isARSessionReady = false
+            XCTAssertNil(viewModel.arView)
+            XCTAssertFalse(viewModel.isARSessionInterrupted)
+            XCTAssertFalse(viewModel.isARSessionRecovering)
+            let destination = Position3D(x: actor.initialPosition.x + 0.5, y: 0, z: actor.initialPosition.z - 0.4)
+            let committed: Bool
+            if wholeTrack {
+                committed = await viewModel.commitStoryboardActorTrackDrag(
+                    actorID: actor.actorId, from: actor.initialPosition.simdVector, to: destination)
+            } else {
+                committed = await viewModel.commitStoryboardActorDrag(
+                    actorID: actor.actorId, beatID: "beat_1", to: destination)
+            }
+            XCTAssertTrue(committed, "Pure plan edits must not acquire a camera/tracking prerequisite")
+            XCTAssertEqual(store.attempts.count, 1)
+            XCTAssertNotEqual(viewModel.plannedScene, project.plannedScene)
+            XCTAssertEqual(store.loadUnifiedSceneProject(named: project.name)?.0.plannedScene, viewModel.plannedScene)
+        }
+    }
+
+    @MainActor
     func testCompletedSnapshotWaiterCannotSuppressMetadataOrRetireNextWriter() async throws {
         let (viewModel, store, project) = try fixture()
         let firstWritten = expectation(description: "first snapshot saved before waiter returns")

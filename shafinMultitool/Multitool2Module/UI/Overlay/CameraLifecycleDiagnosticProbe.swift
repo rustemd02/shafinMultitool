@@ -55,6 +55,10 @@ final class CameraLifecycleDiagnosticView: UIView {
         @unknown default: windowSceneState = "unknown"
         }
         return [
+            "autBundle=\(Bundle.main.bundleIdentifier ?? "unreported")",
+            "autPID=\(ProcessInfo.processInfo.processIdentifier)",
+            "autSimulatorUDID=\(ProcessInfo.processInfo.environment["SIMULATOR_UDID"] ?? "unreported")",
+            "autSimulatorDevice=\(ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? "unreported")",
             "viewModel=\(viewModel.map { String(describing: $0.lifecycleState) } ?? "unavailable")",
             "manager=\(cameraManager.map { String(describing: $0.lifecycleState) } ?? "unavailable")",
             "swiftUIPhase=\(swiftUIScenePhase)",
@@ -62,6 +66,9 @@ final class CameraLifecycleDiagnosticView: UIView {
             "deviceOrientation=\(UIDevice.current.orientation.rawValue)",
             "deviceEvents=\(UIDevice.current.isGeneratingDeviceOrientationNotifications)",
             "interfaceOrientation=\(window?.windowScene?.interfaceOrientation.rawValue ?? -1)",
+            "explicitFixtureGeometry=\((window?.windowScene?.delegate as? SceneDelegate)?.uiTestingFixtureGeometryStatus ?? "unavailable")",
+            "fixtureGeometryFailure=\((window?.windowScene?.delegate as? SceneDelegate)?.uiTestingFixtureGeometryFailureDetail ?? "none")",
+            "sceneGeometry=\(sceneGeometrySnapshot())",
             "windowBounds=\(String(describing: window?.bounds))",
             "windowFrame=\(String(describing: window?.frame))",
             "windowTransform=\(String(describing: window?.transform))",
@@ -69,6 +76,26 @@ final class CameraLifecycleDiagnosticView: UIView {
             "controllers=\(controllerSnapshot(window?.rootViewController, depth: 0))",
             "avCaptureRunning=\(cameraManager.map { String($0.captureSession.isRunning) } ?? "unavailable")"
         ].joined(separator: ";")
+    }
+
+    private func sceneGeometrySnapshot() -> String {
+        guard let scene = window?.windowScene else { return "noWindowScene" }
+        var values = [
+            "effectiveOrientation=\(scene.effectiveGeometry.interfaceOrientation.rawValue)",
+            "screenBounds=\(scene.screen.bounds)",
+            "screenNativeBounds=\(scene.screen.nativeBounds)",
+            "sceneBounds=\(scene.coordinateSpace.bounds)",
+            "sizeMinimum=\(String(describing: scene.sizeRestrictions?.minimumSize))",
+            "sizeMaximum=\(String(describing: scene.sizeRestrictions?.maximumSize))"
+        ]
+        if #available(iOS 26.0, *) {
+            values += [
+                "orientationLocked=\(scene.effectiveGeometry.isInterfaceOrientationLocked)",
+                "interactivelyResizing=\(scene.effectiveGeometry.isInteractivelyResizing)",
+                "effectiveBounds=\(scene.effectiveGeometry.coordinateSpace.bounds)"
+            ]
+        }
+        return values.joined(separator: ",")
     }
 
     private func controllerSnapshot(_ controller: UIViewController?, depth: Int) -> String {

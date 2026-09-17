@@ -363,12 +363,54 @@ private extension CGRect {
 /// region. Mirroring is opt-in and must only be enabled when the accepted
 /// display is actually mirrored.
 struct SETAcceptedFrameRegionMapper: Equatable, Sendable {
+    enum ContentMode { case fill, fit }
+
+    static func imageFrame(sourcePixelSize: CGSize, orientation: CGImagePropertyOrientation,
+                           canvasSize: CGSize, contentMode: ContentMode = .fill) -> CGRect? {
+        guard [sourcePixelSize.width, sourcePixelSize.height, canvasSize.width, canvasSize.height]
+            .allSatisfy({ $0.isFinite && $0 > 0 }) else { return nil }
+        let size = orientedPixelSize(sourcePixelSize, orientation: orientation)
+        let widthScale = canvasSize.width / size.width
+        let heightScale = canvasSize.height / size.height
+        let scale = contentMode == .fill ? max(widthScale, heightScale) : min(widthScale, heightScale)
+        let displayed = CGSize(width: size.width * scale, height: size.height * scale)
+        return CGRect(x: (canvasSize.width - displayed.width) / 2,
+                      y: (canvasSize.height - displayed.height) / 2,
+                      width: displayed.width, height: displayed.height)
+    }
+
+    /// Exact inverse on a fully visible rectangle. Letterbox/cropped/outside
+    /// selections are rejected rather than silently clamped to another region.
+    static func unmap(_ displayRect: CGRect, sourcePixelSize: CGSize,
+                      orientation: CGImagePropertyOrientation, canvasSize: CGSize,
+                      isMirrored: Bool = false, contentMode: ContentMode = .fill) -> NormalizedRect? {
+        guard [displayRect.minX, displayRect.minY, displayRect.width, displayRect.height]
+            .allSatisfy(\.isFinite),
+              displayRect.width > 0, displayRect.height > 0,
+              let frame = imageFrame(sourcePixelSize: sourcePixelSize, orientation: orientation,
+                                     canvasSize: canvasSize, contentMode: contentMode),
+              frame.contains(displayRect),
+              CGRect(origin: .zero, size: canvasSize).contains(displayRect) else { return nil }
+        let x = (displayRect.minX - frame.minX) / frame.width
+        let width = displayRect.width / frame.width
+        let height = displayRect.height / frame.height
+        // Subtract edges in the same display coordinate system. Sequential
+        // normalized subtraction can make a valid touching edge negative.
+        let mirroredX = (frame.maxX - displayRect.maxX) / frame.width
+        let bottomY = (frame.maxY - displayRect.maxY) / frame.height
+        let region = NormalizedRect(x: Double(isMirrored ? mirroredX : x),
+                                    y: Double(bottomY),
+                                    width: Double(width), height: Double(height))
+        return PauseSemanticEntityGrounding.isValidRegion(region) ? region : nil
+    }
+
     static func map(
         _ normalizedRegion: NormalizedRect,
         sourcePixelSize: CGSize,
         orientation: CGImagePropertyOrientation,
         canvasSize: CGSize,
-        isMirrored: Bool = false
+        isMirrored: Bool = false,
+        contentMode: ContentMode = .fill
     ) -> CGRect? {
         guard sourcePixelSize.width > 0,
               sourcePixelSize.height > 0,
@@ -387,17 +429,10 @@ struct SETAcceptedFrameRegionMapper: Equatable, Sendable {
         ).intersection(sourceBounds)
         guard !normalizedBounds.isNull, !normalizedBounds.isEmpty else { return nil }
 
-        let orientedSize = orientedPixelSize(sourcePixelSize, orientation: orientation)
-        let scale = max(canvasSize.width / orientedSize.width,
-                        canvasSize.height / orientedSize.height)
-        guard scale.isFinite, scale > 0 else { return nil }
-
-        let displayedSize = CGSize(width: orientedSize.width * scale,
-                                    height: orientedSize.height * scale)
-        let imageOrigin = CGPoint(
-            x: (canvasSize.width - displayedSize.width) * 0.5,
-            y: (canvasSize.height - displayedSize.height) * 0.5
-        )
+        guard let imageFrame = imageFrame(sourcePixelSize: sourcePixelSize, orientation: orientation,
+                                          canvasSize: canvasSize, contentMode: contentMode) else { return nil }
+        let displayedSize = imageFrame.size
+        let imageOrigin = imageFrame.origin
 
         var x = normalizedBounds.minX
         if isMirrored {

@@ -209,6 +209,37 @@ struct CameraReviewPresentation: Equatable, Sendable {
         userAssessment == nil && objectiveOutcomeCopyKey == nil
     }
 
+    /// Unknown is the absence of a verification attempt in this projection.
+    /// Keep that typed state without presenting an unsolicited comparison warning.
+    func verificationStatusLabel(locale: Locale) -> String? {
+        status == .unknown ? nil : status.label(locale: locale)
+    }
+
+    /// Preserve raw uncertainty for reasoning, but present each visible reason
+    /// once. The primary review summary and actual comparison status already
+    /// own their copy; a detail section must not repeat either of them.
+    func visibleUncertaintyDetails(primarySummary: String?, locale: Locale) -> [String] {
+        let existing = [primarySummary, verificationStatusLabel(locale: locale)]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        var seen = Set(existing)
+        return uncertainties.compactMap { item in
+            let text: String
+            switch item.reason {
+            case .noAutomaticVerifier:
+                // No attempt needs no warning. An actual incomparable attempt
+                // is already explained by its dedicated status.
+                return nil
+            case .limitedToAvailableSignals, .detailedReviewUnavailable:
+                text = SETCopyKey.pauseAssessmentUnavailable.localizedString(locale: locale)
+            case .notComparable:
+                text = item.detail(locale: locale)
+            }
+            let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty, seen.insert(value).inserted else { return nil }
+            return value
+        }
+    }
+
     static var none: CameraReviewPresentation {
         CameraReviewPresentation(
             coverage: .selectedFrame,
@@ -333,7 +364,8 @@ extension CameraReviewPresentation {
         }
         if critique == nil {
             rows.append(CameraReviewUncertainty(reason: .detailedReviewUnavailable))
-        } else if critique?.fallbackUsed == true {
+        } else if let critique,
+                  critique.fallbackUsed || !critique.technicalQualityMeasurement.supportsPositiveConfirmation {
             rows.append(CameraReviewUncertainty(reason: .limitedToAvailableSignals))
         }
         return rows

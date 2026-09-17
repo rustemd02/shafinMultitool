@@ -105,7 +105,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         // justified by the first pre-stabilization sample alone.
         for (index, frame) in baselineFrames.enumerated() {
             let frameSemantics = SceneSemanticsAnalyzer().analyze(snapshot: frame.snapshot)
-            let deterministicCritique = FrameCritiqueEngine().analyze(
+            let deterministicCritique = CameraMeasuredPixelCritiqueFixture.analyze(
                 snapshot: frame.snapshot,
                 semantics: frameSemantics
             )
@@ -253,7 +253,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
                 seconds: 1.20
             )
             let refreshedSemantics = SceneSemanticsAnalyzer().analyze(snapshot: refreshedFrame.snapshot)
-            let refreshedDeterministicCritique = FrameCritiqueEngine().analyze(
+            let refreshedDeterministicCritique = CameraMeasuredPixelCritiqueFixture.analyze(
                 snapshot: refreshedFrame.snapshot,
                 semantics: refreshedSemantics
             )
@@ -317,7 +317,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         ] {
             let frame = makeFrame(pipeline: pipeline, id: id, x: x, seconds: seconds)
             let frameSemantics = SceneSemanticsAnalyzer().analyze(snapshot: frame.snapshot)
-            let frameCritique = FrameCritiqueEngine().analyze(
+            let frameCritique = CameraMeasuredPixelCritiqueFixture.analyze(
                 snapshot: frame.snapshot,
                 semantics: frameSemantics
             )
@@ -453,7 +453,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
                 seconds: 1.40 + Double(index) * 0.04
             )
             let semantics = SceneSemanticsAnalyzer().analyze(snapshot: frame.snapshot)
-            let critique = FrameCritiqueEngine().analyze(snapshot: frame.snapshot, semantics: semantics)
+            let critique = CameraMeasuredPixelCritiqueFixture.analyze(snapshot: frame.snapshot, semantics: semantics)
             let (fusion, _) = await pipeline.testingResolveCritiqueWithHybridFusion(
                 mode: .live,
                 capturedAt: frame.date,
@@ -603,7 +603,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
 
         func publish(_ frame: ClosedLoopFrame, evaluatedAt: Date) {
             let semantics = SceneSemanticsAnalyzer().analyze(snapshot: frame.snapshot)
-            let critique = FrameCritiqueEngine().analyze(
+            let critique = CameraMeasuredPixelCritiqueFixture.analyze(
                 snapshot: frame.snapshot,
                 semantics: semantics
             )
@@ -705,7 +705,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
 
         func publish(_ frame: ClosedLoopFrame) {
             let semantics = SceneSemanticsAnalyzer().analyze(snapshot: frame.snapshot)
-            let critique = FrameCritiqueEngine().analyze(
+            let critique = CameraMeasuredPixelCritiqueFixture.analyze(
                 snapshot: frame.snapshot,
                 semantics: semantics
             )
@@ -819,7 +819,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
 
         func publish(_ frame: ClosedLoopFrame) {
             let semantics = SceneSemanticsAnalyzer().analyze(snapshot: frame.snapshot)
-            let critique = FrameCritiqueEngine().analyze(
+            let critique = CameraMeasuredPixelCritiqueFixture.analyze(
                 snapshot: frame.snapshot,
                 semantics: semantics
             )
@@ -976,7 +976,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         formattingPipeline.testingPublishLivePresentation(
             frameId: firstFrame.snapshot.frameId,
             snapshot: firstFrame.snapshot,
-            critique: FrameCritiqueEngine().analyze(snapshot: firstFrame.snapshot, semantics: firstSemantics),
+            critique: CameraMeasuredPixelCritiqueFixture.analyze(snapshot: firstFrame.snapshot, semantics: firstSemantics),
             plan: makeNoActionPlan(frameId: firstFrame.snapshot.frameId),
             semantics: firstSemantics,
             legacySuggestion: nil,
@@ -1009,7 +1009,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             pipeline.testingPublishLiveProductionFrame(
                 snapshot: frame.snapshot,
                 semantics: semantics,
-                critique: FrameCritiqueEngine().analyze(snapshot: frame.snapshot, semantics: semantics),
+                critique: CameraMeasuredPixelCritiqueFixture.analyze(snapshot: frame.snapshot, semantics: semantics),
                 plan: makeNoActionPlan(frameId: frame.snapshot.frameId),
                 frameEvidence: frame.evidence,
                 evaluatedAt: frame.date,
@@ -1068,7 +1068,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             pipeline.testingPublishLiveProductionFrame(
                 snapshot: frame.snapshot,
                 semantics: semantics,
-                critique: FrameCritiqueEngine().analyze(snapshot: frame.snapshot, semantics: semantics),
+                critique: CameraMeasuredPixelCritiqueFixture.analyze(snapshot: frame.snapshot, semantics: semantics),
                 plan: makeNoActionPlan(frameId: frame.snapshot.frameId),
                 frameEvidence: frame.evidence,
                 evaluatedAt: frame.date,
@@ -1098,6 +1098,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         )
         let formattingPipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
         formattingPipeline.setCameraDemoSceneMode(.object)
+        var finalFormattingInput: (frame: ClosedLoopFrame, semantics: SceneSemanticsReport)?
         for index in 0..<3 {
             let frame = makeFrame(
                 pipeline: formattingPipeline,
@@ -1116,16 +1117,45 @@ final class CameraCoachClosedLoopTests: XCTestCase {
                 region: region,
                 hasClearFocus: true
             )
+            let measuredCritique = CameraMeasuredPixelCritiqueFixture.analyze(
+                snapshot: frame.snapshot,
+                semantics: semantics
+            )
+            XCTAssertEqual(measuredCritique.verdict, .good)
+            XCTAssertLessThan(
+                measuredCritique.verdictConfidence, 0.76,
+                "Detector-only analysis must not satisfy ordinary positive admission"
+            )
+            // Explicit synthetic positive-report and clean-measurement inputs
+            // qualify this formatting control. Detector confidence alone does
+            // not establish frame quality, and these are not pixel-analysis claims.
+            let formattingCritique = CritiqueReport(
+                frameId: measuredCritique.frameId,
+                mode: measuredCritique.mode,
+                verdict: measuredCritique.verdict,
+                verdictConfidence: 0.90,
+                strengths: measuredCritique.strengths,
+                issues: measuredCritique.issues,
+                summary: measuredCritique.summary,
+                traceRefs: measuredCritique.traceRefs,
+                fallbackUsed: measuredCritique.fallbackUsed
+            )
             formattingPipeline.testingPublishLivePresentation(
                 frameId: frame.snapshot.frameId,
                 snapshot: frame.snapshot,
-                critique: FrameCritiqueEngine().analyze(snapshot: frame.snapshot, semantics: semantics),
+                critique: formattingCritique,
                 plan: makeNoActionPlan(frameId: frame.snapshot.frameId),
                 semantics: semantics,
                 legacySuggestion: nil,
                 structuredAvailable: true,
+                technicalEvidence: FrameTechnicalQualityEvidence(
+                    frameID: frame.snapshot.frameId,
+                    capturedAt: frame.snapshot.capturedAt,
+                    measurement: .measured(.empty)
+                ),
                 now: frame.date
             )
+            finalFormattingInput = (frame, semantics)
         }
         XCTAssertEqual(
             formattingPipeline.currentLiveHint?.actionType,
@@ -1134,6 +1164,68 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         )
         XCTAssertNotNil(formattingPipeline.currentLiveHint?.targetRegion)
         XCTAssertNotNil(formattingPipeline.currentLiveHint?.overlayHint?.targetRegion)
+
+        guard let input = finalFormattingInput,
+              let candidate = formattingPipeline.currentLiveHint,
+              candidate.actionType == .leaveFrameAsIs else {
+            return XCTFail("The qualified formatting control must produce a KEEP candidate")
+        }
+        XCTAssertEqual(candidate.frameId, input.frame.snapshot.frameId)
+        XCTAssertNil(candidate.subjectIdentity)
+        XCTAssertNil(candidate.observedSourceRegion)
+
+        // Feed the exact target-bearing KEEP into the production admission
+        // owner. The full production sequence below may reject earlier at
+        // confidence or untyped waiting-state admission; it cannot by itself
+        // prove that a generated KEEP would be rejected for its target fields.
+        let admissionPipeline = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        admissionPipeline.testingAdmitLiveHintCandidate(
+            candidate,
+            snapshot: input.frame.snapshot,
+            semantics: input.semantics,
+            frameEvidence: input.frame.evidence,
+            evaluatedAt: input.frame.date,
+            now: input.frame.date
+        )
+        XCTAssertNil(admissionPipeline.currentLiveHint)
+        XCTAssertTrue(admissionPipeline.currentOverlayAnnotations.isEmpty)
+
+        // Same capture, advice and provenance; only the target-bearing fields
+        // differ. This positive control rules out an invalid capture context
+        // as the reason the target-bearing candidate was rejected.
+        let globalCandidate = LiveHintPresentation(
+            id: candidate.id,
+            frameId: candidate.frameId,
+            text: candidate.text,
+            confidence: candidate.confidence,
+            actionType: candidate.actionType,
+            actionId: candidate.actionId,
+            linkedIssueIds: candidate.linkedIssueIds,
+            summaryId: candidate.summaryId,
+            traceRootIds: candidate.traceRootIds,
+            targetRegion: nil,
+            subjectIdentity: candidate.subjectIdentity,
+            observedSourceRegion: candidate.observedSourceRegion,
+            overlayHint: nil,
+            isFallback: candidate.isFallback,
+            expandedVerdict: candidate.expandedVerdict,
+            semanticActionType: candidate.semanticActionType,
+            technicalIssueType: candidate.technicalIssueType,
+            technicalActionType: candidate.technicalActionType,
+            linkedEvidence: candidate.linkedEvidence
+        )
+        let globalControl = AnalysisPipeline(reasoningProvider: nil, demoLiveCoachEnabled: true)
+        globalControl.testingAdmitLiveHintCandidate(
+            globalCandidate,
+            snapshot: input.frame.snapshot,
+            semantics: input.semantics,
+            frameEvidence: input.frame.evidence,
+            evaluatedAt: input.frame.date,
+            now: input.frame.date
+        )
+        XCTAssertEqual(globalControl.currentLiveHint, globalCandidate)
+        XCTAssertNil(globalControl.currentLiveHint?.targetRegion)
+        XCTAssertNil(globalControl.currentLiveHint?.overlayHint)
 
         for index in 0..<3 {
             let frame = makeFrame(
@@ -1156,7 +1248,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             pipeline.testingPublishLiveProductionFrame(
                 snapshot: frame.snapshot,
                 semantics: semantics,
-                critique: FrameCritiqueEngine().analyze(snapshot: frame.snapshot, semantics: semantics),
+                critique: CameraMeasuredPixelCritiqueFixture.analyze(snapshot: frame.snapshot, semantics: semantics),
                 plan: makeNoActionPlan(frameId: frame.snapshot.frameId),
                 frameEvidence: frame.evidence,
                 evaluatedAt: frame.date,
@@ -1193,7 +1285,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         pipeline.testingPublishLiveProductionFrame(
             snapshot: frame.snapshot,
             semantics: semantics,
-            critique: FrameCritiqueEngine().analyze(snapshot: frame.snapshot, semantics: semantics),
+            critique: CameraMeasuredPixelCritiqueFixture.analyze(snapshot: frame.snapshot, semantics: semantics),
             plan: makeNoActionPlan(frameId: frame.snapshot.frameId),
             frameEvidence: frame.evidence,
             evaluatedAt: frame.date,
@@ -1304,7 +1396,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         ]
         func publish(_ frame: ClosedLoopFrame) async {
             let semantics = SceneSemanticsAnalyzer().analyze(snapshot: frame.snapshot)
-            let deterministicCritique = FrameCritiqueEngine().analyze(
+            let deterministicCritique = CameraMeasuredPixelCritiqueFixture.analyze(
                 snapshot: frame.snapshot,
                 semantics: semantics
             )
@@ -1907,7 +1999,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         )
         let semantics = SceneSemanticsAnalyzer().analyze(snapshot: frame.snapshot)
 
-        let deterministicCritique = FrameCritiqueEngine().analyze(
+        let deterministicCritique = CameraMeasuredPixelCritiqueFixture.analyze(
             snapshot: frame.snapshot,
             semantics: semantics
         )
@@ -2169,7 +2261,8 @@ final class CameraCoachClosedLoopTests: XCTestCase {
     private func makeCapturePathHarness(
         visionResult: @escaping (CVPixelBuffer, CGImagePropertyOrientation) -> VisionTrackingResult,
         neuralEnabled: Bool,
-        episodeConfidenceCalibrator: CameraConfidenceCalibrator = .unavailable
+        episodeConfidenceCalibrator: CameraConfidenceCalibrator = .unavailable,
+        motionGate: MotionGate? = nil
     ) -> CapturePathHarness {
         let thermal = ThermalGovernor(
             thermalStateProvider: { .nominal },
@@ -2178,7 +2271,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
         let manager = CameraManager(
             scheduler: RealtimeScheduler(),
             thermalGovernor: thermal,
-            motionGate: MotionGate(startMotionUpdates: false),
+            motionGate: motionGate ?? MotionGate(startMotionUpdates: false),
             sessionRunner: ClosedLoopSessionRunner(),
             configuration: .ready,
             notificationCenter: NotificationCenter()
@@ -2421,7 +2514,7 @@ final class CameraCoachClosedLoopTests: XCTestCase {
 
     private func critiqueFor(_ snapshot: FrameFeatureSnapshot) -> CritiqueReport {
         let semantics = SceneSemanticsAnalyzer().analyze(snapshot: snapshot)
-        return FrameCritiqueEngine().analyze(snapshot: snapshot, semantics: semantics)
+        return CameraMeasuredPixelCritiqueFixture.analyze(snapshot: snapshot, semantics: semantics)
     }
 
     private func makePixelBuffer() -> CVPixelBuffer {
@@ -2727,6 +2820,253 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             }
         }
         return condition()
+    }
+}
+
+// MARK: - Coupled MotionGate / real capture sampling controls
+
+extension CameraCoachClosedLoopTests {
+    func testCaptureMotionHysteresisRejectsStillButUnstableFrame() async throws {
+        try await exerciseCoupledCaptureMotion(intervalCount: 1, sampleHysteresis: true)
+    }
+
+    func testCaptureMotionSamplingKeepsCameraActionAndExpiresMissingVisionEvidence() async throws {
+        for intervals in [1, 2] {
+            try await exerciseCoupledCaptureMotion(intervalCount: intervals, sampleHysteresis: false)
+        }
+    }
+
+    /// Uses the existing capture harness; neither the episode event nor a plan
+    /// is published by a test seam. Only Vision measurements and calibration
+    /// retain the existing explicitly synthetic fixture dependencies.
+    private func exerciseCoupledCaptureMotion(
+        intervalCount: Int,
+        sampleHysteresis: Bool
+    ) async throws {
+        let motion = MotionGate(startMotionUpdates: false)
+        let vision = CoupledCaptureVisionState()
+        let harness = makeCapturePathHarness(
+            visionResult: { _, _ in vision.result() },
+            neuralEnabled: false,
+            episodeConfidenceCalibrator: CameraEpisodeCalibrationFixture.calibrator,
+            motionGate: motion
+        )
+        var trace: [[String: Any]] = []
+        var sampleIndex = 0
+        let label = sampleHysteresis ? "sampled_hysteresis" : "committed_motion_\(intervalCount)"
+        defer { attachCoupledCaptureTrace(name: label, rows: trace) }
+
+        func feedMotion(_ count: Int, gyro: Double, acceleration: Double) {
+            for _ in 0..<count {
+                motion.processSyntheticSample(gyroMagnitude: gyro, accelMagnitude: acceleration)
+            }
+        }
+
+        func capture(_ stage: String, subjectX: CGFloat) async throws -> LatestFrameEvidenceStore.Snapshot {
+            vision.setSubjectX(subjectX)
+            let expectedMotion = motion.snapshot()
+            let pts = CMTime(value: Int64(1_000 + sampleIndex * 200), timescale: 1_000)
+            sampleIndex += 1
+            try await deliverCaptureSample(
+                through: harness,
+                timestamp: pts,
+                lumaValues: Self.supportedCaptureLuma
+            )
+            let accepted = try XCTUnwrap(harness.pipeline.testingLatestFrameEvidence)
+            let adapter = try XCTUnwrap(accepted.adapterState)
+            XCTAssertEqual(CMTimeCompare(accepted.samplePresentationTimestamp, pts), 0,
+                           "The real scheduler must accept this exact capture callback")
+            XCTAssertEqual(accepted.sessionGeneration, harness.manager.sessionGenerationForTesting)
+            XCTAssertEqual(accepted.isStable, expectedMotion.isStable)
+            XCTAssertEqual(adapter.features.motion.state, expectedMotion.motionState)
+            XCTAssertEqual(adapter.features.motion.shakeLevel, expectedMotion.shakeLevel, accuracy: 0.000001)
+            trace.append([
+                "stage": stage,
+                "sample_pts": pts.seconds,
+                "capture_time": accepted.capturedAt.timeIntervalSince1970,
+                "frame_id": accepted.sourceFrameId,
+                "motion_state": String(describing: expectedMotion.motionState),
+                "is_stable": expectedMotion.isStable,
+                "shake_level": expectedMotion.shakeLevel,
+                "scripted_vision_x": Double(subjectX),
+                "episode_phase": harness.viewModel.coachingEpisodeState.phase.rawValue,
+                "cancellation_reason": harness.viewModel.coachingEpisodeState.cancellationReason?.rawValue ?? "",
+                "episode_action": harness.viewModel.coachingEpisodeState.baseline?.actionID ?? "",
+                "baseline_id": harness.viewModel.coachingEpisodeState.baseline?.frameID ?? "",
+                "event": String(describing: harness.pipeline.currentCoachingEpisodeEvent),
+                "verification": String(describing: harness.viewModel.verificationResult?.decision)
+            ])
+            return accepted
+        }
+
+        await harness.viewModel.startAndWait()
+        harness.manager.updatePreviewGeometry(Self.capturePreviewGeometry)
+        do {
+            var lastPreMotionCapture: LatestFrameEvidenceStore.Snapshot?
+            for index in 0..<10 {
+                lastPreMotionCapture = try await capture("baseline-\(index)", subjectX: 0.60)
+            }
+            let lastDeliveredCapture = try XCTUnwrap(lastPreMotionCapture)
+            let admitted = await waitUntil {
+                harness.viewModel.coachingEpisodeState.phase == .awaitingMovement
+                    && harness.viewModel.coachingEpisodeState.lastFrameID == lastDeliveredCapture.sourceFrameId
+            }
+            XCTAssertTrue(admitted, "The ordinary production capture path must admit the original camera action")
+            let baseline = try XCTUnwrap(harness.viewModel.coachingEpisodeState.baseline)
+            let token = try XCTUnwrap(harness.viewModel.coachingEpisodeState.token)
+            let lastDeliveredFrame: UserMovementFrame
+            switch harness.pipeline.currentCoachingEpisodeEvent {
+            case .baseline(let observation): lastDeliveredFrame = observation.frame
+            case .frame(let frameEvidence): lastDeliveredFrame = frameEvidence.frame
+            default:
+                throw NSError(domain: "CoupledCaptureMotionControl", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "No delivered ordinary frame exists before motion"])
+            }
+            XCTAssertEqual(lastDeliveredFrame.frameID, lastDeliveredCapture.sourceFrameId)
+            let lastDeliveredSourceTime = try XCTUnwrap(
+                lastDeliveredFrame.evidence?.featureMeasuredAt[.subjectDisplacement])
+            XCTAssertEqual(baseline.actionID, SemanticActionType.shiftFrameRight.rawValue)
+            XCTAssertEqual(baseline.frame.evidence?.subjectBinding?.source, .vision)
+            XCTAssertNil(harness.viewModel.verificationResult)
+
+            // These semantic IDs are not representable by the legacy live
+            // RecommendationPlan. Do not turn a camera-frame displacement into
+            // physical subject/object authority while exercising capture motion.
+            for physical in [SemanticActionType.moveSubjectRight, .moveObjectRight] {
+                XCTAssertNil(ActionTypeV1(rawValue: physical.rawValue))
+                XCTAssertNil(CameraCoachContractV2.production.migration(forLegacyActionID: physical.rawValue))
+                XCTAssertEqual(CameraCoachContractV2.production.decision(forLegacyActionID: physical.rawValue), .wait)
+            }
+
+            if sampleHysteresis {
+                feedMotion(1, gyro: 1.5, acceleration: 1.0)
+                XCTAssertEqual(motion.motionState, .still)
+                XCTAssertFalse(motion.isCameraStable)
+                _ = try await capture("still_but_unstable", subjectX: 0.50)
+                let cancelled = await waitUntil {
+                    guard case .cancel(.staleEvidence) = harness.pipeline.currentCoachingEpisodeEvent else {
+                        return false
+                    }
+                    return harness.viewModel.coachingEpisodeState.phase == .cancelled
+                        && harness.viewModel.coachingEpisodeState.cancellationReason == .staleEvidence
+                }
+                XCTAssertTrue(cancelled, "The invalid live envelope must cancel the captured transient with its canonical stale-evidence reason")
+                XCTAssertEqual(harness.viewModel.coachingEpisodeState.token, token,
+                               "A terminal state retains the cancelled transaction identity until a fresh baseline")
+                XCTAssertEqual(harness.viewModel.coachingEpisodeState.lastFrameID, lastDeliveredCapture.sourceFrameId,
+                               "The rejected transient must not advance the observer's last delivered frame")
+                XCTAssertNil(harness.viewModel.verificationResult)
+                feedMotion(9, gyro: 1.5, acceleration: 1.0)
+                XCTAssertEqual(motion.motionState, .moving)
+                _ = try await capture("committed_after_hysteresis", subjectX: 0.50)
+                feedMotion(30, gyro: 0, acceleration: 0)
+                XCTAssertEqual(motion.motionState, .still)
+                XCTAssertTrue(motion.isCameraStable)
+                _ = try await capture("settled_after_rejection", subjectX: 0.50)
+                XCTAssertNotEqual(harness.viewModel.verificationResult?.token, token)
+            } else {
+                var firstSettledDate: Date?
+                for interval in 0..<intervalCount {
+                    let x: CGFloat = interval == 0 ? 0.50 : 0.40
+                    feedMotion(10, gyro: 1.5, acceleration: 1.0)
+                    XCTAssertEqual(motion.motionState, .moving)
+                    XCTAssertFalse(motion.isCameraStable)
+                    _ = try await capture("moving-\(interval)", subjectX: x)
+                    if interval == 0 {
+                        XCTAssertEqual(harness.viewModel.coachingEpisodeState.token, token,
+                                       "The committed-motion branch preserves the active ordinary transaction")
+                        XCTAssertEqual(harness.viewModel.coachingEpisodeState.baseline?.frameID, baseline.frameID)
+                        XCTAssertEqual(harness.viewModel.coachingEpisodeState.lastFrameID, lastDeliveredCapture.sourceFrameId,
+                                       "The moving callback must not advance the observer's last delivered frame")
+                        XCTAssertNil(harness.viewModel.verificationResult)
+                    }
+                    feedMotion(30, gyro: 0, acceleration: 0)
+                    XCTAssertEqual(motion.motionState, .still)
+                    XCTAssertTrue(motion.isCameraStable)
+                    let settled = try await capture("settled-\(interval)", subjectX: x)
+                    if interval == 0 {
+                        firstSettledDate = settled.capturedAt
+                        let captureGap = settled.capturedAt.timeIntervalSince(lastDeliveredCapture.capturedAt)
+                        let sourceGap = settled.capturedAt.timeIntervalSince(lastDeliveredSourceTime)
+                        trace.append(["stage": "first_settled_age",
+                                      "last_delivered_frame_id": lastDeliveredCapture.sourceFrameId,
+                                      "elapsed_since_last_delivered_capture": captureGap,
+                                      "elapsed_since_last_delivered_source_measurement": sourceGap,
+                                      "baseline_age_separate": settled.capturedAt.timeIntervalSince(baseline.capturedAt),
+                                      "vision_freshness_window": FeatureSourceFreshnessWindows.window(for: .vision)])
+                        XCTAssertGreaterThan(captureGap, FeatureSourceFreshnessWindows.window(for: .vision),
+                                             "One excluded callback at the real 6-Hz fixture cadence exceeds the 250-ms Vision window")
+                        XCTAssertGreaterThan(sourceGap, FeatureSourceFreshnessWindows.window(for: .vision),
+                                             "The previous observer source measurement must exceed its own freshness window")
+                        let stale = await waitUntil {
+                            harness.viewModel.coachingEpisodeState.phase == .cancelled
+                                && harness.viewModel.coachingEpisodeState.cancellationReason == .staleEvidence
+                        }
+                        // The coordinator can own this cancellation. Its retry
+                        // reset deliberately emits no second pipeline event.
+                        XCTAssertTrue(stale, "Qualify the actual stale-evidence boundary instead of carrying over the DETR-only owner result")
+                    }
+                    XCTAssertNotEqual(harness.viewModel.verificationResult?.token, token)
+                }
+                XCTAssertNotNil(firstSettledDate)
+                for index in 0..<2 {
+                    _ = try await capture("final_hold-\(index)", subjectX: intervalCount == 1 ? 0.50 : 0.40)
+                }
+                XCTAssertNotEqual(harness.viewModel.verificationResult?.token, token,
+                                  "A cancelled original episode must not reappear after another camera interval or static hold")
+            }
+            XCTAssertEqual(harness.pipeline.testingDirectFrameAcceptanceCount, 0,
+                           "This result must come through CameraManager.captureOutput and RealtimeScheduler")
+            trace.append([
+                "stage": "completion",
+                "qualified_capture_callbacks": sampleIndex,
+                "direct_frame_acceptance_count": harness.pipeline.testingDirectFrameAcceptanceCount,
+                "motion_transitions": motion.timeline().map {
+                    ["state": String(describing: $0.state),
+                     "timestamp": $0.timestamp.timeIntervalSince1970] as [String: Any]
+                }
+            ])
+            await harness.viewModel.releaseAndWait()
+        } catch {
+            await harness.viewModel.releaseAndWait()
+            throw error
+        }
+    }
+
+    private func attachCoupledCaptureTrace(name: String, rows: [[String: Any]]) {
+        let payload: [String: Any] = [
+            "qualification": "actual_iOS_capture_owners_with_scripted_Vision_and_existing_fixture_calibration",
+            "physical_camera_or_IMU": false,
+            "full_model_quality_evidence": false,
+            "motion_input": "synthetic bursts through exact MotionGate; capture sampling uses its real snapshot",
+            "scope": "none (current production episode publisher default)",
+            "rows": rows
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .prettyPrinted]) else {
+            return XCTFail("The coupled capture trace must be serializable")
+        }
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+        attachment.name = "coupled_capture_motion_\(name).json"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private final class CoupledCaptureVisionState {
+        private let lock = NSLock()
+        private var subjectX: CGFloat = 0.60
+
+        func setSubjectX(_ value: CGFloat) {
+            lock.lock()
+            subjectX = value
+            lock.unlock()
+        }
+
+        func result() -> VisionTrackingResult {
+            lock.lock()
+            let x = subjectX
+            lock.unlock()
+            return CameraCoachClosedLoopTests.captureVisionResult(subjectX: x)
+        }
     }
 }
 

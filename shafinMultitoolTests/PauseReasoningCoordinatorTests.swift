@@ -55,6 +55,25 @@ final class PauseReasoningCoordinatorTests: XCTestCase {
         }
     }
 
+    func testRefinementPreservesMeasuredAndUnavailableTechnicalEvidence() async {
+        for measurement in [TechnicalQualityMeasurement.measured(.empty),
+                            .unavailable(.unsupportedPixelFormat),
+                            .unavailable(.frameMismatch)] {
+            let coordinator = PauseReasoningCoordinator(provider: ValidStubProvider())
+            let request = makeRequest(
+                providerConfigVersion: "typed-measurement", technicalQualityMeasurement: measurement
+            )
+            switch await coordinator.refine(request: request) {
+            case let .refined(presentation, _, _):
+                XCTAssertEqual(presentation.technicalQualityMeasurement, measurement)
+                XCTAssertEqual(presentation.verdict, request.pausePresentationDraft.verdict)
+                XCTAssertEqual(presentation.verdictConfidence, request.pausePresentationDraft.verdictConfidence)
+            default:
+                XCTFail("Expected the valid text-only refinement to preserve availability")
+            }
+        }
+    }
+
     func testAllowsPartialAcceptForUnknownRuntimeIds() async {
         let coordinator = PauseReasoningCoordinator(provider: UnknownIdsStubProvider())
         let request = makeRequest(providerConfigVersion: "stub-unknown-ids")
@@ -762,7 +781,8 @@ private actor ConflictOptionalTraceStubProvider: ReasoningProvider {
 
 private func makeRequest(providerConfigVersion: String,
                          constraints: ReasoningConstraints = .pauseDefault,
-                         mode: AnalysisMode = .pause) -> ReasoningRequest {
+                         mode: AnalysisMode = .pause,
+                         technicalQualityMeasurement: TechnicalQualityMeasurement = .unavailable(.notMeasured)) -> ReasoningRequest {
     let frameId = "frame_reasoning_1"
 
     let strength = FrameStrength(
@@ -879,7 +899,8 @@ private func makeRequest(providerConfigVersion: String,
         assumptions: [],
         traceRootIds: critique.traceRefs,
         fallbackUsed: false,
-        linkedEvidence: linkedEvidence
+        linkedEvidence: linkedEvidence,
+        technicalQualityMeasurement: technicalQualityMeasurement
     )
 
     return ReasoningRequest(

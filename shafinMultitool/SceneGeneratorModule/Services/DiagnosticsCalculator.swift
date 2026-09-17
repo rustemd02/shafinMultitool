@@ -32,7 +32,7 @@ final class DiagnosticsCalculator {
         print("🔍 [DIAGNOSTICS] === НАЧАЛО ВЫЧИСЛЕНИЯ ДИАГНОСТИКИ ===")
         print("🔍 [DIAGNOSTICS] Script: actors=\(script.actors.count), objects=\(script.objects.count), actions=\(script.actions.count)")
         #if DEBUG
-        print("🔍 [DIAGNOSTICS] OriginalText: '\(originalText)'")
+        SceneGeneratorDiagnosticsLogger.shared.log("[DIAGNOSTICS] inputChars=\(originalText.count)")
         #endif
         print("🔍 [DIAGNOSTICS] MarkedObjects: \(markedObjects.count), matchedMarkedObjects: \(matchedMarkedObjects.count)")
         
@@ -88,7 +88,7 @@ final class DiagnosticsCalculator {
         let validTargetIds = objectIds.union(actorIds)
         let missingTargets = actionTargets.filter { !validTargetIds.contains($0) }
         if !missingTargets.isEmpty {
-            print("🔍 [DIAGNOSTICS] ⚠️ missingObjects: найдены ссылки на несуществующие объекты: \(missingTargets.joined(separator: ", "))")
+            SceneGeneratorDiagnosticsLogger.shared.log("[DIAGNOSTICS] missing target count=\(missingTargets.count)")
             missingObjects = true
             confidence -= 0.1
             notes.append("Действия ссылаются на несуществующие объекты: \(missingTargets.joined(separator: ", "))")
@@ -143,7 +143,7 @@ final class DiagnosticsCalculator {
         print("🔍 [DIAGNOSTICS] Итоговая диагностика: confidence=\(String(format: "%.2f", confidence)), coverage=\(String(format: "%.2f", coverage))")
         print("🔍 [DIAGNOSTICS] Флаги: missingActors=\(missingActors ? 1 : 0), missingObjects=\(missingObjects ? 1 : 0), unresolvedPronouns=\(unresolvedPronouns ? 1 : 0), unresolvedMarkedObjects=\(unresolvedMarkedObjects ? 1 : 0)")
         if !notes.isEmpty {
-            print("🔍 [DIAGNOSTICS] Заметки: \(notes.joined(separator: "; "))")
+            SceneGeneratorDiagnosticsLogger.shared.log("[DIAGNOSTICS] noteCount=\(notes.count)")
         }
         print("🔍 [DIAGNOSTICS] === ВЫЧИСЛЕНИЕ ДИАГНОСТИКИ ЗАВЕРШЕНО ===")
         

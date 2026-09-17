@@ -69,6 +69,9 @@ struct CameraIntentClarificationPolicy: Equatable, Sendable {
     static let motionBlurShakeThreshold = 0.6
 
     private(set) var answers: [CameraStyleCue: Bool] = [:]
+    /// Identity of the actual session answers, used to reject a cloud response
+    /// captured before an answer or session boundary changed.
+    private(set) var revision: UInt64 = 0
 
     init() {}
 
@@ -126,7 +129,9 @@ struct CameraIntentClarificationPolicy: Equatable, Sendable {
     /// families for the session; a "no" answer leaves them actionable and
     /// stops re-asking.
     mutating func record(cue: CameraStyleCue, intended: Bool) {
+        guard answers[cue] != intended else { return }
         answers[cue] = intended
+        revision &+= 1
     }
 
     func hasAnswered(_ cue: CameraStyleCue) -> Bool {
@@ -147,5 +152,6 @@ struct CameraIntentClarificationPolicy: Equatable, Sendable {
 
     mutating func resetSession() {
         answers.removeAll()
+        revision &+= 1
     }
 }

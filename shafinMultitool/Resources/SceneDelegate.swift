@@ -16,6 +16,7 @@ private let uiTestingEnvironmentKey = "SHAFIN_UI_TESTING"
 private let uiTestingCameraPermissionArgument = "-SHAFIN_CAMERA_PERMISSION_STATE"
 private let uiTestingCameraIntroArgument = "-SHAFIN_CAMERA_INTRO_STATE"
 private let uiTestingCameraProductionFixtureArgument = "-SHAFIN_CAMERA_PRODUCTION_FIXTURE"
+private let uiTestingCameraCloudConsentFixtureArgument = "-SHAFIN_CAMERA_CLOUD_CONSENT_FIXTURE"
 private let uiTestingLibraryProductionFixtureArgument = "-SHAFIN_LIBRARY_PRODUCTION_FIXTURE"
 private let uiTestingLibraryResetArgument = "-SHAFIN_LIBRARY_RESET_FOR_UI_TESTING"
 #endif
@@ -25,6 +26,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var hasLeftActiveScene = false
 
 #if DEBUG
+    private(set) var uiTestingFixtureGeometryStatus = "not-requested"
+    private(set) var uiTestingFixtureGeometryFailureDetail: String?
+
     private static func makeUITestingRootViewController() -> UIViewController {
         let uiTestingConfiguration = CameraCoachUITestingConfiguration(
             arguments: ProcessInfo.processInfo.arguments
@@ -80,6 +84,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     static func makeRootViewController(
         galleryConfiguration: SETGalleryLaunchConfiguration? = nil,
+        cloudConsentFixtureConfiguration: SETGalleryLaunchConfiguration? = nil,
         productionFixtureConfiguration: SETCameraCoachFixtureConfiguration? = nil,
         libraryFixtureConfiguration: SETLibraryFixtureConfiguration? = nil,
         decisionTraceFixtureConfiguration: SETDecisionTraceFixtureConfiguration? = nil,
@@ -93,6 +98,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             )
         }
 
+        if let cloudConsentFixtureConfiguration {
+            return CommercialCameraCoachHostingController(
+                rootView: SETCameraCloudConsentFixtureRoot(configuration: cloudConsentFixtureConfiguration)
+            )
+        }
+
         if let decisionTraceFixtureConfiguration {
             return UIHostingController(
                 rootView: SETDecisionTraceFixtureRoot(
@@ -102,6 +113,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
 
         if let productionFixtureConfiguration {
+            if productionFixtureConfiguration.fixtureID == "camera.scene-control" {
+                return CommercialCameraCoachHostingController(
+                    rootView: SETCameraSceneControlFixtureRoot(configuration: productionFixtureConfiguration)
+                )
+            }
             return UIHostingController(
                 rootView: SETCameraCoachProductionView(
                     fixtureConfiguration: productionFixtureConfiguration
@@ -156,6 +172,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         )
         let rootViewController = Self.makeRootViewController(
             galleryConfiguration: galleryConfiguration,
+            cloudConsentFixtureConfiguration: isUITesting && launchArguments.contains(uiTestingCameraCloudConsentFixtureArgument)
+                ? SETGalleryLaunchConfiguration(arguments: launchArguments) : nil,
             productionFixtureConfiguration: productionFixtureConfiguration,
             libraryFixtureConfiguration: libraryFixtureConfiguration,
             decisionTraceFixtureConfiguration: decisionTraceFixtureConfiguration,
@@ -253,6 +271,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
+#if DEBUG
+        requestUITestingFixtureGeometryIfConfigured(scene)
+#endif
         guard hasLeftActiveScene else { return }
         hasLeftActiveScene = false
 
@@ -261,6 +282,46 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             (self.window?.rootViewController as? CommercialShellViewController)?.handleAppDidBecomeActive()
         }
     }
+
+#if DEBUG
+    /// An explicit UI-test layout request. It never supplies a device/sensor
+    /// orientation and cannot qualify automatic camera rotation.
+    private func requestUITestingFixtureGeometryIfConfigured(_ scene: UIScene) {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard ProcessInfo.processInfo.environment[uiTestingEnvironmentKey] == "1",
+              uiTestingFixtureGeometryStatus == "not-requested",
+              let windowScene = scene as? UIWindowScene,
+              windowScene.activationState == .foregroundActive,
+              window?.windowScene === windowScene,
+              window?.rootViewController is CommercialCameraCoachHostingController<SETCameraCloudConsentFixtureRoot>
+                || window?.rootViewController is CommercialCameraCoachHostingController<SETCameraSceneControlFixtureRoot>,
+              let geometry = SETGalleryLaunchConfiguration(arguments: arguments).interfaceGeometry
+        else { return }
+
+        let mask: UIInterfaceOrientationMask
+        switch geometry {
+        case .portrait: mask = .portrait
+        case .landscape: mask = .landscape
+        case .adaptive: return
+        }
+        uiTestingFixtureGeometryStatus = "requested:\(geometry.rawValue)"
+        window?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { [weak self] error in
+            let failure = error as NSError
+            let status = "failed:\(geometry.rawValue):\(failure.domain):\(failure.code)"
+            // Preserve UIKit's explanation; code 101 alone does not distinguish
+            // a window-mode constraint from a rejected orientation preference.
+            let detail = [failure.localizedDescription, failure.localizedFailureReason]
+                .compactMap { $0 }
+                .map { String($0.replacingOccurrences(of: "\n", with: " ").prefix(512)) }
+                .joined(separator: " | ")
+            Task { @MainActor [weak self] in
+                self?.uiTestingFixtureGeometryStatus = status
+                self?.uiTestingFixtureGeometryFailureDetail = detail
+            }
+        }
+    }
+#endif
 }
 
 #if DEBUG

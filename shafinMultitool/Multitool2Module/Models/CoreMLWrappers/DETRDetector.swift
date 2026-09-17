@@ -18,6 +18,16 @@ struct DETRDetection: Identifiable {
     let confidence: Float
 }
 
+enum DETRDetectionFailure: String, Error, Codable, Sendable {
+    case modelUnavailable
+    case inferenceFailed
+    case missingOutput
+    case invalidOutput
+}
+
+/// Success includes a valid empty segmentation result. Failure is unknown evidence.
+typealias DETRDetectionResult = Result<[DETRDetection], DETRDetectionFailure>
+
 final class DETRDetector {
     private let model: VNCoreMLModel
     private let queue = DispatchQueue(label: "DETRDetector")
@@ -76,10 +86,8 @@ final class DETRDetector {
 
     func detect(pixelBuffer: CVPixelBuffer,
                 orientation: CGImagePropertyOrientation,
-                completion: @escaping ([DETRDetection]) -> Void) {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-
+                completion: @escaping (DETRDetectionResult) -> Void) {
+        queue.async { [self] in
             self.detectionCount += 1
             if CameraLog.detr {
                 os_log("🔍 DETR: Starting detection #%d", log: self.log, type: .debug, self.detectionCount)
@@ -87,61 +95,47 @@ final class DETRDetector {
 
             let startTime = CACurrentMediaTime()
 
-            let request = VNCoreMLRequest(model: self.model) { request, error in
-                let elapsed = CACurrentMediaTime() - startTime
-
-                if let error = error {
-                    os_log("❌ DETR: Detection error: %{private}@", log: self.log, type: .error, error.localizedDescription)
-                    completion([])
-                    return
-                }
-
-                guard let observation = request.results?
-                        .compactMap({ $0 as? VNCoreMLFeatureValueObservation })
-                        .first(where: { $0.featureName == "semanticPredictions" }),
-                      let multiArray = observation.featureValue.multiArrayValue else {
-                    if CameraLog.detr {
-                        os_log("⚠️ DETR: No semantic predictions in results (%.0fms)",
-                               log: self.log, type: .debug, elapsed * 1000)
-                    }
-                    completion([])
-                    return
-                }
-
-                if CameraLog.detr {
-                    os_log("🎯 DETR: Processing semantic segmentation map (%.0fms)",
-                           log: self.log, type: .debug, elapsed * 1000)
-                }
-
-                // Обработка semantic segmentation map и извлечение bounding boxes
-                let detections = Self.extractDetections(from: multiArray)
-
-                if CameraLog.detr {
-                    os_log("✅ DETR: Returning %d detections", log: self.log, type: .debug, detections.count)
-                }
-                completion(detections)
-            }
+            let request = VNCoreMLRequest(model: self.model)
             request.imageCropAndScaleOption = .scaleFill
-
             let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
                                                 orientation: orientation,
                                                 options: [:])
-            do {
+            // One synchronous request execution and one completion. Missing/invalid
+            // output cannot be mistaken for a successfully observed empty frame.
+            let result = Self.resolveDetection {
                 try handler.perform([request])
-            } catch {
-                os_log("❌ DETR: Handler error: %{private}@", log: self.log, type: .error, error.localizedDescription)
-                completion([])
+                return request.results?
+                    .compactMap { $0 as? VNCoreMLFeatureValueObservation }
+                    .first { $0.featureName == "semanticPredictions" }?
+                    .featureValue.multiArrayValue
             }
+            if case .failure(let failure) = result {
+                os_log("DETR unavailable: %{public}@", log: self.log, type: .error, failure.rawValue)
+            } else if CameraLog.detr {
+                os_log("DETR completed in %.0fms", log: self.log, type: .debug,
+                       (CACurrentMediaTime() - startTime) * 1000)
+            }
+            completion(result)
         }
     }
 
-    static func extractDetections(from multiArray: MLMultiArray) -> [DETRDetection] {
+    /// Shared by the real request path and bounded no-inference contract controls.
+    static func resolveDetection(perform: () throws -> MLMultiArray?) -> DETRDetectionResult {
+        let output: MLMultiArray?
+        do { output = try perform() }
+        catch { return .failure(.inferenceFailed) }
+        guard let output else { return .failure(.missingOutput) }
+        do { return .success(try extractDetections(from: output)) }
+        catch { return .failure(.invalidOutput) }
+    }
+
+    static func extractDetections(from multiArray: MLMultiArray) throws -> [DETRDetection] {
         let shape = multiArray.shape.map { $0.intValue }
         guard shape.count == 2,
               shape.allSatisfy({ $0 > 0 }),
               multiArray.dataType == .int32 else {
             os_log("⚠️ DETR: Unexpected semantic predictions array", log: extractionLog, type: .error)
-            return []
+            throw DETRDetectionFailure.invalidOutput
         }
 
         let height = shape[0]
@@ -152,7 +146,7 @@ final class DETRDetector {
               strides.allSatisfy({ $0 > 0 }),
               width <= Int.max / height else {
             os_log("⚠️ DETR: Unexpected semantic predictions strides", log: extractionLog, type: .error)
-            return []
+            throw DETRDetectionFailure.invalidOutput
         }
 
         let rowStride = strides[0]
@@ -163,7 +157,7 @@ final class DETRDetector {
               !columnOverflow,
               lastRowOffset <= Int.max - lastColumnOffset else {
             os_log("⚠️ DETR: Semantic predictions strides overflow", log: extractionLog, type: .error)
-            return []
+            throw DETRDetectionFailure.invalidOutput
         }
 
         if CameraLog.detr {

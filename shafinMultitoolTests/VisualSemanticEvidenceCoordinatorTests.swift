@@ -109,7 +109,7 @@ final class VisualSemanticEvidenceCoordinatorTests: XCTestCase {
 
     func testRefusedResponseIsTypedAndNotResent() async {
         let spy = SpyVisualEvidenceProvider(remoteCapable: true, response: makeRefusedResponse())
-        let coordinator = VisualSemanticEvidenceCoordinator(provider: spy)
+        let coordinator = VisualSemanticEvidenceCoordinator(provider: spy, isConsentGranted: { true })
         let request = makeRequest(trigger: .explicitUserRequest)
 
         let result = await coordinator.fetchEvidence(request: request)
@@ -127,7 +127,7 @@ final class VisualSemanticEvidenceCoordinatorTests: XCTestCase {
 
     func testUnavailableProviderKeepsLocalPath() async {
         let spy = SpyVisualEvidenceProvider(remoteCapable: true, response: makeUnavailableResponse())
-        let coordinator = VisualSemanticEvidenceCoordinator(provider: spy)
+        let coordinator = VisualSemanticEvidenceCoordinator(provider: spy, isConsentGranted: { true })
         let request = makeRequest(trigger: .explicitUserRequest)
 
         let result = await coordinator.fetchEvidence(request: request)
@@ -197,6 +197,9 @@ final class VisualSemanticEvidenceCoordinatorTests: XCTestCase {
         XCTAssertEqual(request.mode, .pause)
         XCTAssertEqual(request.frameId, snapshot.frameId)
         XCTAssertEqual(request.localContext.critique.frameId, snapshot.frameId)
+        XCTAssertEqual(request.privacyTier, .structuredOnly)
+        XCTAssertEqual(request.trigger, .ambiguousLocalCase)
+        XCTAssertNil(request.visualInput, "The ambient path has no processed pixels or transfer approval.")
 
         let result = await pipeline.testingResolvePauseVisualEvidence(request: request)
         switch result {
@@ -205,6 +208,86 @@ final class VisualSemanticEvidenceCoordinatorTests: XCTestCase {
         default:
             XCTFail("Expected accepted provider evidence in pipeline integration test")
         }
+    }
+}
+
+extension VisualSemanticEvidenceCoordinatorTests {
+    func testRemoteStructuredContextRequiresConsentEvenForExplicitRequest() async {
+        let spy = SpyVisualEvidenceProvider(remoteCapable: true, response: makeValidResponse())
+        let coordinator = VisualSemanticEvidenceCoordinator(provider: spy)
+        let result = await coordinator.fetchEvidence(request: makeRequest(trigger: .explicitUserRequest))
+
+        guard case let .skipped(reason, _) = result else {
+            XCTFail("Default consent must not authorize remote structured context.")
+            return
+        }
+        XCTAssertEqual(reason, "consent_revoked")
+        let invocations = await spy.invocations
+        XCTAssertEqual(invocations, 0)
+    }
+
+    func testGrantedRemoteStructuredContextStillValidatesResponse() async {
+        let spy = SpyVisualEvidenceProvider(remoteCapable: true, response: makeValidResponse())
+        let coordinator = VisualSemanticEvidenceCoordinator(provider: spy, isConsentGranted: { true })
+        let result = await coordinator.fetchEvidence(request: makeRequest(trigger: .explicitUserRequest))
+
+        guard case let .accepted(validation, _) = result else {
+            XCTFail("The explicit granted test request should reach normal response validation.")
+            return
+        }
+        XCTAssertTrue(validation.accepted)
+        let invocations = await spy.invocations
+        XCTAssertEqual(invocations, 1)
+    }
+
+    func testRevokedConsentDuringProviderCallRejectsItsLateResponse() async {
+        let consent = VisualEvidenceTestConsent()
+        let provider = RevokingVisualEvidenceProvider(consent: consent)
+        let coordinator = VisualSemanticEvidenceCoordinator(provider: provider, isConsentGranted: { consent.isGranted })
+        let result = await coordinator.fetchEvidence(request: makeRequest(trigger: .explicitUserRequest))
+
+        guard case let .skipped(reason, _) = result else {
+            XCTFail("A completed response cannot restore revoked consent.")
+            return
+        }
+        XCTAssertEqual(reason, "consent_revoked")
+        let invocations = await provider.invocations
+        XCTAssertEqual(invocations, 1, "This proves rejection after a pending call, not zero prior egress.")
+    }
+}
+
+private final class VisualEvidenceTestConsent: @unchecked Sendable {
+    private let lock = NSLock()
+    private var granted = true
+
+    var isGranted: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return granted
+    }
+
+    func revoke() {
+        lock.lock()
+        granted = false
+        lock.unlock()
+    }
+}
+
+private actor RevokingVisualEvidenceProvider: VisualSemanticEvidenceProvider {
+    let providerId = "revoking_visual_evidence_fixture"
+    let capabilities = VisualSemanticEvidenceCapabilities(
+        supportsOffline: false, supportsRemote: true, supportsPrivacyTiers: [.structuredOnly]
+    )
+    let consent: VisualEvidenceTestConsent
+    private(set) var invocations = 0
+
+    init(consent: VisualEvidenceTestConsent) { self.consent = consent }
+
+    func fetchVisualEvidence(request: VLMVisualEvidenceRequest) async throws -> VLMVisualEvidenceResponse {
+        invocations += 1
+        consent.revoke()
+        return makeValidResponse(mode: request.mode, privacyTier: request.privacyTier,
+                                 requestId: request.requestId, frameId: request.frameId)
     }
 }
 
@@ -347,7 +430,7 @@ private func makeRequest(mode: AnalysisMode = .pause,
     let visualInput: VLMVisualInput? = privacyTier == .redactedVisual
         ? VLMVisualInput(
             attachmentKind: .redactedStill,
-            mediaRef: "redacted://\(frameId)",
+            mediaRef: "fixture-redacted-\(frameId)",
             longEdgePx: 768,
             exifStripped: true,
             redactionApplied: true,

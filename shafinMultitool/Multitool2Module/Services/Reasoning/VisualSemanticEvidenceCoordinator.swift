@@ -62,7 +62,7 @@ actor VisualSemanticEvidenceCoordinator {
 
     init(provider: VisualSemanticEvidenceProvider?,
          timeoutMs: Int = 900,
-         isConsentGranted: @escaping @Sendable () -> Bool = { true }) {
+         isConsentGranted: @escaping @Sendable () -> Bool = { false }) {
         self.provider = provider
         self.timeoutMs = min(1_500, max(100, timeoutMs))
         self.isConsentGranted = isConsentGranted
@@ -123,8 +123,13 @@ actor VisualSemanticEvidenceCoordinator {
             )
         }
 
-        // Revoked consent stops visual egress before any data leaves.
-        if request.privacyTier == .redactedVisual, !isConsentGranted() {
+        // Structured scene context also leaves the device for a remote provider.
+        // Missing approval is never a grant. A cloud transport must additionally
+        // bind request-specific approval to actual bytes and public policy.
+        let requiresConsent = provider.capabilities.supportsRemote
+            || request.privacyTier == .redactedVisual
+            || request.privacyTier == .authorizedSelectedStill
+        if requiresConsent, !isConsentGranted() {
             return .skipped(
                 reason: "consent_revoked",
                 diagnostics: makeDiagnostics(
@@ -137,6 +142,20 @@ actor VisualSemanticEvidenceCoordinator {
         let startedAt = Date()
         let callResult = await callProviderWithTimeout(provider: provider, request: request)
         let latencyMs = max(0, Int(Date().timeIntervalSince(startedAt) * 1000.0))
+
+        // A late response cannot restore consent revoked while it was pending.
+        // Cancellation of in-flight HTTP is owned by the transport/caller; this
+        // check prevents the completed payload from being admitted afterward.
+        if requiresConsent, !isConsentGranted() {
+            return .skipped(
+                reason: "consent_revoked",
+                diagnostics: makeDiagnostics(
+                    privacyTier: request.privacyTier,
+                    latencyMs: latencyMs,
+                    fallbackReason: "consent_revoked"
+                )
+            )
+        }
 
         switch callResult {
         case .cancelled:

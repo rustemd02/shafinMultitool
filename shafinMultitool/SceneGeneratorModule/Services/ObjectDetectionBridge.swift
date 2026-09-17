@@ -10,6 +10,8 @@ import CoreVideo
 import ARKit
 import RealityKit
 
+typealias SceneObjectDetectionResult = Result<[DetectedObject], DETRDetectionFailure>
+
 /// Мост между DETRDetector и SceneGenerator модулем
 /// Обеспечивает распознавание объектов в кадре и их привязку к 3D координатам
 final class ObjectDetectionBridge {
@@ -18,11 +20,16 @@ final class ObjectDetectionBridge {
     
     // MARK: - Properties
     
-    private var detector: DETRDetector?
+    private var detectionOperation: ((CVPixelBuffer, @escaping (DETRDetectionResult) -> Void) -> Void)?
     private let processingQueue = DispatchQueue(label: "ObjectDetectionBridge.processing", qos: .userInitiated)
+    private let currentDate: () -> Date
     
-    /// Кэш последних обнаруженных объектов
-    private(set) var lastDetections: [DetectedObject] = []
+    /// A failed detection remains unavailable when returned from the throttle cache.
+    private(set) var lastDetectionResult: SceneObjectDetectionResult = .failure(.modelUnavailable)
+    var lastDetections: [DetectedObject] {
+        guard case .success(let detections) = lastDetectionResult else { return [] }
+        return detections
+    }
     
     /// Время последнего обновления детекций
     private var lastDetectionTime: Date = .distantPast
@@ -36,16 +43,31 @@ final class ObjectDetectionBridge {
     // MARK: - Initialization
     
     private init() {
+        currentDate = { Date() }
         initializeDetector()
     }
+
+#if DEBUG
+    /// Exercises the actual completion/cache path without loading a model or starting inference.
+    init(
+        testingDetectionOperation: ((CVPixelBuffer, @escaping (DETRDetectionResult) -> Void) -> Void)?,
+        currentDate: @escaping () -> Date
+    ) {
+        self.detectionOperation = testingDetectionOperation
+        self.currentDate = currentDate
+    }
+#endif
     
     private func initializeDetector() {
         processingQueue.async { [weak self] in
             do {
-                self?.detector = try DETRDetector()
+                let detector = try DETRDetector()
+                self?.detectionOperation = { pixelBuffer, completion in
+                    detector.detect(pixelBuffer: pixelBuffer, orientation: .right, completion: completion)
+                }
                 print("✅ ObjectDetectionBridge: DETRDetector initialized successfully")
             } catch {
-                print("⚠️ ObjectDetectionBridge: Failed to initialize DETRDetector: \(error.localizedDescription)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[DETECTOR] initialization failed code=\((error as NSError).code)")
                 // Продолжаем работу без детектора - будем использовать placeholder позиции
             }
         }
@@ -55,46 +77,49 @@ final class ObjectDetectionBridge {
     
     /// Проверяет, готов ли детектор к работе
     var isReady: Bool {
-        detector != nil
+        detectionOperation != nil
     }
     
     /// Выполняет детекцию объектов на кадре
     /// - Parameters:
     ///   - pixelBuffer: Буфер с изображением
     ///   - arFrame: AR кадр для получения 3D координат
-    ///   - completion: Callback с обнаруженными объектами
+    ///   - completion: Successful detections (including empty) or an explicit detector failure.
     func detectObjects(
         in pixelBuffer: CVPixelBuffer,
         arFrame: ARFrame?,
-        completion: @escaping ([DetectedObject]) -> Void
+        completion: @escaping (SceneObjectDetectionResult) -> Void
     ) {
-        // Проверяем интервал между детекциями
-        let now = Date()
-        guard now.timeIntervalSince(lastDetectionTime) >= detectionInterval else {
-            completion(lastDetections)
+        guard let detectionOperation else {
+            print("⚠️ ObjectDetectionBridge: Detector not initialized")
+            lastDetectionResult = .failure(.modelUnavailable)
+            completion(lastDetectionResult)
             return
         }
-        
-        guard let detector = detector else {
-            print("⚠️ ObjectDetectionBridge: Detector not initialized")
-            completion([])
+
+        // Проверяем интервал между детекциями
+        let now = currentDate()
+        guard now.timeIntervalSince(lastDetectionTime) >= detectionInterval else {
+            completion(lastDetectionResult)
             return
         }
         
         lastDetectionTime = now
         
-        detector.detect(pixelBuffer: pixelBuffer, orientation: .right) { [weak self] detections in
+        detectionOperation(pixelBuffer) { [weak self] result in
             guard let self = self else { return }
             
-            let filteredDetections = detections
-                .filter { $0.confidence >= self.minimumConfidence }
-                .compactMap { detection -> DetectedObject? in
-                    self.convertToDetectedObject(detection, arFrame: arFrame)
-                }
+            let convertedResult = result.map { detections in
+                detections
+                    .filter { $0.confidence >= self.minimumConfidence }
+                    .compactMap { detection -> DetectedObject? in
+                        self.convertToDetectedObject(detection, arFrame: arFrame)
+                    }
+            }
             
             DispatchQueue.main.async {
-                self.lastDetections = filteredDetections
-                completion(filteredDetections)
+                self.lastDetectionResult = convertedResult
+                completion(convertedResult)
             }
         }
     }
@@ -127,10 +152,8 @@ final class ObjectDetectionBridge {
         return sceneObjects.map { sceneObject in
             var updatedObject = sceneObject
             
-            // Ищем соответствующую детекцию
-            if let detection = findObject(ofType: sceneObject.type) {
-                updatedObject.detectedPosition = detection.worldPosition
-            }
+            // Only a current matching detection can supply a detected position.
+            updatedObject.detectedPosition = findObject(ofType: sceneObject.type)?.worldPosition
             
             return updatedObject
         }
@@ -168,7 +191,7 @@ final class ObjectDetectionBridge {
     
     /// Очищает кэш детекций
     func clearCache() {
-        lastDetections = []
+        lastDetectionResult = .failure(.modelUnavailable)
         lastDetectionTime = .distantPast
     }
     

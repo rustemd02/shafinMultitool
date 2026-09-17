@@ -24,6 +24,13 @@ final class AestheticScorer {
         }
     }
 
+    #if DEBUG
+    /// Explicit injection for numerical qualification; the bundled initializer is unchanged.
+    init(testingModel: MLModel) throws {
+        self.model = try VNCoreMLModel(for: testingModel)
+    }
+    #endif
+
     func score(pixelBuffer: CVPixelBuffer,
                orientation: CGImagePropertyOrientation,
                completion: @escaping (Double?) -> Void) {

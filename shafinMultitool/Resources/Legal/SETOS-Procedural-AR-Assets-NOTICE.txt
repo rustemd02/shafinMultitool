@@ -1,0 +1,21 @@
+SET OS procedural AR blocking assets — setos-procedural-ar-v1
+
+Circle.usdz and Person.usdz were authored with AI assistance for the owner's
+authorized SET OS engineering task on 2026-09-16. The complete reproducible
+source is tools/release/generate_ar_assets.py. No human modeller or likeness
+is represented.
+
+The generator constructs new parametric meshes and a plain white material.
+It imports no third-party mesh, texture, scan, character library or remote
+asset. Existing resource names, metric bounds and axes are interface values
+retained for scene compatibility; the former mesh topology is not reused.
+
+Conversion uses Apple's installed USD tools. The shipped USDZ contains only
+the new mesh/material layer, not a tool, framework, SDK or sample asset.
+The output is a scene-blocking mannequin and a waypoint disk. It is not an
+anatomical measurement, rigged character or physical simulation.
+
+This notice records technical authorship and derivation. It does not assert
+exclusive human copyright, grant absent upstream rights, or make a legal
+approval decision. Distribution status remains in the project's canonical
+release component record.

@@ -984,7 +984,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             self.projectLeaseToken = projectLeaseRegistry.acquire(projectID: currentProject.id)
         }
         if self.projectLeaseToken == nil {
-            print("Project lease unavailable for \(currentProject.name); deletion stays blocked by the active owner")
+            SceneGeneratorDiagnosticsLogger.shared.log("[PROJECT] lease unavailable; deletion stays blocked by the active owner")
         }
         self.sceneTitle = currentProject.name
         self.sceneDescription = currentProject.sceneDescription
@@ -1574,6 +1574,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         guard nextGeneration >= expectedARFrameGeneration else { return }
         expectedARFrameGeneration = nextGeneration
 
+        cancelActiveStoryboardActorDrag()
         isARSessionInterrupted = true
         isARSessionRecovering = false
         isARSessionReady = false
@@ -1600,6 +1601,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         guard nextGeneration >= expectedARFrameGeneration else { return }
         expectedARFrameGeneration = nextGeneration
 
+        cancelActiveStoryboardActorDrag()
         isARSessionInterrupted = false
         isARSessionRecovering = true
         isARSessionReady = false
@@ -2738,14 +2740,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     ) async {
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
-        // Логирование входных данных
-        print("🔍 [VIEWMODEL][\(generationID)] === НАЧАЛО ГЕНЕРАЦИИ СЦЕНЫ ===")
+        // Diagnostics retain operational metadata, never screenplay or marker content.
         SceneGeneratorDiagnosticsLogger.shared.log("[GENERATION][\(generationID)] start descriptionChars=\(submittedDescription.count), markedObjects=\(markedObjects.count)")
-        print("🔍 [VIEWMODEL] Описание: '\(submittedDescription)'")
-        print("🔍 [VIEWMODEL] Размеченных объектов: \(markedObjects.count)")
-        for (index, marker) in markedObjects.enumerated() {
-            print("🔍 [VIEWMODEL]   MarkedObject[\(index)]: name='\(marker.name)', type=\(marker.type.rawValue), id=\(marker.id.uuidString.prefix(8))")
-        }
 
         // 1. Парсим описание с учётом markedObjects (async — поддержка LLM fallback)
         print("🔍 [VIEWMODEL] Вызов parserService.parseAsync()...")
@@ -2853,38 +2849,13 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         let runtimeTrace = parserOutput.runtimeTrace
 
         logParsedScriptDetails(script, diagnostics: result.diagnostics, generationID: generationID)
-        print("🔍 [VIEWMODEL] Результат парсинга:")
-        print("🔍 [VIEWMODEL]   Actors: \(script.actors.count)")
-        for (index, actor) in script.actors.enumerated() {
-            print("🔍 [VIEWMODEL]     Actor[\(index)]: id='\(actor.id)', type=\(actor.type.rawValue), name='\(actor.name ?? "nil")'")
-        }
-        print("🔍 [VIEWMODEL]   Objects: \(script.objects.count)")
-        for (index, object) in script.objects.enumerated() {
-            print("🔍 [VIEWMODEL]     Object[\(index)]: id='\(object.id)', type=\(object.type.rawValue), name='\(object.name ?? "nil")', detectedPosition=\(object.detectedPosition != nil ? "YES" : "NO")")
-        }
-        print("🔍 [VIEWMODEL]   Beats: \(script.beats.count), Actions: \(script.actions.count)")
-        for (beatIndex, beat) in script.beats.enumerated() {
-            print("🔍 [VIEWMODEL]     Beat[\(beatIndex)]: id='\(beat.id)', actions=\(beat.actions.count)")
-            for (actionIndex, action) in beat.actions.enumerated() {
-#if DEBUG
-                print("🔍 [VIEWMODEL]       Action[\(actionIndex)]: id='\(action.id)', actorId='\(action.actorId)', type=\(action.type.rawValue), target=\(action.target ?? "nil"), holding=\(action.holdingObject ?? "nil"), direction=\(action.direction?.rawValue ?? "nil"), dialogue='\(action.dialogue ?? "nil")', fallback='\(action.fallbackText ?? "nil")', source='\(action.sourceText ?? "nil")'")
-#endif
-            }
-        }
-        print("🔍 [VIEWMODEL]   Confidence: \(result.diagnostics.confidence)")
-        print("🔍 [VIEWMODEL]   Matched markedObjects: \(result.diagnostics.matchedMarkedObjects.count)")
         if let runtimeTrace {
-            print("🔍 [VIEWMODEL]   Runtime route: \(runtimeTrace.route.rawValue)")
-            print("🔍 [VIEWMODEL]   Runtime reasons: \(runtimeTrace.reasons.joined(separator:","))")
+            diagnosticsLog("[GENERATION][\(generationID)] route=\(runtimeTrace.route.rawValue), reasonCount=\(runtimeTrace.reasons.count)")
         }
 
         // Отображаем диагностику в статусе
         if runtimeTrace?.route == .needsClarification {
-            if let parserClarification = parserService.clarificationMessage(for: runtimeTrace) {
-                diagnosticsLog("[GENERATION][\(generationID)] parser clarification diagnostic=\(parserClarification)")
-            }
-            // Parser wording is diagnostic-only. The visible sheet always
-            // uses the localized SET catalog so RU/EN cannot diverge.
+            // The visible sheet uses the localized SET catalog so RU/EN cannot diverge.
             let clarification = localizedCopy(.generatorClarification)
             guard publishClarification(
                 trace: runtimeTrace,
@@ -2980,9 +2951,6 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             bindingResult: resolvedObjectBindings
         )
         print("🔍 [VIEWMODEL]   После сопоставления: objects.count=\(matchedObjects.count)")
-        for (index, object) in matchedObjects.enumerated() {
-            print("🔍 [VIEWMODEL]     MatchedObject[\(index)]: id='\(object.id)', type=\(object.type.rawValue), detectedPosition=\(object.detectedPosition != nil ? "YES" : "NO")")
-        }
 
         let updatedScript = SceneScript(
             sceneHeading: script.sceneHeading,
@@ -3018,15 +2986,6 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         plannedWithBindingSources.provenance = result.generationProvenance
         guard generationIsCurrent(generationToken, requestID: requestID) else { return }
 
-        print("🔍 [VIEWMODEL] Результат планирования:")
-        print("🔍 [VIEWMODEL]   PlacedActors: \(plannedWithBindingSources.placedActors.count)")
-        for (index, actor) in plannedWithBindingSources.placedActors.enumerated() {
-            print("🔍 [VIEWMODEL]     PlacedActor[\(index)]: id='\(actor.id)', actorId='\(actor.actorId)', type=\(actor.type.rawValue), name='\(actor.name ?? "nil")', label='\(displayName(for: actor))', path.count=\(actor.path.count)")
-        }
-        print("🔍 [VIEWMODEL]   PlacedObjects: \(plannedWithBindingSources.placedObjects.count)")
-        for (index, object) in plannedWithBindingSources.placedObjects.enumerated() {
-            print("🔍 [VIEWMODEL]     PlacedObject[\(index)]: id='\(object.id)', objectId='\(object.objectId)', type=\(object.type.rawValue), isRealWorld=\(object.isRealWorld), placementSource=\(object.placementSource.rawValue)")
-        }
         logPlannedSceneDetails(plannedWithBindingSources, script: updatedScript, generationID: generationID)
 
         await commitPreparedGeneration(PreparedGenerationCommit(
@@ -3183,11 +3142,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         let unresolved = result.resolutions.filter { $0.state != .bound }
         guard !unresolved.isEmpty else { return false }
         let message = localizedCopy(.generatorClarification)
-        let detail = unresolved
-            .map { "\($0.reference)=\($0.state.rawValue)" }
-            .sorted()
-            .joined(separator: ",")
-        diagnosticsLog("[GENERATION] object binding clarification required: \(detail)")
+        diagnosticsLog("[GENERATION] object binding clarification required count=\(unresolved.count)")
         _ = publishClarification(
             bindingResult: result,
             requestID: requestID,
@@ -3364,51 +3319,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     private func logParsedScriptDetails(_ script: SceneScript, diagnostics: ParsingDiagnostics, generationID: String) {
         diagnosticsLog("🧭 [TRACE][\(generationID)] parsed script summary: actors=\(script.actors.count), objects=\(script.objects.count), beats=\(script.beats.count), actions=\(script.actions.count), confidence=\(diagnostics.confidence)")
-        for actor in script.actors {
-            diagnosticsLog("🧭 [TRACE][\(generationID)] script.actor id=\(actor.id), type=\(actor.type.rawValue), name=\(actor.name ?? "nil")")
-        }
-        for object in script.objects {
-            diagnosticsLog("🧭 [TRACE][\(generationID)] script.object id=\(object.id), type=\(object.type.rawValue), name=\(object.name ?? "nil"), relative=\(object.relativePosition.rawValue), detected=\(object.detectedPosition.map(formatPosition) ?? "nil")")
-        }
-        for (beatIndex, beat) in script.beats.enumerated() {
-            diagnosticsLog("🧭 [TRACE][\(generationID)] script.beat[\(beatIndex)] id=\(beat.id), minDuration=\(beat.minDuration.map(formatSeconds) ?? "nil"), actions=\(beat.actions.count)")
-            for action in beat.actions {
-                diagnosticsLog("🧭 [TRACE][\(generationID)] script.action beat=\(beat.id), id=\(action.id), actor=\(action.actorId), type=\(action.type.rawValue), target=\(action.target ?? "nil"), holding=\(action.holdingObject ?? "nil"), direction=\(action.direction?.rawValue ?? "nil"), pose=\(action.resultingPose?.rawValue ?? "nil"), dialogue=\(quotedForLog(action.dialogue)), fallback=\(quotedForLog(action.fallbackText)), source=\(quotedForLog(action.sourceText))")
-            }
-        }
     }
 
     private func logPlannedSceneDetails(_ planned: PlannedScene, script: SceneScript, generationID: String) {
         diagnosticsLog("🧭 [TRACE][\(generationID)] planned scene summary: actors=\(planned.placedActors.count), objects=\(planned.placedObjects.count), scriptBeats=\(script.beats.count)")
-        for object in planned.placedObjects {
-            diagnosticsLog("🧭 [TRACE][\(generationID)] placed.object id=\(object.id), objectId=\(object.objectId), type=\(object.type.rawValue), position=\(formatPosition(object.position)), rotation=\(formatFloat(object.rotation)), source=\(object.placementSource.rawValue), isDetected=\(object.isDetected)")
-        }
-        for actor in planned.placedActors {
-            diagnosticsLog("🧭 [TRACE][\(generationID)] placed.actor id=\(actor.id), actorId=\(actor.actorId), label=\(displayName(for: actor)), type=\(actor.type.rawValue), initial=\(formatPosition(actor.initialPosition)), initialRotation=\(formatFloat(actor.initialRotation)), pathPoints=\(actor.path.count), durations=\(actor.pathDurations.map(formatSeconds).joined(separator: ","))")
-            for pointIndex in actor.path.indices {
-                let beatID = actor.pathBeatIDs.indices.contains(pointIndex) ? actor.pathBeatIDs[pointIndex] : nil
-                let pose = actor.pathPoses.indices.contains(pointIndex) ? actor.pathPoses[pointIndex].rawValue : "nil"
-                let annotation = actor.pathAnnotations.indices.contains(pointIndex) ? actor.pathAnnotations[pointIndex] : nil
-                diagnosticsLog("🧭 [TRACE][\(generationID)] placed.actor.path actor=\(displayName(for: actor)), point=\(pointIndex), position=\(formatPosition(actor.path[pointIndex])), beat=\(beatID ?? "nil"), pose=\(pose), annotationKind=\(annotation?.kind.rawValue ?? "nil"), annotation=\(quotedForLog(annotation?.text))")
-            }
-        }
     }
 
     private func logPlaybackPlan(_ planned: PlannedScene, timeline: [BeatPlaybackTimelineItem], playbackID: String) {
         diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] plan summary: actors=\(planned.placedActors.count), objects=\(planned.placedObjects.count), timelineBeats=\(timeline.count)")
-        for item in timeline {
-            diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] timeline beatIndex=\(item.index), beatID=\(item.beatID), start=\(formatSeconds(item.startTime)), duration=\(formatSeconds(item.duration)), dialogue=\(item.hasDialogueCaption), action=\(item.hasActionCaption)")
-        }
-        for actor in planned.placedActors {
-            diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] actor plan label=\(displayName(for: actor)), id=\(actor.id), actorId=\(actor.actorId), pathPoints=\(actor.path.count), segments=\(actor.pathDurations.count)")
-            for segmentIndex in 0..<actor.pathDurations.count {
-                let from = actor.path.indices.contains(segmentIndex) ? formatPosition(actor.path[segmentIndex]) : "nil"
-                let to = actor.path.indices.contains(segmentIndex + 1) ? formatPosition(actor.path[segmentIndex + 1]) : "nil"
-                let beatID = actor.pathBeatIDs.indices.contains(segmentIndex + 1) ? actor.pathBeatIDs[segmentIndex + 1] : nil
-                let annotation = actor.pathAnnotations.indices.contains(segmentIndex + 1) ? actor.pathAnnotations[segmentIndex + 1] : nil
-                diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] actor segment label=\(displayName(for: actor)), segment=\(segmentIndex), beat=\(beatID ?? "nil"), duration=\(formatSeconds(actor.pathDurations[segmentIndex])), from=\(from), to=\(to), annotationKind=\(annotation?.kind.rawValue ?? "nil"), annotation=\(quotedForLog(annotation?.text))")
-            }
-        }
     }
     
     /// Сбрасывает сцену
@@ -3480,6 +3398,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             return
         }
         if !isMarkingMode {
+            cancelActiveStoryboardActorDrag()
             isHintsEnabled = false
             clearHintPresentation()
         }
@@ -3559,33 +3478,33 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         // Demo-fast path: raycast не требует удерживать depth CVPixelBuffer между AR-кадрами.
         // M6-020: the two-pass query rides the seamed provider (production
         // adapter preserves the exact existing-plane → estimated-plane order).
-        var surfaceResults = surfaceRaycaster?.raycastSurfaces(from: screenPoint) ?? []
+        let surfaceResults = surfaceRaycaster?.raycastSurfaces(from: screenPoint) ?? []
 
         // M6-006: a search past its bounded window cannot select a
         // surface silently. Publish retry/reposition guidance and renew the
         // window for the next attempt instead of a fake surface.
         if let deadline = surfaceSearchDeadline, Date() > deadline {
+            cancelMarkerCreation()
             statusMessage = localizedCopy(.generatorErrorSurfaceTimeout)
             surfaceSearchDeadline = Date().addingTimeInterval(Self.surfaceSearchWindowSeconds)
             diagnosticsLog("[MARKER] search window expired: retry/reposition guidance published")
             return
         }
 
-        let worldPosition: Position3D
-        if let firstResult = surfaceResults.first {
-            let position = firstResult.position
-            worldPosition = Position3D(x: position.x, y: position.y, z: position.z)
-        } else if let fallbackPosition = fallbackSurfacePosition(from: screenPoint) {
-            worldPosition = fallbackPosition
-            diagnosticsLog("[MARKER] raycast fallback used position=\(formatPosition(fallbackPosition))")
-        } else {
+        // A real-world marker requires an actual surface hit for this tap.
+        // Camera-height/forward guesses and a plane's height alone cannot
+        // establish a marked object's position. Virtual actor dragging keeps
+        // its separate fallbackSurfacePosition behavior.
+        guard let position = surfaceResults.first?.position,
+              position.x.isFinite, position.y.isFinite, position.z.isFinite else {
+            cancelMarkerCreation()
             statusMessage = localizedCopy(.generatorErrorMarkFailed)
-            diagnosticsLog("[MARKER] tap rejected: no raycast or fallback at point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y))))")
+            diagnosticsLog("[MARKER] tap rejected: no finite surface hit at point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y))))")
             return
         }
+        let worldPosition = Position3D(x: position.x, y: position.y, z: position.z)
 
-        print("🔍 [MARKER] Позиция маркера определена: x=\(worldPosition.x), y=\(worldPosition.y), z=\(worldPosition.z)")
-        diagnosticsLog("[MARKER] tap accepted position=\(formatPosition(worldPosition))")
+        diagnosticsLog("[MARKER] tap accepted")
         pendingMarkerPosition = worldPosition
         showMarkerNameInput = true
     }
@@ -3670,7 +3589,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             0
         )
         
-        print("🔍 [MARKER] Размещение маркера '\(marker.name)' в позиции: x=\(marker.worldPosition.x), y=\(marker.worldPosition.y), z=\(marker.worldPosition.z)")
+        diagnosticsLog("[MARKER] placing marker type=\(marker.type.rawValue)")
         
         markersAnchor?.addChild(markerEntity)
         markerEntities[marker.id] = markerEntity
@@ -3709,7 +3628,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             addTableMarkerOutline(to: entity, size: proxySize, color: marker.markerColor)
         }
 
-        diagnosticsLog("[AR_VISUAL] marker proxy created id=\(marker.id.uuidString.prefix(8)), type=\(marker.type.rawValue), size=\(formatVector(proxySize))")
+        diagnosticsLog("[AR_VISUAL] marker proxy created type=\(marker.type.rawValue)")
         return entity
     }
 
@@ -3774,8 +3693,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         var virtualObjectsPlaced = 0
         // Размещаем только виртуальные объекты (реальные не дублируем)
         for object in planned.placedObjects where !object.isRealWorld {
-            print("🔍 [VIEWMODEL] Размещаю виртуальный объект: id='\(object.id)', type=\(object.type.rawValue)")
-            diagnosticsLog("[AR_VISUAL] placing object id=\(object.id), objectId=\(object.objectId), type=\(object.type.rawValue), position=\(formatPosition(object.position)), size=\(formatVector(object.size)), source=\(object.placementSource.rawValue), isRealWorld=\(object.isRealWorld)")
+            diagnosticsLog("[AR_VISUAL] placing object type=\(object.type.rawValue), source=\(object.placementSource.rawValue), isRealWorld=\(object.isRealWorld)")
             let entity = createSceneObjectEntity(for: object)
             
             entity.position = object.position.simdVector
@@ -3792,7 +3710,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         print("🔍 [VIEWMODEL] Начало размещения актёров, всего в planned.placedActors: \(planned.placedActors.count)")
         for (index, actor) in planned.placedActors.enumerated() {
             let previewPosition = playbackStartPosition(for: actor)
-            print("🔍 [VIEWMODEL] Обработка актёра[\(index)]: id='\(actor.id)', actorId='\(actor.actorId)', type=\(actor.type.rawValue), initialPosition=(\(actor.initialPosition.x), \(actor.initialPosition.y), \(actor.initialPosition.z)), previewPosition=(\(previewPosition.x), \(previewPosition.y), \(previewPosition.z))")
+            diagnosticsLog("[AR_VISUAL] placing actor index=\(index), type=\(actor.type.rawValue)")
             let style = Self.actorRenderStyle(for: actor, at: index)
             actorRenderStyles[actor.id] = style
             let entity = createActorEntity(
@@ -3813,21 +3731,20 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             focusEntity.isEnabled = false
             anchor.addChild(focusEntity)
             actorFocusEntities[actor.id] = focusEntity
-            diagnosticsLog("[AR_VISUAL] actor placed actor=\(displayName(for: actor)), id=\(actor.actorId), initial=\(formatPosition(actor.initialPosition)), preview=\(formatPosition(previewPosition)), pathFirst=\(actor.path.first.map(formatPosition) ?? "nil"), palette=\(style.paletteIndex), color=\(formatVector(style.color))")
-            print("🔍 [VIEWMODEL] Актёр[\(index)] добавлен в placedEntities с ключом '\(actor.id)', теперь placedEntities.count=\(placedEntities.count)")
+            diagnosticsLog("[AR_VISUAL] actor placed index=\(index), palette=\(style.paletteIndex)")
+            diagnosticsLog("[AR_VISUAL] actor entity added index=\(index), entities=\(placedEntities.count)")
             actorsPlaced += 1
         }
         placePathGuides(for: planned, anchor: anchor)
         updateObjectLabelOverlays()
         print("🔍 [VIEWMODEL] Размещено актёров: \(actorsPlaced) из \(planned.placedActors.count)")
         print("🔍 [VIEWMODEL] Всего entities в placedEntities: \(placedEntities.count)")
-        print("🔍 [VIEWMODEL] Ключи в placedEntities: \(placedEntities.keys.sorted().joined(separator: ", "))")
         print("🔍 [VIEWMODEL] === РАЗМЕЩЕНИЕ ЗАВЕРШЕНО ===")
     }
 
     private func createSceneObjectEntity(for object: PlannedScene.PlacedObject) -> ModelEntity {
         let style = Self.objectRenderStyle(for: object.type)
-        diagnosticsLog("[AR_VISUAL] object style id=\(object.id), type=\(object.type.rawValue), kind=\(style.kind), cueRadius=\(formatFloat(style.targetCueRadius))")
+        diagnosticsLog("[AR_VISUAL] object style type=\(object.type.rawValue), kind=\(style.kind)")
         switch style.kind {
         case .phoneProxy:
             return createPhoneProxyEntity(size: object.size, color: object.color)
@@ -4023,7 +3940,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         sceneAnchor = nil
         placedEntities.removeAll()
         clearSceneVisualState()
-        diagnosticsLog("[AR_VISUAL] cleared placed scene reason=\(reason)")
+        diagnosticsLog("[AR_VISUAL] cleared placed scene")
     }
 
     private func playbackStartPosition(for actor: PlannedScene.PlacedActor) -> Position3D {
@@ -4323,7 +4240,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         guard let angle = Self.yawAngle(from: position, toward: target) else { return }
         let rotationDuration = min(max(duration * 0.22, 0.22), 0.55)
         animateActorRotation(entity, yaw: angle, duration: rotationDuration)
-        diagnosticsLog("[AR_VISUAL] actor oriented actor=\(actorLabel), action=\(action.type.rawValue), target=\(action.target ?? "nil"), yaw=\(formatFloat(angle)), duration=\(formatSeconds(rotationDuration))")
+        diagnosticsLog("[AR_VISUAL] actor oriented action=\(action.type.rawValue), duration=\(formatSeconds(rotationDuration))")
     }
 
     private func animateActorRotation(_ entity: ModelEntity, yaw angle: Float, duration: TimeInterval) {
@@ -4444,7 +4361,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         sceneAnchor.addChild(line)
         sceneAnchor.addChild(reticle)
         activeTargetCueEntities = [line, reticle]
-        diagnosticsLog("[AR_VISUAL] target cue actor=\(actorLabel), action=\(action.type.rawValue), target=\(action.target ?? "nil"), radius=\(formatFloat(reticleRadius)), duration=\(formatSeconds(duration))")
+        diagnosticsLog("[AR_VISUAL] target cue action=\(action.type.rawValue), duration=\(formatSeconds(duration))")
 
         let hideDelay = min(max(duration, 0.7), 2.2)
         let hideWorkItem = DispatchWorkItem { [weak self] in
@@ -4458,14 +4375,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
     private func animateActor(_ actor: PlannedScene.PlacedActor) {
         let playbackID = currentPlaybackLogID ?? "nil"
         guard let entity = placedEntities[actor.id] else {
-            print("🎬 [PLAYBACK][\(playbackID)] actor animation skipped: entity missing actor=\(displayName(for: actor)), id=\(actor.id)")
+            diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] actor animation skipped: entity missing")
             return
         }
         guard actor.path.count > 1 else {
-            print("🎬 [PLAYBACK][\(playbackID)] actor animation skipped: path too short actor=\(displayName(for: actor)), points=\(actor.path.count)")
+            diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] actor animation skipped: path too short points=\(actor.path.count)")
             return
         }
-        print("🎬 [PLAYBACK][\(playbackID)] actor animation start actor=\(displayName(for: actor)), segments=\(actor.path.count - 1)")
+        diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] actor animation start segments=\(actor.path.count - 1)")
         
         // Анимируем последовательно по всем точкам пути
         animateActorSegment(entity: entity, actor: actor, segmentIndex: 0)
@@ -4478,14 +4395,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             // Все сегменты завершены - устанавливаем финальную позицию точно
             if let lastPosition = actor.path.last {
                 entity.position = lastPosition.simdVector
-                print("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] actor animation complete actor=\(displayName(for: actor)), final=\(formatPosition(lastPosition))")
+                diagnosticsLog("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] actor animation complete")
             }
             checkIfAllAnimationsComplete()
             return
         }
         
         guard isPlaying else {
-            print("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] segment skipped: playback stopped actor=\(displayName(for: actor)), segment=\(segmentIndex)")
+            diagnosticsLog("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] segment skipped: playback stopped segment=\(segmentIndex)")
             return
         }
         
@@ -4495,7 +4412,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         let playbackID = currentPlaybackLogID ?? "nil"
         let annotation = actor.pathAnnotations.indices.contains(segmentIndex + 1) ? actor.pathAnnotations[segmentIndex + 1] : nil
         let beatID = actor.pathBeatIDs.indices.contains(segmentIndex + 1) ? actor.pathBeatIDs[segmentIndex + 1] : nil
-        diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] segment start actor=\(displayName(for: actor)), segment=\(segmentIndex), beat=\(beatID ?? "nil"), duration=\(formatSeconds(duration)), from=\(formatVector(startPosition)), to=\(formatVector(targetPosition)), annotationKind=\(annotation?.kind.rawValue ?? "nil"), annotation=\(quotedForLog(annotation?.text))")
+        diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] segment start segment=\(segmentIndex), duration=\(formatSeconds(duration)), annotationKind=\(annotation?.kind.rawValue ?? "nil")")
 
         // Сначала устанавливаем точную начальную позицию сегмента
         entity.stopAllAnimations()
@@ -4516,11 +4433,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         
         // Если расстояние слишком маленькое, пропускаем этот сегмент
         guard distance > 0.01 else {
-            diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] segment wait/no-move actor=\(displayName(for: actor)), segment=\(segmentIndex), distance=\(formatFloat(distance)), duration=\(formatSeconds(duration))")
+            diagnosticsLog("🎬 [PLAYBACK][\(playbackID)] segment wait/no-move segment=\(segmentIndex), duration=\(formatSeconds(duration))")
             let waitWorkItem = DispatchWorkItem { [weak self] in
                 guard let self = self, self.isPlaying else { return }
                 entity.position = targetPosition
-                self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] segment complete/no-move actor=\(self.displayName(for: actor)), segment=\(segmentIndex), position=\(self.formatVector(targetPosition))")
+                self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] segment complete/no-move segment=\(segmentIndex)")
                 self.animateActorSegment(entity: entity, actor: actor, segmentIndex: segmentIndex + 1)
             }
             animationWorkItems.append(waitWorkItem)
@@ -4544,7 +4461,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             guard let self = self, self.isPlaying else { return }
             // Устанавливаем точную конечную позицию перед следующим сегментом
             entity.position = targetPosition
-            self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] segment complete actor=\(self.displayName(for: actor)), segment=\(segmentIndex), position=\(self.formatVector(targetPosition))")
+            self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] segment complete segment=\(segmentIndex)")
             self.animateActorSegment(entity: entity, actor: actor, segmentIndex: segmentIndex + 1)
         }
         animationWorkItems.append(workItem)
@@ -4849,7 +4766,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         storyboardEditorRevision &+= 1
         activeStoryboardEditDraft = draft
         storyboardDragFeedback = nil
-        diagnosticsLog("[STORYBOARD_EDIT] open beat=\(beatID), actions=\(draft.actions.count)")
+        diagnosticsLog("[STORYBOARD_EDIT] open beat actions=\(draft.actions.count)")
     }
 
     func cancelStoryboardEditor() {
@@ -4906,7 +4823,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             camera: originalBeat.camera,
             minDuration: originalBeat.minDuration
         )
-        diagnosticsLog("[STORYBOARD_EDIT] save beat=\(draft.beatID), actions=\(updatedActions.count)")
+        diagnosticsLog("[STORYBOARD_EDIT] save beat actions=\(updatedActions.count)")
         return await applyManualStoryboardScriptEdit(beats: beats, reason: "save_beat", editorRevision: editorRevision)
     }
 
@@ -4942,7 +4859,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
         var beats = script.beats
         beats.remove(at: index)
-        diagnosticsLog("[STORYBOARD_EDIT] delete beat=\(beatID)")
+        diagnosticsLog("[STORYBOARD_EDIT] delete beat")
         return await applyManualStoryboardScriptEdit(beats: beats, reason: "delete_beat", editorRevision: editorRevision)
     }
 
@@ -4975,7 +4892,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
         var beats = script.beats
         beats.swapAt(index, destination)
-        diagnosticsLog("[STORYBOARD_EDIT] move beat=\(beatID), from=\(index), to=\(destination)")
+        diagnosticsLog("[STORYBOARD_EDIT] move beat from=\(index), to=\(destination)")
         return await applyManualStoryboardScriptEdit(beats: beats, reason: "move_beat", editorRevision: editorRevision)
     }
 
@@ -5249,7 +5166,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 let message = localizedCopy(copyKey)
                 errorMessage = message
                 storyboardValidationMessage = message
-                diagnosticsLog("[STORYBOARD_EDIT] persistence failed reason=\(reason); edit retained")
+                diagnosticsLog("[STORYBOARD_EDIT] persistence failed; edit retained")
                 return false
             }
             acceptPersistedProject(candidateProject)
@@ -5275,15 +5192,36 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         storyboardValidationField = nil
         refreshWorkspaceMode()
         refreshIdleStatusMessage()
-        diagnosticsLog("[STORYBOARD_EDIT] replan complete reason=\(reason), beats=\(editedScript.beats.count), visible=\(storyboardBeatItems.count), actors=\(plannedWithBindingSources.placedActors.count), objects=\(plannedWithBindingSources.placedObjects.count)")
+        diagnosticsLog("[STORYBOARD_EDIT] replan complete beats=\(editedScript.beats.count), visible=\(storyboardBeatItems.count), actors=\(plannedWithBindingSources.placedActors.count), objects=\(plannedWithBindingSources.placedObjects.count)")
         SceneGeneratorDiagnosticsLogger.shared.flush()
         return true
     }
 
+    /// The commit owns isStoryboardMutationInFlight while awaiting persistence,
+    /// so that reservation must not make its own later admission check fail.
+    /// Offline plan edits remain possible without a live ARView/readiness flag.
+    private var isStoryboardActorDragBlocked: Bool {
+        isPlaying || isGenerating || isRecording || isRecordingStarting
+            || isRecordingFinalizing || isMarkingMode
+            || isARSessionInterrupted || isARSessionRecovering
+    }
+
+    private var storyboardActorDragBlockedCopy: SETCopyKey {
+        if isARSessionInterrupted { return .cameraInterrupted }
+        if isARSessionRecovering { return .cameraResuming }
+        return .storyboardDragBusy
+    }
+
     func handleStoryboardActorDragGesture(state: UIGestureRecognizer.State, at screenPoint: CGPoint) {
+        guard !isWorkspaceReleased, teardownTask == nil else { return }
+        guard !isStoryboardActorDragBlocked else {
+            cancelActiveStoryboardActorDrag()
+            if state == .began { storyboardDragFeedback = localizedCopy(storyboardActorDragBlockedCopy) }
+            return
+        }
         if shouldLogStoryboardActorDragGestureState(state) {
             diagnosticsLog(
-                "[STORYBOARD_EDIT] actor drag gesture received state=\(storyboardActorDragGestureStateDescription(state)), point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y)))), activeBeat=\(activeStoryboardEditDraft?.beatID ?? "nil"), hasARView=\(arView != nil), playing=\(isPlaying), generating=\(isGenerating), recording=\(isRecording)"
+                "[STORYBOARD_EDIT] actor drag gesture received state=\(storyboardActorDragGestureStateDescription(state)), hasActiveEditor=\(activeStoryboardEditDraft != nil), hasARView=\(arView != nil), playing=\(isPlaying), generating=\(isGenerating), recording=\(isRecording)"
             )
         }
         switch state {
@@ -5335,19 +5273,19 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         defer { isStoryboardMutationInFlight = false }
         guard activeStoryboardEditDraft?.beatID == beatID else {
             storyboardDragFeedback = localizedCopy(.storyboardDragBeatClosed)
-            diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: beat not active actor=\(actorID), beat=\(beatID)")
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: beat not active")
             return false
         }
-        guard !isPlaying, !isGenerating, !isRecording else {
-            storyboardDragFeedback = localizedCopy(.storyboardDragBusy)
-            diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: busy actor=\(actorID), beat=\(beatID)")
+        guard !isStoryboardActorDragBlocked else {
+            storyboardDragFeedback = localizedCopy(storyboardActorDragBlockedCopy)
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: busy")
             return false
         }
         guard let plannedScene,
               let actorIndex = plannedScene.placedActors.firstIndex(where: { $0.actorId == actorID || $0.id == actorID })
         else {
             storyboardDragFeedback = localizedCopy(.storyboardDragActorMissing)
-            diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: actor missing actor=\(actorID), beat=\(beatID)")
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: actor missing")
             return false
         }
 
@@ -5367,7 +5305,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 .storyboardDragActorNotInBeat,
                 arguments: [displayName(for: actor)]
             )
-            diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: no beat point actor=\(displayName(for: actor)), beat=\(beatID)")
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag rejected: no beat point")
             return false
         }
 
@@ -5405,7 +5343,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 activeStoryboardEditDraft?.title.lowercased() ?? localizedCopy(.storyboardBeatTitle, arguments: [""])
             ]
         )
-        diagnosticsLog("[STORYBOARD_EDIT] actor drag committed actor=\(displayName(for: actor)), beat=\(beatID), points=\(changedPoints), position=\(formatPosition(position))")
+        diagnosticsLog("[STORYBOARD_EDIT] actor drag committed points=\(changedPoints)")
         SceneGeneratorDiagnosticsLogger.shared.flush()
         return true
     }
@@ -5415,16 +5353,16 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         guard !isStoryboardMutationInFlight else { return false }
         isStoryboardMutationInFlight = true
         defer { isStoryboardMutationInFlight = false }
-        guard !isPlaying, !isGenerating, !isRecording else {
-            storyboardDragFeedback = localizedCopy(.storyboardDragBusy)
-            diagnosticsLog("[STORYBOARD_EDIT] actor track drag rejected: busy actor=\(actorID)")
+        guard !isStoryboardActorDragBlocked else {
+            storyboardDragFeedback = localizedCopy(storyboardActorDragBlockedCopy)
+            diagnosticsLog("[STORYBOARD_EDIT] actor track drag rejected: busy")
             return false
         }
         guard let plannedScene,
               let actorIndex = plannedScene.placedActors.firstIndex(where: { $0.actorId == actorID || $0.id == actorID })
         else {
             storyboardDragFeedback = localizedCopy(.storyboardDragActorMissing)
-            diagnosticsLog("[STORYBOARD_EDIT] actor track drag rejected: actor missing actor=\(actorID)")
+            diagnosticsLog("[STORYBOARD_EDIT] actor track drag rejected: actor missing")
             return false
         }
 
@@ -5472,7 +5410,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             .storyboardDragCommitted,
             arguments: [displayName(for: actor)]
         )
-        diagnosticsLog("[STORYBOARD_EDIT] actor track drag committed actor=\(displayName(for: actor)), delta=(\(formatFloat(deltaX)), \(formatFloat(deltaZ))), position=\(formatPosition(position))")
+        diagnosticsLog("[STORYBOARD_EDIT] actor track drag committed")
         SceneGeneratorDiagnosticsLogger.shared.flush()
         return true
     }
@@ -5494,8 +5432,8 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             errorMessage = message
             return false
         }
-        guard !isPlaying, !isGenerating, !isRecording else {
-            storyboardDragFeedback = localizedCopy(.storyboardDragBusy)
+        guard !isStoryboardActorDragBlocked else {
+            storyboardDragFeedback = localizedCopy(storyboardActorDragBlockedCopy)
             return false
         }
         return true
@@ -5531,9 +5469,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     private func beginStoryboardActorDrag(at screenPoint: CGPoint) {
         diagnosticsLog("[STORYBOARD_EDIT] actor drag begin requested point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y))))")
-        guard !isPlaying, !isGenerating, !isRecording,
+        // Ancestor and ARView recognizers may both report the same began event.
+        // Preserve the first actor and original pose for rollback/track delta.
+        guard activeStoryboardActorDrag == nil else { return }
+        guard !isStoryboardActorDragBlocked,
               !isStoryboardMutationInFlight, storyboardActorDragCommitTask == nil else {
-            storyboardDragFeedback = localizedCopy(.storyboardDragBusy)
+            storyboardDragFeedback = localizedCopy(storyboardActorDragBlockedCopy)
             diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: busy")
             return
         }
@@ -5546,7 +5487,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         guard let actor = storyboardActorHit(at: screenPoint, beatID: beatID)
         else {
             storyboardDragFeedback = localizedCopy(.storyboardDragHoldActor)
-            diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: actor hit missing beat=\(beatID ?? "global"), point=(\(formatFloat(Float(screenPoint.x))), \(formatFloat(Float(screenPoint.y))))")
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: actor hit missing")
             return
         }
         if let beatID {
@@ -5555,7 +5496,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                     .storyboardDragActorNotInBeat,
                     arguments: [displayName(for: actor)]
                 )
-                diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: no beat point actor=\(displayName(for: actor)), beat=\(beatID)")
+                diagnosticsLog("[STORYBOARD_EDIT] actor drag begin rejected: no beat point")
                 return
             }
         }
@@ -5584,7 +5525,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                     activeStoryboardEditDraft?.title.lowercased() ?? localizedCopy(.storyboardBeatTitle, arguments: [""])
                 ]
             )
-        diagnosticsLog("[STORYBOARD_EDIT] actor drag began actor=\(displayName(for: actor)), beat=\(beatID ?? "global"), position=\(formatPosition(position))")
+        diagnosticsLog("[STORYBOARD_EDIT] actor drag began")
     }
 
     private func updateStoryboardActorDrag(at screenPoint: CGPoint) {
@@ -5624,7 +5565,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 entity.position = drag.originalPosition
             }
             storyboardDragFeedback = localizedCopy(.storyboardDragCancelled)
-            diagnosticsLog("[STORYBOARD_EDIT] actor drag cancelled actor=\(drag.actorID), beat=\(drag.beatID ?? "global")")
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag cancelled")
         }
     }
 
@@ -5635,7 +5576,6 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
 
     private func storyboardActorHit(at screenPoint: CGPoint, beatID: String?) -> PlannedScene.PlacedActor? {
         guard let arView else { return nil }
-        let beatLabel = beatID ?? "global"
 
         let sampleOffsets: [CGPoint] = [
             .zero,
@@ -5655,12 +5595,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                   let hitEntity = arView.entity(at: point),
                   let actor = placedActor(forHitEntity: hitEntity)
             else { continue }
-            diagnosticsLog("[STORYBOARD_EDIT] actor drag hit entity actor=\(displayName(for: actor)), beat=\(beatLabel), offset=(\(formatFloat(Float(offset.x))), \(formatFloat(Float(offset.y))))")
+            diagnosticsLog("[STORYBOARD_EDIT] actor drag hit entity")
             return actor
         }
 
         guard let projected = projectedStoryboardActorHit(at: screenPoint) else { return nil }
-        diagnosticsLog("[STORYBOARD_EDIT] actor drag hit projection actor=\(displayName(for: projected.actor)), beat=\(beatLabel), distance=\(formatFloat(Float(projected.distance)))")
+        diagnosticsLog("[STORYBOARD_EDIT] actor drag hit projection distance=\(formatFloat(Float(projected.distance)))")
         return projected.actor
     }
 
@@ -5745,7 +5685,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             return Position3D(x: hit.x, y: y, z: hit.z)
         }
         guard let fallback = fallbackSurfacePosition(from: screenPoint, yOverride: y) else { return nil }
-        diagnosticsLog("[STORYBOARD_EDIT] actor drag raycast fallback used beat=\(beatID ?? "global"), position=\(formatPosition(fallback))")
+        diagnosticsLog("[STORYBOARD_EDIT] actor drag raycast fallback used")
         return fallback
     }
 
@@ -5920,7 +5860,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         if lastLoggedPlaybackBeatIndex != state.activeBeatIndex,
            beatTimelineItems.indices.contains(state.activeBeatIndex) {
             let item = beatTimelineItems[state.activeBeatIndex]
-            diagnosticsLog("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] active beat changed index=\(state.activeBeatIndex), beatID=\(item.beatID), elapsed=\(formatSeconds(state.elapsedTime)), duration=\(formatSeconds(item.duration)), dialogue=\(item.hasDialogueCaption), action=\(item.hasActionCaption)")
+            diagnosticsLog("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] active beat changed index=\(state.activeBeatIndex), elapsed=\(formatSeconds(state.elapsedTime)), duration=\(formatSeconds(item.duration)), hasDialogueCaption=\(item.hasDialogueCaption), hasActionCaption=\(item.hasActionCaption)")
             lastLoggedPlaybackBeatIndex = state.activeBeatIndex
         }
         playbackElapsedTime = state.elapsedTime
@@ -5947,11 +5887,11 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 case .dialogue:
                     self.activeDialogueCaptionID = captionID
                     self.activeDialogueCaption = event.renderedText
-                    self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] show dialogue caption start=\(self.formatSeconds(startTime)), duration=\(self.formatSeconds(displayDuration)), text=\(self.quotedForLog(event.renderedText))")
+                    self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] show dialogue caption start=\(self.formatSeconds(startTime)), duration=\(self.formatSeconds(displayDuration))")
                 case .action:
                     self.activeActionCaptionID = captionID
                     self.activeActionCaption = event.renderedText
-                    self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] show action caption start=\(self.formatSeconds(startTime)), duration=\(self.formatSeconds(displayDuration)), text=\(self.quotedForLog(event.renderedText))")
+                    self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] show action caption start=\(self.formatSeconds(startTime)), duration=\(self.formatSeconds(displayDuration))")
                 }
             }
             animationWorkItems.append(showWorkItem)
@@ -5962,12 +5902,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 switch event.kind {
                 case .dialogue:
                     guard self.activeDialogueCaptionID == captionID else { return }
-                    self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] hide dialogue caption text=\(self.quotedForLog(event.renderedText))")
+                    self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] hide dialogue caption")
                     self.activeDialogueCaption = nil
                     self.activeDialogueCaptionID = nil
                 case .action:
                     guard self.activeActionCaptionID == captionID else { return }
-                    self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] hide action caption text=\(self.quotedForLog(event.renderedText))")
+                    self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] hide action caption")
                     self.activeActionCaption = nil
                     self.activeActionCaptionID = nil
                 }
@@ -5991,14 +5931,14 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 guard let self, self.isPlaying else { return }
                 self.activeScreenTextCaptionID = captionID
                 self.activeScreenTextCaption = overlay.text
-                self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] show screen text start=\(self.formatSeconds(startTime)), duration=\(self.formatSeconds(displayDuration)), text=\(self.quotedForLog(overlay.text))")
+                self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] show screen text start=\(self.formatSeconds(startTime)), duration=\(self.formatSeconds(displayDuration))")
             }
             animationWorkItems.append(showWorkItem)
             DispatchQueue.main.asyncAfter(deadline: .now() + startTime, execute: showWorkItem)
 
             let hideWorkItem = DispatchWorkItem { [weak self] in
                 guard let self, self.isPlaying, self.activeScreenTextCaptionID == captionID else { return }
-                self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] hide screen text text=\(self.quotedForLog(overlay.text))")
+                self.diagnosticsLog("🎬 [PLAYBACK][\(self.currentPlaybackLogID ?? "nil")] hide screen text")
                 self.activeScreenTextCaption = nil
                 self.activeScreenTextCaptionID = nil
             }
@@ -6063,28 +6003,12 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         return localizedCopy(.storyboardActor)
     }
 
-    private func formatPosition(_ position: Position3D) -> String {
-        "(\(formatFloat(position.x)), \(formatFloat(position.y)), \(formatFloat(position.z)))"
-    }
-
-    private func formatVector(_ vector: simd_float3) -> String {
-        "(\(formatFloat(vector.x)), \(formatFloat(vector.y)), \(formatFloat(vector.z)))"
-    }
-
     private func formatFloat(_ value: Float) -> String {
         String(format: "%.3f", Double(value))
     }
 
     private func formatSeconds(_ value: TimeInterval) -> String {
         String(format: "%.2fs", value)
-    }
-
-    private func quotedForLog(_ value: String?) -> String {
-        guard let value else { return "nil" }
-        let sanitized = value
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return "'\(sanitized)'"
     }
 
     private func sanitizeCaption(_ caption: String) -> String {
@@ -6100,7 +6024,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         
         for actor in planned.placedActors {
             guard let entity = placedEntities[actor.id] else {
-                print("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] initial position skipped: entity missing actor=\(displayName(for: actor)), id=\(actor.id)")
+                diagnosticsLog("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] initial position skipped: entity missing")
                 continue
             }
             
@@ -6112,7 +6036,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             entity.position = startPosition.simdVector
             entity.orientation = simd_quatf(angle: actor.initialRotation, axis: [0, 1, 0])
             actorFocusEntities[actor.id]?.position = startPosition.simdVector + SIMD3<Float>(0, 0.025, 0)
-            diagnosticsLog("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] start position actor=\(displayName(for: actor)), position=\(formatPosition(startPosition)), initial=\(formatPosition(actor.initialPosition)), rotation=\(formatFloat(actor.initialRotation))")
+            diagnosticsLog("🎬 [PLAYBACK][\(currentPlaybackLogID ?? "nil")] start position applied")
         }
     }
     
@@ -6248,7 +6172,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         hintPreviewSuggestions = []
         hintPauseCritique = nil
 #if DEBUG
-        print("[CA_DEBUG][PAUSE_START] token=\(requestToken.uuidString) snapshot=\(acceptedSnapshot?.snapshotID ?? "nil") liveHint=\(liveHint?.text ?? "nil") overlayBBox=\(formatDebugRect(coachingOverlayState.primaryBoundingBox))")
+        diagnosticsLog("[CA_DEBUG][PAUSE_START] hasSnapshot=\(acceptedSnapshot != nil) hasLiveHint=\(liveHint != nil)")
 #endif
         analysisPipeline.clearLivePresentationState()
 
@@ -6314,10 +6238,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                     )
                     self.applyPendingHintPauseAnalysisIfReady()
 
-                    let critiqueText = critique.map {
-                        "verdict=\($0.verdict.rawValue) confidence=\(self.formatDebugDouble($0.verdictConfidence)) short=\($0.shortVerdict)"
-                    } ?? "nil"
-                    print("[CA_DEBUG][PAUSE_RESULT] token=\(requestToken.uuidString) snapshot=\(renderedSnapshot.snapshotID) result=\(result) suggestions=\(suggestions.count) critique=\(critiqueText)")
+                    self.diagnosticsLog("[CA_DEBUG][PAUSE_RESULT] suggestions=\(suggestions.count)")
                 }
             }
         }
@@ -6414,7 +6335,13 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         let audioPolicy = selectedRecordingAudioPolicy
         let audioLease: AudioSessionLease?
         if audioPolicy.mode == .required {
-            let currentMicrophone = await permissionClient.snapshot(for: .microphone)
+            let permissionClient = self.permissionClient
+            let currentMicrophone: PermissionSnapshot
+            do {
+                currentMicrophone = try await PermissionRequestWaiter.value {
+                    await permissionClient.snapshot(for: .microphone)
+                }
+            } catch { return }
             guard !Task.isCancelled else { return }
             guard currentMicrophone.availability == .available else {
                 publishRecordingAudioFailure(
@@ -6425,9 +6352,16 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
                 return
             }
 
-            let microphone = currentMicrophone.authorization == .notDetermined
-                ? await permissionClient.request(.microphone)
-                : currentMicrophone
+            let microphone: PermissionSnapshot
+            do {
+                if currentMicrophone.authorization == .notDetermined {
+                    microphone = try await PermissionRequestWaiter.value {
+                        await permissionClient.request(.microphone)
+                    }
+                } else {
+                    microphone = currentMicrophone
+                }
+            } catch { return }
             guard !Task.isCancelled else { return }
             guard microphone.availability == .available else {
                 publishRecordingAudioFailure(
@@ -6978,11 +6912,6 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         "[a=\(formatDebugDouble(transform.a)) b=\(formatDebugDouble(transform.b)) c=\(formatDebugDouble(transform.c)) d=\(formatDebugDouble(transform.d)) tx=\(formatDebugDouble(transform.tx)) ty=\(formatDebugDouble(transform.ty))]"
     }
 
-    private func formatDebugRect(_ rect: CGRect?) -> String {
-        guard let rect else { return "nil" }
-        return "[x=\(formatDebugDouble(rect.minX)) y=\(formatDebugDouble(rect.minY)) w=\(formatDebugDouble(rect.width)) h=\(formatDebugDouble(rect.height))]"
-    }
-
     private func formatDebugDouble(_ value: Double) -> String {
         String(format: "%.3f", value)
     }
@@ -7075,7 +7004,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
         } catch DBServiceError.staleSnapshot(let storedUpdatedAt) {
             print("Unified scene metadata save conflicted with stored updatedAt \(storedUpdatedAt); kept stored version")
         } catch {
-            print("Error saving unified scene metadata: \(error)")
+            diagnosticsLog("[PROJECT] unified scene metadata save failed code=\((error as NSError).code)")
         }
     }
 
@@ -7176,7 +7105,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             print("Unified scene snapshot conflicted with stored updatedAt \(storedUpdatedAt)")
             return .failure(.persistenceFailed)
         } catch {
-            print("Error saving unified scene snapshot: \(error)")
+            diagnosticsLog("[PROJECT] unified scene snapshot save failed code=\((error as NSError).code)")
             return .failure(.persistenceFailed)
         }
     }
@@ -7199,7 +7128,7 @@ final class SceneGeneratorViewModel: ObservableObject, SceneWorkspaceTeardownPro
             request: { completion in
                 arView.session.getCurrentWorldMap { worldMap, error in
                     if let error {
-                        print("Error capturing current world map: \(error)")
+                        SceneGeneratorDiagnosticsLogger.shared.log("[PROJECT] world map capture failed code=\((error as NSError).code)")
                         completion(.failure(.worldMapSnapshotFailed))
                         return
                     }
@@ -7546,6 +7475,11 @@ extension SceneGeneratorViewModel {
         currentCameraTransform = cameraTransform
         detectedPlanes = planes
         isARSessionReady = true
+    }
+
+    /// Expires or fixes the existing search deadline without sleeping in tests.
+    func testingSetSurfaceSearchDeadline(_ deadline: Date) {
+        surfaceSearchDeadline = deadline
     }
 
     /// UI-test support only: marks the AR session ready so the generator's

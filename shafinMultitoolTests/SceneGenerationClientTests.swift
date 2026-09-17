@@ -194,7 +194,7 @@ final class SceneGenerationClientTests: XCTestCase {
                 fixture = "job-valid-complete.json"
             }
             return (
-                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!,
                 try self.responseData(fixture: fixture, request: body, idempotencyKey: key, overrides: overrides)
             )
         }
@@ -247,7 +247,7 @@ final class SceneGenerationClientTests: XCTestCase {
                 url: request.url!,
                 statusCode: 201,
                 httpVersion: nil,
-                headerFields: nil
+                headerFields: ["Content-Type": "application/json"]
             )!, data)
         }
         let authed = SceneGenerationClient(
@@ -282,7 +282,7 @@ final class SceneGenerationClientTests: XCTestCase {
                 url: request.url!,
                 statusCode: 200,
                 httpVersion: nil,
-                headerFields: nil
+                headerFields: ["Content-Type": "application/json"]
             )!, try self.responseData(
                 fixture: "job-valid-pending.json",
                 requestID: answer.requestID
@@ -359,7 +359,7 @@ final class SceneGenerationClientTests: XCTestCase {
                 url: URL(string: "https://set-os.local/v1/jobs/job_demo001")!,
                 statusCode: 200,
                 httpVersion: nil,
-                headerFields: nil
+                headerFields: ["Content-Type": "application/json"]
             )!, responses.isEmpty ? complete : responses.removeFirst())
         }
         let outcome = try await client().pollToTerminal(
@@ -386,7 +386,7 @@ final class SceneGenerationClientTests: XCTestCase {
                 url: request.url!,
                 statusCode: 200,
                 httpVersion: nil,
-                headerFields: nil
+                headerFields: ["Content-Type": "application/json"]
             )!, complete)
         }
         let outcome = try await client().pollToTerminal(
@@ -413,7 +413,7 @@ final class SceneGenerationClientTests: XCTestCase {
                 url: request.url!,
                 statusCode: 200,
                 httpVersion: nil,
-                headerFields: nil
+                headerFields: ["Content-Type": "application/json"]
             )!, awaiting)
         }
         let outcome = try await client().pollToTerminal(
@@ -441,7 +441,7 @@ final class SceneGenerationClientTests: XCTestCase {
             SceneClientStub.handler = { request in
                 (HTTPURLResponse(
                     url: request.url!, statusCode: 200,
-                    httpVersion: nil, headerFields: nil
+                    httpVersion: nil, headerFields: ["Content-Type": "application/json"]
                 )!, failed)
             }
             let outcome = try await client().pollToTerminal(
@@ -462,7 +462,7 @@ final class SceneGenerationClientTests: XCTestCase {
                 url: request.url!,
                 statusCode: 200,
                 httpVersion: nil,
-                headerFields: nil
+                headerFields: ["Content-Type": "application/json"]
             )!, Data("not json".utf8))
         }
         do {
@@ -481,7 +481,7 @@ final class SceneGenerationClientTests: XCTestCase {
                     url: request.url!,
                     statusCode: 200,
                     httpVersion: nil,
-                    headerFields: nil
+                    headerFields: ["Content-Type": "application/json"]
                 )!,
                 invalid
             )
@@ -497,7 +497,7 @@ final class SceneGenerationClientTests: XCTestCase {
                 url: request.url!,
                 statusCode: 410,
                 httpVersion: nil,
-                headerFields: nil
+                headerFields: ["Content-Type": "application/json"]
             )!, Data(#"{"code":"kill_switch","message":"Generation is temporarily disabled."}"#.utf8))
         }
         do {
@@ -516,7 +516,7 @@ final class SceneGenerationClientTests: XCTestCase {
         for operation in 0..<4 {
             SceneClientStub.reset()
             SceneClientStub.handler = { request in
-                (HTTPURLResponse(url: request.url!, statusCode: 410, httpVersion: nil, headerFields: nil)!,
+                (HTTPURLResponse(url: request.url!, statusCode: 410, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!,
                  Data(#"{"code":"content_expired","message":"Job content has expired."}"#.utf8))
             }
             await assertRejected(expected: .contentExpired) {
@@ -536,7 +536,7 @@ final class SceneGenerationClientTests: XCTestCase {
         for body in ["", "{}", #"{"code":"future_code","message":"Gone"}"#, #"{"code":"content_expired"}"#] {
             SceneClientStub.reset()
             SceneClientStub.handler = { request in
-                (HTTPURLResponse(url: request.url!, statusCode: 410, httpVersion: nil, headerFields: nil)!, Data(body.utf8))
+                (HTTPURLResponse(url: request.url!, statusCode: 410, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, Data(body.utf8))
             }
             await assertRejected(expected: .unexpectedGoneResponse) {
                 _ = try await client().pollJob(jobID: "job_demo001")
@@ -561,10 +561,10 @@ final class SceneGenerationClientTests: XCTestCase {
                         request: self.decodedCreateRequest(from: request),
                         idempotencyKey: request.value(forHTTPHeaderField: "Idempotency-Key")
                     )
-                    return (HTTPURLResponse(url: request.url!, statusCode: 201, httpVersion: nil, headerFields: nil)!, payload)
+                    return (HTTPURLResponse(url: request.url!, statusCode: 201, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, payload)
                 }
                 let payload = try JSONSerialization.data(withJSONObject: ["code": code, "message": "Gone"])
-                return (HTTPURLResponse(url: request.url!, statusCode: 410, httpVersion: nil, headerFields: nil)!, payload)
+                return (HTTPURLResponse(url: request.url!, statusCode: 410, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, payload)
             }
             let outcome = await client().generateRemotePlanOutcome(
                 description: "A person stands still.", markedObjects: [], anchors: .empty,
@@ -623,7 +623,7 @@ final class SceneGenerationClientTests: XCTestCase {
                 url: request.url!,
                 statusCode: 200,
                 httpVersion: nil,
-                headerFields: nil
+                headerFields: ["Content-Type": "application/json"]
             )!, cancelled)
         }
         let status = try await client().cancelJob(jobID: "job_demo001")
@@ -652,7 +652,7 @@ final class SceneGenerationClientTests: XCTestCase {
                 url: request.url!,
                 statusCode: 200,
                 httpVersion: nil,
-                headerFields: nil
+                headerFields: ["Content-Type": "application/json"]
             )!, payload)
         }
         let provider = client()
@@ -989,7 +989,7 @@ final class SceneGenerationClientTests: XCTestCase {
                         url: request.url!,
                         statusCode: 201,
                         httpVersion: nil,
-                        headerFields: nil
+                        headerFields: ["Content-Type": "application/json"]
                     )!,
                     try self.responseData(
                         fixture: "job-valid-pending.json",
@@ -1032,7 +1032,7 @@ final class SceneGenerationClientTests: XCTestCase {
                         url: request.url!,
                         statusCode: 200,
                         httpVersion: nil,
-                        headerFields: nil
+                        headerFields: ["Content-Type": "application/json"]
                     )!,
                     response
                 )
@@ -1061,7 +1061,7 @@ final class SceneGenerationClientTests: XCTestCase {
                     url: request.url!,
                     statusCode: 200,
                     httpVersion: nil,
-                    headerFields: nil
+                    headerFields: ["Content-Type": "application/json"]
                 )!,
                 wrongJobResponse
             )
@@ -1085,7 +1085,7 @@ final class SceneGenerationClientTests: XCTestCase {
                     url: request.url!,
                     statusCode: 200,
                     httpVersion: nil,
-                    headerFields: nil
+                    headerFields: ["Content-Type": "application/json"]
                 )!,
                 wrongAnswerRequestResponse
             )
@@ -1110,7 +1110,7 @@ final class SceneGenerationClientTests: XCTestCase {
                     url: request.url!,
                     statusCode: 200,
                     httpVersion: nil,
-                    headerFields: nil
+                    headerFields: ["Content-Type": "application/json"]
                 )!,
                 wrongCancelJobResponse
             )
@@ -1206,7 +1206,7 @@ final class SceneGenerationClientTests: XCTestCase {
             authorizations.append(request.value(forHTTPHeaderField: "Authorization"))
             let rejected = request.value(forHTTPHeaderField: "Authorization") == "Bearer initial-token"
             return (HTTPURLResponse(url: request.url!, statusCode: rejected ? 401 : 201,
-                                    httpVersion: nil, headerFields: nil)!, rejected ? Data("{}".utf8) : response)
+                                    httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, rejected ? Data("{}".utf8) : response)
         }
         let status = try await client(tokenProvider: tokens).createJob(body: body, idempotencyKey: idempotencyKey)
         XCTAssertEqual(status.requestID, body.requestID)
@@ -1235,7 +1235,7 @@ final class SceneGenerationClientTests: XCTestCase {
                 if operation == 1 { payloads.append(try self.bodyData(from: request)) }
                 let rejected = request.value(forHTTPHeaderField: "Authorization") == "Bearer initial-token"
                 return (HTTPURLResponse(url: request.url!, statusCode: rejected ? 401 : 200,
-                                        httpVersion: nil, headerFields: nil)!, rejected ? Data("{}".utf8) : response)
+                                        httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, rejected ? Data("{}".utf8) : response)
             }
             let sut = client(tokenProvider: tokens)
             switch operation {
@@ -1257,7 +1257,7 @@ final class SceneGenerationClientTests: XCTestCase {
             SceneClientStub.reset()
             let tokens = RenewalTokenProvider(replacement: replacement)
             SceneClientStub.handler = { request in
-                (HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!, Data("{}".utf8))
+                (HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, Data("{}".utf8))
             }
             await assertRejected(expected: .jobFailed(.providerError)) {
                 _ = try await client(tokenProvider: tokens).pollJob(jobID: "job_demo001")

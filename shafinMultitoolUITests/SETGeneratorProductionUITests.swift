@@ -2,7 +2,7 @@ import XCTest
 
 /// Package 4/5 production-route evidence: the real commercial route reaches the
 /// SET OS generator workspace and its screenplay/marker/error surfaces on the
-/// landscape-only scene stack. AR session availability is not claimed on the
+/// scene stack (landscape on iPhone, adaptive on iPad). AR session availability is not claimed on the
 /// simulator; only honestly reachable states are asserted.
 final class SETGeneratorProductionUITests: XCTestCase {
     private let launchTimeout: TimeInterval = 15
@@ -74,6 +74,73 @@ final class SETGeneratorProductionUITests: XCTestCase {
             "Back must return to the SET OS library contact sheet."
         )
         attachScreenshot(named: "generator-back-to-library-ru-landscape")
+    }
+
+    func testNonemptyLibraryCreatesSecondSceneAndPreservesBothAfterRelaunch() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        launchApp()
+        let suffix = UUID().uuidString.prefix(6)
+        let firstName = "FIRST-\(suffix)"
+        let secondName = "SECOND-\(suffix)"
+        openLibraryAndCreateScene(named: firstName)
+
+        let back = app.buttons["generator_back_button"]
+        XCTAssertTrue(back.waitForExistence(timeout: launchTimeout))
+        dismissGeneratorErrorIfPresent()
+        assertVisibleHitTarget(back)
+        back.tap()
+        let create = app.buttons["library_create"]
+        XCTAssertTrue(create.waitForExistence(timeout: launchTimeout))
+        assertVisibleHitTarget(create)
+        XCTAssertFalse(app.buttons["library_empty_create"].exists)
+        assertLibraryHeaderDoesNotOverlapShell()
+        attachScreenshot(named: "library-nonempty-create")
+        createSceneInVisibleLibrary(named: secondName)
+        XCTAssertTrue(back.waitForExistence(timeout: launchTimeout))
+        dismissGeneratorErrorIfPresent()
+        assertVisibleHitTarget(back)
+        back.tap()
+        XCTAssertTrue(create.waitForExistence(timeout: launchTimeout))
+        assertLibraryContainsSceneNames([firstName, secondName])
+
+        // Relaunch the same installation without the test's initial reset.
+        app.terminate()
+        app.launchArguments.removeAll { $0 == "-SHAFIN_LIBRARY_RESET_FOR_UI_TESTING" }
+        app.launch()
+        let openScenes = app.buttons["commercial-shell-open-scenes"]
+        XCTAssertTrue(openScenes.waitForExistence(timeout: launchTimeout))
+        openScenes.tap()
+        XCTAssertTrue(create.waitForExistence(timeout: launchTimeout))
+        assertLibraryContainsSceneNames([firstName, secondName])
+        assertVisibleHitTarget(create)
+        assertLibraryHeaderDoesNotOverlapShell()
+        attachScreenshot(named: "library-two-projects-after-relaunch")
+    }
+
+    private func dismissGeneratorErrorIfPresent() {
+        let close = app.buttons["generator_error_close"]
+        if close.waitForExistence(timeout: 3) {
+            assertVisibleHitTarget(close)
+            close.tap()
+            XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        }
+    }
+
+    private func assertLibraryHeaderDoesNotOverlapShell() {
+        let title = app.staticTexts["library_title"]
+        let mode = app.otherElements["commercial-shell-mode-control"]
+        XCTAssertTrue(title.exists)
+        XCTAssertTrue(mode.exists)
+        XCTAssertFalse(title.frame.intersects(mode.frame), "Shell chrome must not cover the Library title")
+    }
+
+    private func assertLibraryContainsSceneNames(_ names: [String]) {
+        for name in names {
+            let row = app.buttons.matching(NSPredicate(
+                format: "identifier BEGINSWITH 'library_scene_row_' AND label CONTAINS %@", name
+            )).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: launchTimeout), "Missing persisted scene \(name)")
+        }
     }
 
     func testWhitespaceInputShowsInlineValidation() {
@@ -786,14 +853,18 @@ final class SETGeneratorProductionUITests: XCTestCase {
         let libraryRoot = app.descendants(matching: .any)["library_root"]
         XCTAssertTrue(libraryRoot.waitForExistence(timeout: launchTimeout))
 
-        // Empty library → create CTA; loaded library → the create flow starts
-        // from the empty-state action or a fresh install is empty by default.
+        createSceneInVisibleLibrary(named: name)
+    }
+
+    private func createSceneInVisibleLibrary(named name: String) {
         let emptyCreate = app.buttons["library_empty_create"]
-        if emptyCreate.waitForExistence(timeout: 4) {
+        if emptyCreate.exists {
             emptyCreate.tap()
         } else {
-            XCTFail("This lane expects an empty library; pre-existing scenes make the flow non-deterministic.")
-            return
+            let create = app.buttons["library_create"]
+            XCTAssertTrue(create.waitForExistence(timeout: launchTimeout))
+            assertVisibleHitTarget(create)
+            create.tap()
         }
 
         let field = app.textFields["library_create_field"]

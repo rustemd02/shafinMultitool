@@ -903,7 +903,8 @@ actor PauseReasoningCoordinator {
             fallbackUsed: draft.fallbackUsed,
             // Refinement may change bounded copy only; provenance remains the
             // exact projection owned by the accepted pause draft.
-            linkedEvidence: draft.linkedEvidence
+            linkedEvidence: draft.linkedEvidence,
+            technicalQualityMeasurement: draft.technicalQualityMeasurement
         )
     }
 }

@@ -164,7 +164,83 @@ final class CameraReviewPresentationTests: XCTestCase {
         XCTAssertFalse(review.evidence[0].summary.isEmpty)
     }
 
+    func testPartialCoverageAppearsOnceWithoutUnattemptedComparisonInBothLanguages() {
+        let critique = makePartialCritique()
+        for locale in [Self.en, Self.ru] {
+            let review = CameraReviewPresentation.make(critique: critique, locale: locale)
+            let summary = SETLocalizedPauseCopy.summary(for: critique, locale: locale)
+            XCTAssertEqual(summary, SETCopyKey.pauseAssessmentUnavailable.localizedString(locale: locale))
+            XCTAssertEqual(review.status, .unknown)
+            XCTAssertNil(review.verificationStatusLabel(locale: locale))
+            XCTAssertTrue(review.visibleUncertaintyDetails(primarySummary: summary, locale: locale).isEmpty)
+            XCTAssertTrue(review.uncertainties.contains { $0.reason == .limitedToAvailableSignals })
+            XCTAssertTrue(review.uncertainties.contains { $0.reason == .noAutomaticVerifier })
+        }
+    }
+
+    func testPartialCoverageRemainsVisibleWhenPrimarySummaryIsAction() {
+        let critique = makePartialCritique(actions: makeCritique().actions)
+        for locale in [Self.en, Self.ru] {
+            let review = CameraReviewPresentation.make(critique: critique, locale: locale)
+            let summary = SETLocalizedPauseCopy.summary(for: critique, locale: locale)
+            let uncertainty = SETCopyKey.pauseAssessmentUnavailable.localizedString(locale: locale)
+            XCTAssertNotEqual(summary, uncertainty)
+            XCTAssertNil(review.verificationStatusLabel(locale: locale))
+            XCTAssertEqual(review.visibleUncertaintyDetails(primarySummary: summary, locale: locale), [uncertainty])
+            XCTAssertEqual(review.alternativeGroups.flatMap(\.options).count, critique.actions.count)
+            XCTAssertEqual(review.findings.count, critique.issues.count + critique.strengths.count)
+        }
+    }
+
+    func testAttemptedIncomparableAndComparableResultsRemainVisibleWithoutDuplicates() {
+        let critique = makePartialCritique()
+        for locale in [Self.en, Self.ru] {
+            let summary = SETLocalizedPauseCopy.summary(for: critique, locale: locale)
+            let incomparable = CameraReviewPresentation.make(
+                critique: critique, reviewVerification: .incomparable(reason: .evidenceMissing), locale: locale
+            )
+            XCTAssertEqual(incomparable.verificationStatusLabel(locale: locale),
+                           SETCopyKey.cameraVerificationIncomparable.localizedString(locale: locale))
+            XCTAssertTrue(incomparable.uncertainties.contains { $0.reason == .notComparable })
+            XCTAssertTrue(incomparable.visibleUncertaintyDetails(primarySummary: summary, locale: locale).isEmpty)
+            XCTAssertNil(incomparable.objectiveOutcomeCopyKey)
+
+            let comparable = CameraReviewPresentation.make(
+                critique: critique, reviewVerification: .comparable(outcome: .improved), locale: locale
+            )
+            XCTAssertEqual(comparable.verificationStatusLabel(locale: locale),
+                           SETCopyKey.cameraStatusComparable.localizedString(locale: locale))
+            XCTAssertEqual(comparable.objectiveOutcomeCopyKey, .cameraVerificationImproved)
+            XCTAssertTrue(comparable.visibleUncertaintyDetails(primarySummary: summary, locale: locale).isEmpty)
+        }
+    }
+
+    func testMissingReviewUsesAssessmentUncertaintyWithoutComparisonCopy() {
+        for locale in [Self.en, Self.ru] {
+            let review = CameraReviewPresentation.make(critique: nil, locale: locale)
+            let summary = SETLocalizedPauseCopy.summary(for: nil, locale: locale)
+            XCTAssertNil(review.verificationStatusLabel(locale: locale))
+            XCTAssertEqual(review.visibleUncertaintyDetails(primarySummary: nil, locale: locale), [summary])
+            XCTAssertTrue(review.visibleUncertaintyDetails(primarySummary: summary, locale: locale).isEmpty)
+            XCTAssertTrue(review.uncertainties.contains { $0.reason == .detailedReviewUnavailable })
+        }
+    }
+
     // MARK: - Helpers
+
+    private func makePartialCritique(actions: [PauseActionRow] = []) -> PauseCritiquePresentation {
+        PauseCritiquePresentation(
+            frameId: "partial-review", verdict: .mixed, verdictConfidence: 0.55,
+            summaryId: "partial-review-summary", shortVerdict: "Partial review input",
+            whyGood: nil, whyProblematic: nil, strengths: [], issues: [], actions: actions,
+            noChangeRationale: nil, assumptions: [], traceRootIds: [], fallbackUsed: false,
+            technicalQualityMeasurement: .partial(
+                .init(issues: []), reason: .sharpnessCauseUnobservable,
+                detail: .init(sampleWidth: 96, sampleHeight: 96, meanLuma: 0.5,
+                              gradientMean: 0, gradientVariance: 0)
+            )
+        )
+    }
 
     private static let en = Locale(identifier: "en")
     private static let ru = Locale(identifier: "ru")

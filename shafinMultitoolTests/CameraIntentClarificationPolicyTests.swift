@@ -132,4 +132,30 @@ final class CameraIntentClarificationPolicyTests: XCTestCase {
         XCTAssertEqual(prompt.promptKey, "camera.coach.intent.silhouette")
         XCTAssertEqual(prompt.conflictingFamilies, [.exposure])
     }
+
+    func testRevisionDistinguishesUnknownFalseAndChangedIntentWithoutInventingAnswers() {
+        var policy = CameraIntentClarificationPolicy()
+        XCTAssertEqual(policy.revision, 0)
+        XCTAssertNil(policy.answers[.silhouette])
+        let unansweredRevision = policy.revision
+        policy.record(cue: .silhouette, intended: false)
+        XCTAssertNotEqual(policy.revision, unansweredRevision)
+        XCTAssertEqual(policy.answers[.silhouette], false)
+        XCTAssertTrue(policy.suppressedFamilies.isEmpty)
+        let deniedRevision = policy.revision
+        policy.record(cue: .silhouette, intended: false)
+        XCTAssertEqual(policy.revision, deniedRevision, "Repeating the same answer changes no intent")
+        policy.record(cue: .silhouette, intended: true)
+        XCTAssertNotEqual(policy.revision, deniedRevision)
+        XCTAssertEqual(policy.suppressedFamilies, [.exposure])
+    }
+
+    func testSessionResetInvalidatesAnOutstandingUnansweredSnapshotToo() {
+        var policy = CameraIntentClarificationPolicy()
+        let initial = policy
+        policy.resetSession()
+        XCTAssertNotEqual(policy.revision, initial.revision)
+        XCTAssertEqual(policy.answers, initial.answers)
+        XCTAssertTrue(policy.suppressedFamilies.isEmpty)
+    }
 }

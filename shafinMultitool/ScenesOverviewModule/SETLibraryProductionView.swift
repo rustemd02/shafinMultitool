@@ -776,6 +776,7 @@ enum SETLibraryAccessibilityID {
     static let list = "library_list"
     static let emptyState = "library_empty_state"
     static let emptyCreate = "library_empty_create"
+    static let create = "library_create"
     static let createField = "library_create_field"
     static let createConfirm = "library_create_confirm"
     static let createCancel = "library_create_cancel"
@@ -951,16 +952,31 @@ private struct SETLibraryContactSheet: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: SETSpacing.x3) {
-            Text(SETCopyKey.libraryTitle.localizedTextKey)
-                .font(SETTypography.font(.display, size: SETTypographySize.displayMedium))
-                .fontWeight(.bold)
-                .setDisplayTracking()
-                .foregroundStyle(.setTextPrimary)
-                .accessibilityIdentifier(SETLibraryAccessibilityID.title)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: SETSpacing.x3) {
+                headerTitle.fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: SETSpacing.x3)
+                headerActions.fixedSize(horizontal: true, vertical: false)
+            }
+            VStack(alignment: .leading, spacing: SETSpacing.x2) {
+                headerTitle
+                headerActions
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
 
-            Spacer(minLength: SETSpacing.x3)
+    private var headerTitle: some View {
+        Text(SETCopyKey.libraryTitle.localizedTextKey)
+            .font(SETTypography.font(.display, size: SETTypographySize.displayMedium))
+            .fontWeight(.bold)
+            .setDisplayTracking()
+            .foregroundStyle(.setTextPrimary)
+            .accessibilityIdentifier(SETLibraryAccessibilityID.title)
+    }
 
+    private var headerActions: some View {
+        HStack(alignment: .center, spacing: SETSpacing.x3) {
             if !model.scenes.isEmpty {
                 Text(SETLibraryLocalizedCopy.countLabel(model.scenes.count, locale: locale))
                     .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
@@ -968,6 +984,13 @@ private struct SETLibraryContactSheet: View {
                     .tracking(0.65)
                     .foregroundStyle(.setTextSecondary)
                     .accessibilityIdentifier(SETLibraryAccessibilityID.count)
+            }
+
+            if model.hasLoadedSuccessfully && !model.scenes.isEmpty && model.loadFailure == nil {
+                SETDigitalAction(title: .libraryCreate, action: { model.beginCreate() })
+                    .disabled(model.flow != .idle)
+                    .accessibilityIdentifier(SETLibraryAccessibilityID.create)
+                    .accessibilityLabel(Text(SETCopyKey.accessibilityLibraryCreate.localizedTextKey))
             }
         }
     }
@@ -1148,25 +1171,16 @@ private struct SETLibrarySceneRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: SETSpacing.x2) {
             Button(action: onSelect) {
-                HStack(alignment: .firstTextBaseline, spacing: SETSpacing.x3) {
-                    Text(String(format: "%02d", position))
-                        .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
-                        .monospacedDigit()
-                        .tracking(0.65)
-                        .foregroundStyle(isSelected ? Color.setOrange : Color.setTextTertiary)
-
-                    Text(scene.name)
-                        .font(SETTypography.uiBodyFont(weight: isSelected ? .bold : .semibold))
-                        .foregroundStyle(.setTextPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Spacer(minLength: SETSpacing.x3)
-
-                    Text(SETLibraryLocalizedCopy.updatedLabel(for: scene.updatedAt, locale: locale))
-                        .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
-                        .monospacedDigit()
-                        .tracking(0.35)
-                        .foregroundStyle(.setTextSecondary)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: SETSpacing.x3) {
+                        sceneTitle.fixedSize(horizontal: true, vertical: false)
+                        Spacer(minLength: SETSpacing.x3)
+                        updatedLabel.fixedSize(horizontal: true, vertical: false)
+                    }
+                    VStack(alignment: .leading, spacing: SETSpacing.x2) {
+                        sceneTitle
+                        updatedLabel
+                    }
                 }
                 .padding(.horizontal, SETSpacing.x4)
                 .padding(.vertical, isSelected ? SETSpacing.x3 : SETSpacing.x2)
@@ -1208,6 +1222,28 @@ private struct SETLibrarySceneRow: View {
             value: isSelected
         )
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var sceneTitle: some View {
+        HStack(alignment: .firstTextBaseline, spacing: SETSpacing.x3) {
+            Text(String(format: "%02d", position))
+                .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                .monospacedDigit()
+                .tracking(0.65)
+                .foregroundStyle(isSelected ? Color.setOrange : Color.setTextTertiary)
+            Text(scene.name)
+                .font(SETTypography.uiBodyFont(weight: isSelected ? .bold : .semibold))
+                .foregroundStyle(.setTextPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var updatedLabel: some View {
+        Text(SETLibraryLocalizedCopy.updatedLabel(for: scene.updatedAt, locale: locale))
+            .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
+            .monospacedDigit()
+            .tracking(0.35)
+            .foregroundStyle(.setTextSecondary)
     }
 
     @ViewBuilder

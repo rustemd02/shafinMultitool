@@ -167,7 +167,7 @@ actor LlamaContext {
         #endif
         
         guard let model = llama_model_load_from_file(path, modelParams) else {
-            print("❌ [LLM] Не удалось загрузить модель: \(path)")
+            SceneGeneratorDiagnosticsLogger.shared.log("[LLM] model load failed")
             throw LlamaContextError.modelLoadFailed
         }
         

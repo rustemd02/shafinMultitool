@@ -114,9 +114,6 @@ final class SpatialPlannerService {
             sceneSpace: sceneSpace
         )
         print("🔍 [PLANNER] Размещено объектов: \(placedObjects.count)")
-        for (index, object) in placedObjects.enumerated() {
-            print("🔍 [PLANNER]   PlacedObject[\(index)]: id='\(object.id)', objectId='\(object.objectId)', type=\(object.type.rawValue), isRealWorld=\(object.isRealWorld ? 1 : 0), source=\(object.placementSource.rawValue)")
-        }
 
         // 3. Размещаем актёров
         print("🔍 [PLANNER] Планирование актёров...")
@@ -129,9 +126,6 @@ final class SpatialPlannerService {
             sceneSpace: sceneSpace
         )
         print("🔍 [PLANNER] Размещено актёров: \(placedActors.count)")
-        for (index, actor) in placedActors.enumerated() {
-            print("🔍 [PLANNER]   PlacedActor[\(index)]: id='\(actor.id)', actorId='\(actor.actorId)', type=\(actor.type.rawValue), path.count=\(actor.path.count)")
-        }
 
         print("🔍 [PLANNER] === ПЛАНИРОВАНИЕ ЗАВЕРШЕНО ===")
 
@@ -227,14 +221,14 @@ final class SpatialPlannerService {
         var placedObjects: [PlannedScene.PlacedObject] = []
 
         for (index, scriptObject) in scriptObjects.enumerated() {
-            print("🔍 [PLANNER] Обработка scriptObject[\(index)]: id='\(scriptObject.id)', type=\(scriptObject.type.rawValue), detectedPosition=\(scriptObject.detectedPosition != nil ? "YES" : "NO")")
+            SceneGeneratorDiagnosticsLogger.shared.log("[PLANNER] processing object index=\(index), type=\(scriptObject.type.rawValue), hasPosition=\(scriptObject.detectedPosition != nil)")
             let position: Position3D
             let placementSource: PlannedScene.PlacedObject.PlacementSource
             var isDetected = false
 
             // 1. ВЫСШИЙ ПРИОРИТЕТ: Ручные метки пользователя
             if let markedObject = findMarkedObject(for: scriptObject, in: markedObjects) {
-                print("🔍 [PLANNER]   Найден markedObject для scriptObject.id='\(scriptObject.id)': id=\(markedObject.id.uuidString)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[PLANNER] marked object matched")
                 position = markedObject.worldPosition
                 placementSource = .marked
                 isDetected = true
@@ -417,7 +411,7 @@ final class SpatialPlannerService {
 
         // Строим траектории для каждого актёра
         return scriptActors.enumerated().map { index, actor in
-            print("🔍 [PLANNER] Обработка scriptActor[\(index)]: id='\(actor.id)', type=\(actor.type.rawValue)")
+            SceneGeneratorDiagnosticsLogger.shared.log("[PLANNER] processing actor index=\(index), type=\(actor.type.rawValue)")
             let initialPosition = initialPositions[index]
 
             // Вычисляем начальную ротацию (смотрим в центр сцены)
@@ -550,7 +544,7 @@ final class SpatialPlannerService {
                 let actorIndexInGroup = actorsToSameTarget.firstIndex(where: { $0.id == actor.id }) ?? 0
                 let totalActorsToTarget = actorsToSameTarget.count
 
-                print("🔍 [PLANNER]   Актёр '\(actor.id)' идёт к объекту '\(targetId)', индекс в группе: \(actorIndexInGroup)/\(totalActorsToTarget)")
+                SceneGeneratorDiagnosticsLogger.shared.log("[PLANNER] approach group index=\(actorIndexInGroup)/\(totalActorsToTarget)")
 
                 // Размещаем в 2 метрах от объекта
                 let direction = simd_normalize(simd_float3(
@@ -581,11 +575,11 @@ final class SpatialPlannerService {
                         y: sceneSpace.floorY,
                         z: basePosition.z + perpendicular.z * offset
                     ))
-                    print("🔍 [PLANNER]     Позиция с смещением: x=\(basePosition.x + perpendicular.x * offset), z=\(basePosition.z + perpendicular.z * offset)")
+                    SceneGeneratorDiagnosticsLogger.shared.log("[PLANNER] approach offset applied")
                 } else {
                     // Один актёр - размещаем в базовой позиции
                     positions.append(basePosition)
-                    print("🔍 [PLANNER]     Позиция без смещения: x=\(basePosition.x), z=\(basePosition.z)")
+                    SceneGeneratorDiagnosticsLogger.shared.log("[PLANNER] approach requires no offset")
                 }
             } else {
                 // Позиция по умолчанию
@@ -962,7 +956,7 @@ final class SpatialPlannerService {
                 durations.append(contentsOf: dur)
                 annotations.append(contentsOf: Array(repeating: nil, count: pos.count))
             } else {
-                print("⚠️ [PLANNER] approach без resolvable target для action '\(action.id)', остаёмся на месте")
+                SceneGeneratorDiagnosticsLogger.shared.log("[PLANNER] approach target unresolved; position retained")
                 positions.append(currentPosition)
                 durations.append(0.2)
                 annotations.append(playbackAnnotation(kind: .action, text: action.sourceText ?? action.fallbackText ?? "approach(target unresolved)"))
@@ -980,7 +974,7 @@ final class SpatialPlannerService {
                 durations.append(contentsOf: dur)
                 annotations.append(contentsOf: Array(repeating: nil, count: pos.count))
             } else {
-                print("⚠️ [PLANNER] pass_by без resolvable target для action '\(action.id)', остаёмся на месте")
+                SceneGeneratorDiagnosticsLogger.shared.log("[PLANNER] pass_by target unresolved; position retained")
                 positions.append(currentPosition)
                 durations.append(0.2)
                 annotations.append(playbackAnnotation(kind: .action, text: action.sourceText ?? action.fallbackText ?? "pass_by(target unresolved)"))

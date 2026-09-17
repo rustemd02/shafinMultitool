@@ -965,7 +965,7 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         guard recognizer.state == .ended else { return }
         let location = recognizer.location(in: arContainerView)
         SceneGeneratorDiagnosticsLogger.shared.log(
-            "[TOUCH_TRACE] shell tap ended point=(\(Self.formatGestureCoordinate(location.x)), \(Self.formatGestureCoordinate(location.y))), insideAR=\(arContainerView.bounds.contains(location)), marking=\(viewModel.isMarkingMode), activeEditor=\(viewModel.activeStoryboardEditDraft?.beatID ?? "nil"), overlayInteractive=\(overlayHostingController?.view.isUserInteractionEnabled == true)"
+            "[TOUCH_TRACE] shell tap ended insideAR=\(arContainerView.bounds.contains(location)), marking=\(viewModel.isMarkingMode), hasActiveEditor=\(viewModel.activeStoryboardEditDraft != nil), overlayInteractive=\(overlayHostingController?.view.isUserInteractionEnabled == true)"
         )
     }
 
@@ -974,7 +974,7 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         let insideAR = arContainerView.bounds.contains(location)
         if Self.shouldLogStoryboardActorDragGestureState(recognizer.state) {
             SceneGeneratorDiagnosticsLogger.shared.log(
-                "[TOUCH_TRACE] shell longPress state=\(Self.storyboardActorDragGestureStateDescription(recognizer.state)) point=(\(Self.formatGestureCoordinate(location.x)), \(Self.formatGestureCoordinate(location.y))), insideAR=\(insideAR), marking=\(viewModel.isMarkingMode), activeEditor=\(viewModel.activeStoryboardEditDraft?.beatID ?? "nil"), overlayInteractive=\(overlayHostingController?.view.isUserInteractionEnabled == true)"
+                "[TOUCH_TRACE] shell longPress state=\(Self.storyboardActorDragGestureStateDescription(recognizer.state)), insideAR=\(insideAR), marking=\(viewModel.isMarkingMode), hasActiveEditor=\(viewModel.activeStoryboardEditDraft != nil), overlayInteractive=\(overlayHostingController?.view.isUserInteractionEnabled == true)"
             )
         }
 
@@ -994,7 +994,7 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         guard recognizer.state == .ended else { return }
         let location = recognizer.location(in: arContainerView)
         SceneGeneratorDiagnosticsLogger.shared.log(
-            "[TOUCH_TRACE] overlay tap ended point=(\(Self.formatGestureCoordinate(location.x)), \(Self.formatGestureCoordinate(location.y))), insideAR=\(arContainerView.bounds.contains(location)), marking=\(viewModel.isMarkingMode), activeEditor=\(viewModel.activeStoryboardEditDraft?.beatID ?? "nil")"
+            "[TOUCH_TRACE] overlay tap ended insideAR=\(arContainerView.bounds.contains(location)), marking=\(viewModel.isMarkingMode), hasActiveEditor=\(viewModel.activeStoryboardEditDraft != nil)"
         )
     }
 
@@ -1023,7 +1023,7 @@ final class LegacySceneGeneratorCameraViewController: UIViewController, UIGestur
         let isInsideAR = arContainerView.bounds.contains(location)
         let shouldReceive = hasActiveEditor && !isBusy && isInsideAR
         SceneGeneratorDiagnosticsLogger.shared.log(
-            "[TOUCH_TRACE] overlay longPress shouldReceive=\(shouldReceive), point=(\(Self.formatGestureCoordinate(location.x)), \(Self.formatGestureCoordinate(location.y))), activeEditor=\(viewModel.activeStoryboardEditDraft?.beatID ?? "nil"), busy=\(isBusy), insideAR=\(isInsideAR), touchView=\(Self.touchViewDescription(touch.view))"
+            "[TOUCH_TRACE] overlay longPress shouldReceive=\(shouldReceive), hasActiveEditor=\(hasActiveEditor), busy=\(isBusy), insideAR=\(isInsideAR), touchView=\(Self.touchViewDescription(touch.view))"
         )
         return shouldReceive
     }

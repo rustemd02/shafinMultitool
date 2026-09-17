@@ -6,6 +6,10 @@ import XCTest
 @MainActor
 final class CommercialShellLaunchCompositionTests: XCTestCase {
 
+    private var expectedSceneOrientations: UIInterfaceOrientationMask {
+        UIDevice.current.userInterfaceIdiom == .pad ? .all : .landscape
+    }
+
     func testNormalCompositionSelectsCameraAndKeepsSecondaryRoutesLazy() throws {
         let shell = CommercialShellComposition(
             cameraCoachBuilder: {
@@ -143,8 +147,8 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
             navigationController.interactivePopGestureRecognizer?.delegate
                 is CommercialNavigationInteractivePopGuard
         )
-        XCTAssertEqual(navigationController.supportedInterfaceOrientations, .landscape)
-        XCTAssertEqual(shell.supportedInterfaceOrientations, .landscape)
+        XCTAssertEqual(navigationController.supportedInterfaceOrientations, expectedSceneOrientations)
+        XCTAssertEqual(shell.supportedInterfaceOrientations, expectedSceneOrientations)
     }
 
     func testSwitchingSelectedRouteUpdatesShellOrientationPolicy() async throws {
@@ -157,7 +161,7 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
         XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.landscape))
 
         await shell.selectAndWait(.scenes)
-        XCTAssertEqual(shell.supportedInterfaceOrientations, .landscape)
+        XCTAssertEqual(shell.supportedInterfaceOrientations, expectedSceneOrientations)
 
         await shell.selectAndWait(.camera)
         XCTAssertTrue(shell.supportedInterfaceOrientations.contains(.portrait))
@@ -365,7 +369,7 @@ final class CommercialShellLaunchCompositionTests: XCTestCase {
         XCTAssertEqual(shell.selectedSection, .scenes)
         XCTAssertEqual(sceneRoute.navigationController.viewControllers.count, 2)
         XCTAssertEqual(shell.children.count, 1)
-        XCTAssertEqual(shell.supportedInterfaceOrientations, .landscape)
+        XCTAssertEqual(shell.supportedInterfaceOrientations, expectedSceneOrientations)
     }
 
     func testPresentedSceneModalBlocksAndDoesNotConstructCamera() async throws {

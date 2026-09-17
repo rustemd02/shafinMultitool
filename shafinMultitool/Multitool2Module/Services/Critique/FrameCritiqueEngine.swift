@@ -3,15 +3,49 @@ import Foundation
 struct FrameCritiqueInput: Sendable {
     let snapshot: FrameFeatureSnapshot
     let semantics: SceneSemanticsReport
+    let technicalEvidence: FrameTechnicalQualityEvidence?
+
+    init(snapshot: FrameFeatureSnapshot, semantics: SceneSemanticsReport,
+         technicalEvidence: FrameTechnicalQualityEvidence? = nil) {
+        self.snapshot = snapshot
+        self.semantics = semantics
+        self.technicalEvidence = technicalEvidence
+    }
 }
 
 struct FrameCritiqueEngine {
+    /// Admission for a local positive verdict, not a new scene classifier.
+    /// Detector/horizon/aesthetic numbers do not replace a missing scene
+    /// observation. Keep measured faults and corrective issue evidence available.
+    static func hasPositiveSemanticCoverage(snapshot: FrameFeatureSnapshot,
+                                            semantics: SceneSemanticsReport) -> Bool {
+        guard !snapshot.frameId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              semantics.frameId == snapshot.frameId,
+              semantics.mode == snapshot.mode,
+              !snapshot.technicalFlags.contains(.lowSceneConfidence) else { return false }
+        if snapshot.sources.vision.available { return true }
+        // The existing semantics owner uses unknown/zero for an unresolved
+        // scene. A resolved DETR-backed scene remains a valid counterexample
+        // to a blanket requirement that every frame must have Vision output.
+        return snapshot.sources.detr.available
+            && semantics.sceneType != .unknown
+            && semantics.sceneTypeConfidence.isFinite
+            && semantics.sceneTypeConfidence > 0
+            && semantics.sceneTypeConfidence <= 1
+    }
+
     private enum Constants {
         static let issueRawThreshold = 0.40
         static let issueConfidenceThreshold = 0.30
         static let strengthScoreThreshold = 0.55
         static let strengthConfidenceThreshold = 0.35
         static let degradedVerdictConfidenceCap = 0.55
+    }
+
+    /// The existing reduced-coverage ceiling, not a calibrated probability.
+    /// Used when a positive verdict is withheld, not to rescore measured faults.
+    static func limitedCoverageVerdictConfidence(_ confidence: Double) -> Double {
+        confidence.isFinite ? min(max(0, confidence), Constants.degradedVerdictConfidenceCap) : 0
     }
 
     private let summaryBuilder = DeterministicCritiqueSummaryBuilder()
@@ -39,10 +73,16 @@ struct FrameCritiqueEngine {
     }
 
     func analyze(_ input: FrameCritiqueInput) -> CritiqueReport {
-        analyze(snapshot: input.snapshot, semantics: input.semantics)
+        analyze(snapshot: input.snapshot, semantics: input.semantics,
+                technicalEvidence: input.technicalEvidence)
     }
 
-    func analyze(snapshot: FrameFeatureSnapshot, semantics: SceneSemanticsReport) -> CritiqueReport {
+    func analyze(snapshot: FrameFeatureSnapshot, semantics: SceneSemanticsReport,
+                 technicalEvidence: FrameTechnicalQualityEvidence? = nil) -> CritiqueReport {
+        // Check the original identity before the legacy alignment step.
+        let hasPositiveSemanticCoverage = Self.hasPositiveSemanticCoverage(
+            snapshot: snapshot, semantics: semantics
+        )
         let alignedSemantics = alignedSemantics(snapshot: snapshot, semantics: semantics)
         let normalizedSemantics = normalizedSemantics(alignedSemantics)
         let degraded = isDegraded(snapshot: snapshot)
@@ -89,7 +129,13 @@ struct FrameCritiqueEngine {
                                                       semantics: normalizedSemantics,
                                                       issues: issueEntries.map(\.issue),
                                                       strengths: strengthEntries.map(\.strength))
-        if shouldPreferPositiveConfirmationForSoftFindings(
+        // Missing pixels cannot support a positive confirmation or its confidence
+        // boost. A successful measurement only permits the existing semantic
+        // policy to decide; an empty technical signal does not itself prove good.
+        let hasCurrentTechnicalMeasurement = technicalEvidence?
+            .resolvedMeasurement(for: snapshot).supportsPositiveConfirmation == true
+        let canConfirmGood = hasCurrentTechnicalMeasurement && hasPositiveSemanticCoverage
+        if canConfirmGood, shouldPreferPositiveConfirmationForSoftFindings(
             verdict: verdict,
             verdictConfidence: verdictConfidence,
             issues: issueEntries.map(\.issue),
@@ -97,6 +143,15 @@ struct FrameCritiqueEngine {
         ) {
             verdict = .good
             verdictConfidence = max(verdictConfidence, 0.75)
+        }
+
+        if verdict == .good && !canConfirmGood {
+            verdict = .mixed
+            verdictConfidence = Self.limitedCoverageVerdictConfidence(verdictConfidence)
+        }
+        if !hasPositiveSemanticCoverage {
+            verdictConfidence = verdictConfidence.isFinite
+                ? min(verdictConfidence, Constants.degradedVerdictConfidenceCap) : 0
         }
 
         if degraded {
@@ -108,12 +163,23 @@ struct FrameCritiqueEngine {
         }
 
         let summaryId = "summary_\(snapshot.frameId)_main"
-        let summary = summaryBuilder.makeSummary(
+        let measuredSummary = summaryBuilder.makeSummary(
             summaryId: summaryId,
             verdict: verdict,
             rankedStrengths: strengthEntries.map(\.strength),
             rankedIssues: issueEntries.map(\.issue)
         )
+        let summary: CritiqueSummary
+        if !canConfirmGood && issueEntries.isEmpty {
+            summary = CritiqueSummary(
+                id: measuredSummary.id,
+                shortVerdict: "Недостаточно данных для полной оценки кадра.",
+                whyGood: nil,
+                whyProblematic: nil
+            )
+        } else {
+            summary = measuredSummary
+        }
 
         let traceRefs = issueEntries.map(\.seedId)
             + strengthEntries.map(\.seedId)
@@ -128,7 +194,7 @@ struct FrameCritiqueEngine {
             issues: issueEntries.map(\.issue),
             summary: summary,
             traceRefs: traceRefs,
-            fallbackUsed: degraded
+            fallbackUsed: degraded || !hasPositiveSemanticCoverage
         )
     }
 

@@ -125,6 +125,11 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
+    /// Privacy actions share the enrollment actor and its assertion counter.
+    var installationDeletionProvider: SceneInstallationDeletionProviding? {
+        tokenProvider as? SceneInstallationDeletionProviding
+    }
+
     init(
         configuration: SceneGenerationClientConfiguration = .placeholder,
         session: URLSession = .shared,
@@ -428,7 +433,7 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
 
     private func authenticatedData(for request: URLRequest) async throws -> (Data, URLResponse) {
         try Task.checkCancellation()
-        let original = try await session.data(for: request)
+        let original = try await boundedData(for: request)
         guard (original.1 as? HTTPURLResponse)?.statusCode == 401,
               let authorization = request.value(forHTTPHeaderField: "Authorization"),
               authorization.hasPrefix("Bearer ") else { return original }
@@ -442,7 +447,23 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
         // idempotency key survive token rotation; there is at most one retry.
         var retry = request
         retry.setValue("Bearer \(replacement)", forHTTPHeaderField: "Authorization")
-        return try await session.data(for: retry)
+        return try await boundedData(for: retry)
+    }
+
+    private func boundedData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        do {
+            // The service admits at most256 KiB of provider output before
+            // adding the bounded job/version envelope.512 KiB covers that
+            // envelope while rejecting unbounded or redirected responses.
+            return try await BoundedServiceHTTPTransport.send(
+                request, session: session, maximumResponseBytes: 512 * 1024,
+                timeoutSeconds: configuration.requestTimeoutSeconds
+            )
+        } catch BoundedServiceHTTPError.malformedResponse {
+            throw SceneGenerationClientError.malformedPayload
+        } catch BoundedServiceHTTPError.invalidRequest {
+            throw SceneGenerationClientError.transport(.init(description: "invalidTransportConfiguration"))
+        }
     }
 
     private func decodeAndValidateStatus(_ data: Data) throws -> SceneJobStatus {
@@ -584,7 +605,7 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
         return true
     }
 
-    private static func isValidServiceToken(_ token: String) -> Bool {
+    static func isValidServiceToken(_ token: String) -> Bool {
         let bytes = Array(token.utf8)
         guard !bytes.isEmpty else { return false }
 
@@ -609,6 +630,21 @@ final class SceneGenerationClient: RemoteScenePlanProvider, Sendable {
     private struct APIErrorEnvelope: Decodable {
         let code: String
         let message: String
+    }
+
+    /// Share this installation's actor/session with Camera. A second actor with
+    /// the same Keychain namespace would not serialize assertion counters or
+    /// the installation-deletion lifecycle.
+    func makeCameraCloudClient(policy: CameraCloudTransferPolicy) -> CameraCloudAnalysisClient? {
+        guard let tokenProvider,
+              let scenePolicy = configuration.transferPolicy,
+              scenePolicy.matches(configuration),
+              policy.serviceEndpoint == configuration.baseURL,
+              policy.operatorName == scenePolicy.operatorName,
+              policy.securityIdentityRetention == scenePolicy.securityIdentityRetention,
+              policy.spendRecordRetention == scenePolicy.spendRecordRetention,
+              policy.deletionRequestProcedure == scenePolicy.deletionRequestProcedure else { return nil }
+        return CameraCloudAnalysisClient(policy: policy, session: session, tokenProvider: tokenProvider)
     }
 
     private static func checkHTTP(_ response: URLResponse, data: Data) throws {

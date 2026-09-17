@@ -1,8 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// Informational presentation only. Opening this page neither requests a
-/// permission nor authorizes a network transfer.
+/// Opening this page neither requests a permission nor authorizes a network
+/// transfer. Service deletion requires a separate explicit confirmation.
 struct SETPrivacyEntryButton: View {
     let accessibilityID: String
     @State private var isPresented = false
@@ -44,12 +44,23 @@ struct SETPrivacyRuntimeFacts: Equatable {
     }
 }
 
+@MainActor
 struct SETPrivacyInformationView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var facts = SETPrivacyRuntimeFacts.current()
     @State private var settingsUnavailable = false
     @State private var expandedNotices: Set<String> = []
+    @StateObject private var installationDeletion: SETInstallationDeletionPresentation
+
+    init(
+        installationDeletionProvider: (any SceneInstallationDeletionProviding)? =
+            SceneParserService.shared.installationDeletionProvider
+    ) {
+        _installationDeletion = StateObject(wrappedValue: SETInstallationDeletionPresentation(
+            provider: installationDeletionProvider
+        ))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -67,6 +78,7 @@ struct SETPrivacyInformationView: View {
                         section(.privacyInstallationTitle, body: .privacyInstallationBody, id: "privacy_installation")
                         section(.privacyServerStorageTitle, body: .privacyServerStorageBody, id: "privacy_server_storage")
                     }
+                    deletionSection
                     section(.privacyMicrophoneTitle, body: .privacyMicrophoneBody, id: "privacy_microphone")
                     section(.privacySpeechTitle, body: .privacySpeechBody, id: "privacy_speech")
                     section(.privacyLocalStorageTitle, body: .privacyLocalStorageBody, id: "privacy_local_storage")
@@ -144,6 +156,72 @@ struct SETPrivacyInformationView: View {
         }
         .background(.setInk)
         .preferredColorScheme(.dark)
+        .task { await installationDeletion.appear() }
+        .onDisappear { installationDeletion.disappear() }
+        .alert(
+            Text(SETCopyKey.privacyDeletionConfirmTitle.localizedTextKey),
+            isPresented: $installationDeletion.isConfirmationPresented
+        ) {
+            Button(role: .destructive) {
+                Task { await installationDeletion.confirmDeletion() }
+            } label: {
+                Text(SETCopyKey.privacyDeletionAction.localizedTextKey)
+            }
+            .accessibilityIdentifier("privacy_deletion_confirm")
+            Button(role: .cancel) {
+                installationDeletion.cancelDeletionConfirmation()
+            } label: {
+                Text(SETCopyKey.privacyDeletionCancel.localizedTextKey)
+            }
+            .accessibilityIdentifier("privacy_deletion_cancel")
+        } message: {
+            Text(SETCopyKey.privacyDeletionConfirmBody.localizedTextKey)
+        }
+    }
+
+    private var deletionSection: some View {
+        VStack(alignment: .leading, spacing: SETSpacing.x3) {
+            section(.privacyDeletionTitle, body: .privacyDeletionScope, id: "privacy_deletion_scope")
+            Text(SETCopyKey.privacyDeletionRetained.localizedTextKey)
+                .font(SETTypography.uiBodyFont())
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+                .accessibilityIdentifier("privacy_deletion_retained")
+            HStack(alignment: .top, spacing: SETSpacing.x2) {
+                Image(systemName: installationDeletion.statusSymbol)
+                    .accessibilityHidden(true)
+                Text(installationDeletion.statusCopyKey.localizedTextKey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(SETTypography.uiBodyFont())
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("privacy_deletion_status")
+            if installationDeletion.canRequestDeletion {
+                Button(role: .destructive) {
+                    installationDeletion.requestDeletionConfirmation()
+                } label: {
+                    Text(SETCopyKey.privacyDeletionAction.localizedTextKey)
+                        .font(SETTypography.uiBodyFont(weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("privacy_deletion_request")
+            } else if installationDeletion.canCheckStatus {
+                Button {
+                    Task { await installationDeletion.checkStatus() }
+                } label: {
+                    Text(SETCopyKey.privacyDeletionCheck.localizedTextKey)
+                        .font(SETTypography.uiBodyFont(weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("privacy_deletion_check")
+            }
+        }
     }
 
     private var pageHeader: some View {
