@@ -8,6 +8,7 @@ llama.cpp/
 /build/
 /.cursor/
 /codex/
+/.commandcode/
 __pycache__/
 *.pyc
 .DS_Store
