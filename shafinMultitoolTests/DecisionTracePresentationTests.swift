@@ -91,7 +91,12 @@ final class DecisionTracePresentationTests: XCTestCase {
 
         XCTAssertEqual(trace.actionRows.first?.semanticActionId, "simplify_background")
         XCTAssertTrue(trace.actionRows.first?.linkedEvidenceIds.isEmpty == true)
-        XCTAssertEqual(trace.actionRows.first?.detail, "Сместись к выбранной точке, где фон за человеком чище")
+        // The trace shows the canonical catalog copy for the action, not the
+        // richer planner paragraph, so pin the key the trace actually resolves.
+        XCTAssertEqual(
+            trace.actionRows.first?.detail,
+            SETCopyKey.traceActionSimplifyBackground.localizedString(locale: Locale(identifier: "ru"))
+        )
         XCTAssertEqual(trace.actionRows.first?.traceId, "trace_action_simplify")
 
         let rawNeuralCopy = [
