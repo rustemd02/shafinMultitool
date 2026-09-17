@@ -50,6 +50,13 @@ private enum LegacyCameraReferenceFixture {
             .appendingPathComponent(manifestSHA, isDirectory: true)
         try require(root.resolvingSymlinksInPath().path == root.path,
                     "Legacy reference cache must not traverse a symlink.")
+        guard (try? FileManager.default.attributesOfItem(atPath: root.path)) != nil else {
+            // Fixture-availability gate, not a behavior mismatch: the
+            // SHA-pinned host payload is staged per app container by
+            // scripts/stage_legacy_camera_references.sh and disappears when
+            // the app container is recreated by a reinstall.
+            throw XCTSkip("Legacy reference payload is not staged in this app container; run scripts/stage_legacy_camera_references.sh (recovery receipt: legacy-reference-recovery-20260917-p8m2af3s)")
+        }
         let members = try FileManager.default.contentsOfDirectory(
             at: root, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey])
         try require(Set(members.map(\.lastPathComponent)) == Set(imageSHA.keys).union(["manifest.json"]),

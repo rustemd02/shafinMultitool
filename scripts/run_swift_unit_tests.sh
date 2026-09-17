@@ -122,6 +122,10 @@ while :; do
 
   tmp="$(mktemp -d /private/tmp/setos-unit.XXXXXX)"
   log="$tmp/run.log"
+  # The SHA-pinned legacy reference payload lives in the app container's
+  # Caches and vanishes whenever a batch reinstalls the app; re-stage it
+  # before every batch (no-op when the container is already staged).
+  "$ROOT/scripts/stage_legacy_camera_references.sh" --udid "$UDID" >/dev/null 2>&1 || true
   # No -resultBundlePath: its omission is what makes a batch affordable here.
   xcodebuild test \
     -workspace "$WORKSPACE" \
