@@ -55,20 +55,45 @@ Thirteen of the dumped frames report confidence exactly `0.55` — the documente
 not a measured probability. Tests that assert `confidence >= 0.75` on those frames are
 asserting past the cap.
 
-### M3 — The lighting mapping is gated twice and is effectively unreachable today
+### M3 — The lighting mapping is gated three times and is effectively unreachable today
 
 Lighting actions (`addFrontFillLight`, `addBackgroundLight`) require
 `PauseSceneControlFacts.lighting == .allowed` for the exact frame
 (`PauseSceneControlFacts.permits`). Even with all three categories granted, a probe over
 12 frames produced **no semantic action at all** — including frames that do raise
-`backlight_hides_subject` (`022`, `224`, `180`, `188`, `204`). The lighting tips are also
-dropped when the driving issue's confidence is below 0.45
-(`SemanticTipPlanner.shouldInclude`).
+`backlight_hides_subject` (`022`, `224`, `180`, `188`, `204`).
 
 **This disproved the first hypothesis of this audit**: the pause scene-control gate is not
-what removes the expected actions, so re-granting facts in the replay path does not
-restore them. The corresponding replay seam and the test edits built on that hypothesis
-were reverted.
+what removes the expected actions, so re-granting facts in the replay path does not restore
+them. The corresponding replay seam and the test edits built on that hypothesis were
+reverted. A second probe (live versus pause rows for `022`, `224`, `180`, `188`, `204`,
+`045`, `027`) shows why: the pause row raises `backlight_hides_subject`, yet produces no
+action rows at all, and the live row is entirely empty for these frames (`shown=false`).
+
+The remaining gate is upstream of both. `FrameCritiqueEngine.issueBacklightHidesSubject`
+computes
+
+```
+confidence = clamp01(0.65 * lightingSourceConfidence + 0.35 * primarySubjectConfidence)
+```
+
+and `SemanticTipPlanner.shouldInclude` drops every lighting tip whose issue confidence is
+below **0.45**. For `022` the row records `primary_subject_confidence = 0.724`, so the issue
+confidence is `0.65 * lighting + 0.253`: it clears 0.45 only if the lighting source supplies
+at least ≈0.30. The tip is absent even with scene control granted, so in the replay the
+lighting source contributes approximately zero and the issue lands near 0.25. Note also that
+`backlight_index` is `0.013` (`022`) and `0.002` (`188`) while the issue is raised at
+severity ≈0.47–0.50: the finding is driven by the exposure penalty, not by measured
+backlight.
+
+No current test or fixture produces a lighting action at all: every `assertTrue` for
+`addFrontFillLight` fails, and the shipped demo pack that requires one fails with them. The
+path is therefore either unreachable or blocked in every configuration measured so far,
+which is a product gap independent of the oracles — the app never advises adding light, not
+even after the user states that they control the lighting. Establishing whether the lighting
+estimator is meant to supply a confidence in the replay path is the next measurement; the
+three gates (source confidence, the 0.45 floor, scene control) each withhold the advice on
+purpose, so removing any of them is a product decision rather than a fix.
 
 ### M4 — A technical issue displaces the semantic presentation
 
@@ -168,7 +193,10 @@ Engineering work that does not need an owner decision:
 4. Open a defect ticket for `220`/`232`: a frame with large synthetic overlays is answered
    `keep`. The overlays are not measured by any current feature, so this is a perception
    gap, not an admission-setting.
-5. `DecisionTracePresentationTests.testPauseTraceConnectsVerdictEvidenceActionsAndLimitations`
+5. Measure whether the lighting estimator is meant to publish a confidence in the replay
+   path (M3). Until it does, the lighting advice is unreachable and the front-fill family
+   cannot pass by any change to thresholds or facts.
+6. `DecisionTracePresentationTests.testPauseTraceConnectsVerdictEvidenceActionsAndLimitations`
    fails on the committed snapshot too (verified by re-running it with this session's
    changes stashed: identical assertion text at `DecisionTracePresentationTests.swift:94`).
    It expects the older `simplify_background` wording and is outside the class measured in
