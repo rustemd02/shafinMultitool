@@ -19,6 +19,8 @@ DESTINATION_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Device
 MARKER_PATH="${DESTINATION_DIR}/.debug-resource-copy-marker"
 FIXTURE_SOURCE="${SRCROOT}/shafinMultitool/Resources/Fixtures/SETCameraFrame.png"
 FIXTURE_DESTINATION="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/SETCameraFrame.png"
+SCENARIOS_SOURCE="${SRCROOT}/docs/cameraanalysis/demo/semantic_demo_scenarios.json"
+SCENARIOS_DESTINATION="${DESTINATION_DIR}/camera_device_benchmark_pack_v1/semantic_demo_scenarios.json"
 
 if [ -z "$DESTINATION_DIR" ]; then
     echo "error: benchmark resource destination must be non-empty" >&2
@@ -56,8 +58,13 @@ if [ ! -f "$FIXTURE_SOURCE" ]; then
     echo "error: camera fixture source is missing: $FIXTURE_SOURCE" >&2
     exit 1
 fi
+if [ ! -f "$SCENARIOS_SOURCE" ]; then
+    echo "error: semantic demo scenarios source is missing: $SCENARIOS_SOURCE" >&2
+    exit 1
+fi
 
 mkdir -p "$DESTINATION_DIR"
 cp -R "$SOURCE_DIR/." "$DESTINATION_DIR/"
+cp "$SCENARIOS_SOURCE" "$SCENARIOS_DESTINATION"
 : > "$MARKER_PATH"
 cp "$FIXTURE_SOURCE" "$FIXTURE_DESTINATION"

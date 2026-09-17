@@ -307,31 +307,58 @@ def make_camera_gate(tier: str, camera_eval: dict[str, Any] | None) -> dict[str,
     if camera_eval is None:
         return {"status": "missing", "checks": {}, "notes": ["camera postprocess missing"]}
 
-    set_metrics = camera_eval.get("set_metrics", {})
+    def measured_rate(value: Any) -> float | None:
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and 0.0 <= value <= 1.0:
+            return float(value)
+        return None
+
+    def positive_record_count(metrics: Any) -> int | None:
+        value = metrics.get("record_count") if isinstance(metrics, dict) else None
+        return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+    set_metrics = camera_eval.get("set_metrics")
+    if not isinstance(set_metrics, dict):
+        set_metrics = {}
+    rates = {key: measured_rate(set_metrics.get(key)) for key in (
+        "pass_rate", "forbidden_action_violation_rate", "good_frame_preservation_rate"
+    )}
+    record_count = positive_record_count(set_metrics)
     checks = {
-        "pass_rate": (set_metrics.get("pass_rate") or 0) >= 0.80,
-        "forbidden_action_violation_rate": (set_metrics.get("forbidden_action_violation_rate") or 1) <= 0.08,
-        "good_frame_preservation_rate": (set_metrics.get("good_frame_preservation_rate") or 0) >= 0.92,
+        "nonempty_records": record_count is not None,
+        "pass_rate": rates["pass_rate"] is not None and rates["pass_rate"] >= 0.80,
+        "forbidden_action_violation_rate": rates["forbidden_action_violation_rate"] is not None and rates["forbidden_action_violation_rate"] <= 0.08,
+        "good_frame_preservation_rate": rates["good_frame_preservation_rate"] is not None and rates["good_frame_preservation_rate"] >= 0.92,
     }
     bucket_metrics = load_json_if_exists(camera_eval.get("_bucket_metrics_path"))
-    synthetic_bucket = None
-    if bucket_metrics:
-        synthetic_bucket = (
-            bucket_metrics.get("bucket_metrics", {})
-            .get("synthetic_bad_paired_apple_tv_press", {})
-            .get("pass_rate")
-        )
-    if synthetic_bucket is not None:
-        checks["synthetic_bad_paired_apple_tv_press_pass_rate"] = synthetic_bucket >= 0.40
+    buckets = bucket_metrics.get("bucket_metrics") if isinstance(bucket_metrics, dict) else None
+    source_buckets = buckets.get("source_bucket") if isinstance(buckets, dict) else None
+    if not isinstance(source_buckets, dict):
+        source_buckets = {}
+    bucket_counts = [positive_record_count(metrics) for metrics in source_buckets.values()]
+    checks["source_bucket_coverage"] = (
+        record_count is not None and bool(bucket_counts)
+        and all(count is not None for count in bucket_counts)
+        and sum(bucket_counts) == record_count
+    )
+    synthetic_metrics = source_buckets.get("synthetic_bad_paired_apple_tv_press")
+    synthetic_rate = measured_rate(synthetic_metrics.get("pass_rate")) if isinstance(synthetic_metrics, dict) else None
+    checks["synthetic_bad_paired_apple_tv_press_pass_rate"] = (
+        positive_record_count(synthetic_metrics) is not None
+        and synthetic_rate is not None and synthetic_rate >= 0.40
+    )
 
     if tier != "full":
         status = "sample_only"
     else:
         status = "pass" if all(checks.values()) else "fail"
 
-    notes: list[str] = []
-    if synthetic_bucket is None:
-        notes.append("synthetic_bad_paired_apple_tv_press bucket missing in postprocess output")
+    notes = [f"{key} missing or invalid in postprocess output" for key, value in rates.items() if value is None]
+    if record_count is None:
+        notes.append("camera postprocess has no measured records")
+    if not checks["source_bucket_coverage"]:
+        notes.append("source_bucket counts are missing, empty, or inconsistent with the measured record count")
+    if positive_record_count(synthetic_metrics) is None or synthetic_rate is None:
+        notes.append("synthetic_bad_paired_apple_tv_press bucket missing or unmeasured in postprocess output")
     return {"status": status, "checks": checks, "set_metrics": set_metrics, "notes": notes}
 
 

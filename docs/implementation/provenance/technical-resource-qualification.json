@@ -1,0 +1,119 @@
+{
+  "schema": "set-os-technical-resource-qualification",
+  "schema_version": 2,
+  "qualification_scope": "content_identity_only",
+  "qualified_at": "2026-09-17T05:01:52.739369+00:00",
+  "build_evidence": {
+    "kind": "xcode_debug_simulator_test_build",
+    "configuration": "Debug",
+    "platform": "iPhoneSimulator",
+    "run_id": "20260917T045712379671Z-camera-image-placement-content-start-iphone",
+    "build_qualification": "PASS",
+    "native_exit_code": 0,
+    "source_unchanged": true,
+    "build_receipt_sha256": "82b99e16128769fab5dba38a3864c26ff9f8c6122e432336aa384e6d1c7d8fd4",
+    "source_fingerprint_sha256": "a4cb227b94266ada10d0f0784b551bca735dd01db12ff1440ad1a873cedb1204",
+    "resource_review_sha256": "684327b0b8ffd53d516f2542b8da7c5d5d7f937e69cd6a89f2154e40fa848d66",
+    "resource_source_sha256": "6869fcd0c04a17cfb6a64b52a3175ab379817c9d453d014a2c66a81c9abf2aa5",
+    "product_inventory_sha256": "7986bbafaf2e455fa5e53db55fdb840bf7501d58834bd8c9a9393728714b4dab",
+    "localization_validation_sha256": "ab0b0ef2ae4734561e8a7bca3ecfb15bac53c7ba669d43cddf1f847e0b10e953",
+    "privacy_validation_sha256": "8d89fe8be7a1371f8ce5dd4150e4442d755eb9b43931eaae69cb65852fe01156"
+  },
+  "components": [
+    {
+      "id": "module-assets-catalog",
+      "source_path": "shafinMultitool/Multitool2Module/Assets.xcassets",
+      "source_files": [
+        {
+          "path": "shafinMultitool/Multitool2Module/Assets.xcassets/AccentColor.colorset/Contents.json",
+          "bytes": 123,
+          "sha256": "9af65086fa30b49252fae1a1225731691de794f7775af74d71befeb507d12b7c"
+        },
+        {
+          "path": "shafinMultitool/Multitool2Module/Assets.xcassets/AppIcon.appiconset/Contents.json",
+          "bytes": 1429,
+          "sha256": "040294b5970a6d1d5b5a811e22086092954f6a1f503b38d0fae128bb02b4356a"
+        },
+        {
+          "path": "shafinMultitool/Multitool2Module/Assets.xcassets/Contents.json",
+          "bytes": 63,
+          "sha256": "0fd49ba3c3585c709678e0046a821c3c60685ec7063720d30d3a3448be3a208b"
+        }
+      ],
+      "bundle_products": []
+    },
+    {
+      "id": "privacy-manifest",
+      "source_path": "shafinMultitool/PrivacyInfo.xcprivacy",
+      "source_files": [
+        {
+          "path": "shafinMultitool/PrivacyInfo.xcprivacy",
+          "bytes": 1246,
+          "sha256": "21dd725578c5f3200687542a891ac0480308ac7f484be4ccd57be3057ba11d31"
+        }
+      ],
+      "bundle_products": [
+        {
+          "path": "PrivacyInfo.xcprivacy",
+          "root_key_count": 4,
+          "semantic_sha256": "c4ced31f4b0d358c37b12525bc5fd5c28770953ae4778e954e9adb63162445a8"
+        }
+      ]
+    },
+    {
+      "id": "info-plist-localization",
+      "source_path": "shafinMultitool/Resources/InfoPlist.xcstrings",
+      "source_files": [
+        {
+          "path": "shafinMultitool/Resources/InfoPlist.xcstrings",
+          "bytes": 2046,
+          "sha256": "988ebbc39b369d497a7f89ae4da7704ef4ffedb2f4020569bb8bec01585ebb5b"
+        }
+      ],
+      "bundle_products": [
+        {
+          "path": "en.lproj/InfoPlist.strings",
+          "root_key_count": 5,
+          "semantic_sha256": "59d4724b0196e117f9532cc275c2b19f4804cae4460f3f960e34fbada45e837a"
+        },
+        {
+          "path": "ru.lproj/InfoPlist.strings",
+          "root_key_count": 5,
+          "semantic_sha256": "1029982694c615c78a377f2cdc05cdc39e98fd48192c9c75de99142104ca90d8"
+        }
+      ]
+    },
+    {
+      "id": "localized-resources",
+      "source_path": "shafinMultitool/Resources/Localizable.xcstrings",
+      "source_files": [
+        {
+          "path": "shafinMultitool/Resources/Localizable.xcstrings",
+          "bytes": 285865,
+          "sha256": "86b92adfe2f24c921664ff2e985892a16349a8eb7168acd47d7b5adb1559b6d4"
+        }
+      ],
+      "bundle_products": [
+        {
+          "path": "en.lproj/Localizable.strings",
+          "root_key_count": 682,
+          "semantic_sha256": "71f777e957884d3d6ce7bab022c7bc6d9b9ae0eaded0c26e35d52f7167e6c942"
+        },
+        {
+          "path": "ru.lproj/Localizable.strings",
+          "root_key_count": 682,
+          "semantic_sha256": "e3eb7453db63a10a4ba0413b96269f23e2331ce944e4f2c8acfbf542b6a61fa8"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Technical resource content identity only; legal_state, disposition, replacement dependencies and release readiness are unchanged.",
+    "The qualifying artifact is the explicitly identified Debug simulator build, not a Release archive or physical-device pass.",
+    "Final Release resource products must independently match this proof and pass all existing bundle, localization, privacy and provenance gates.",
+    "The module catalog contains only three reviewed empty configuration JSON files; no rights in the separate branding image catalog are inferred.",
+    "RU/EN copy/source review is distinct from physical-device, VoiceOver and final UI acceptance.",
+    "The built developer backend endpoint is empty. This does not qualify Apple Speech, deployed operator/provider retention, logs, backups or future remote configuration.",
+    "Changed source bytes, resource membership, locale/key/value, compiled products or privacy configuration require explicit reviewed requalification."
+  ]
+}

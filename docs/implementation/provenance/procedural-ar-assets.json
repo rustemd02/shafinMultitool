@@ -1,0 +1,101 @@
+{
+  "schema": "set-os-procedural-ar-assets",
+  "schema_version": 1,
+  "authorship": "AI-assisted original procedural code and geometry authored for the authorized SET OS task on 2026-09-16",
+  "human_authorship_claimed": false,
+  "third_party_meshes": false,
+  "generator": {
+    "path": "tools/release/generate_ar_assets.py",
+    "sha256": "88ee1d8dce9ef2013bc3321c95362a89a001cc4a0d25ee9cbcb74f374676956c",
+    "version": "setos-procedural-ar-v1",
+    "inputs": "Authored analytical shape parameters; existing metric bounds/name/axis interface only. No imported mesh or texture.",
+    "command": "python3 tools/release/generate_ar_assets.py --output <new-external-output-directory>"
+  },
+  "notice": {
+    "source_path": "shafinMultitool/Resources/Legal/SETOS-Procedural-AR-Assets-NOTICE.txt",
+    "bundle_path": "SETOS-Procedural-AR-Assets-NOTICE.txt",
+    "sha256": "067d66e6e33a5b7efcd4d32aa01ebb455dc28d919cbca8a6bf72c955f44f2a25"
+  },
+  "assets": [
+    {
+      "name": "Circle",
+      "source_path": "shafinMultitool/Resources/Circle.usdz",
+      "bundle_path": "Circle.usdz",
+      "bytes": 8933,
+      "sha256": "4ecd4d22e7c8f3b6d2131306d8c179fc238e062b566d127ea1a18892f5c24453",
+      "member": {
+        "path": "Circle.usdc",
+        "bytes": 8767,
+        "sha256": "249139be9b4fdf17b2a2ba3ea9c5b524997620e7fefa8fa36eaba5c977bc69ec"
+      },
+      "replaces_sha256": "8099ec655334ebeb2a1bd078df6fbb725386cdd870d6c00cd56671f49ea8aa30",
+      "role": "Ground-level actor waypoint disk",
+      "bounds_m": [
+        [
+          -0.125168696,
+          0,
+          -0.125168696
+        ],
+        [
+          0.125168696,
+          0.002,
+          0.125168696
+        ]
+      ],
+      "vertices": 258,
+      "triangles": 512
+    },
+    {
+      "name": "Person",
+      "source_path": "shafinMultitool/Resources/Person.usdz",
+      "bundle_path": "Person.usdz",
+      "bytes": 207462,
+      "sha256": "50ba6e1578fc8e5f82babefb749b07ae1f8bfe70d11b0e7954c59a7ff6d66277",
+      "member": {
+        "path": "Person.usdc",
+        "bytes": 207296,
+        "sha256": "485cf06f7c1fa940b64d89c13aaf1a3fd6c9e5ad420903a2fa8c33a2e2f77280"
+      },
+      "replaces_sha256": "a4af24cd3b5dad3ff19d8bf64b4ae10a92618ff3bd6ce0e70a7a15bb36814010",
+      "role": "Neutral A-pose humanoid for actor blocking",
+      "bounds_m": [
+        [
+          -0.292125016,
+          -0.00283,
+          -0.092654996
+        ],
+        [
+          0.292125016,
+          1.03420496,
+          0.095850006
+        ]
+      ],
+      "vertices": 8476,
+      "triangles": 16752
+    }
+  ],
+  "runtime_contract": {
+    "units": "metres",
+    "up_axis": "Y",
+    "person_front_axis": "+Z",
+    "root": "ModelEntity with identity transform and one white material replaceable by actor tint",
+    "person_height": "Source height preserves existing createActorEntity uniform normalization",
+    "limitations": "Person is a stylized mannequin with visible joins and overlapping closed component shells, not an anatomical or rigged model. Visual appearance differs from former Person."
+  },
+  "evidence": {
+    "receipt_path": "../setos-backend/local-data/SETOS/verification/ar-asset-originals-20260916-qjhv7vr4/completion-receipt.json",
+    "receipt_sha256": "fce0abd03790880ff742557c82c0099829681713f947c6d9ceec9adefda92ade",
+    "reproduction_receipt_sha256": "a8c9f3becbb3fad99ecbbefca71c115099e1e9e5a344c14f87f5c9c12291ee0c",
+    "native_scope": "macOS RealityKit named load/model operation checks 20/20 for candidate and originals; strict USD checker 2/2; second generation byte identity 6/6; wrong-resource negative exit 2",
+    "toolchain": "Python 3.11.9; Apple USD Tools 0.25.11; Swift 6.3.3; macOS 27.0 arm64",
+    "human_gold": false
+  },
+  "admission": {
+    "ios_owner_integration": "PENDING",
+    "physical_ar": "PENDING",
+    "legal_approval": "APPROVED",
+    "status_owner": "docs/implementation/provenance/release-component-status.json",
+    "historical_circle_record": "docs/implementation/provenance/circle-asset-provenance.json",
+    "historical_record_policy": "Retain the former record and validator for historical bytes; current release gate verifies this new source and both selected assets."
+  }
+}

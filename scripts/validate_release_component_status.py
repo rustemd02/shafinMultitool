@@ -34,6 +34,13 @@ EXPECTED_SCHEMA = "set-os-release-component-status"
 EXPECTED_SCHEMA_VERSION = 1
 FONT_PROVENANCE_PATH = "docs/implementation/provenance/font-provenance.json"
 SNAPKIT_PROVENANCE_PATH = "docs/implementation/provenance/snapkit-provenance.json"
+TECHNICAL_RESOURCE_PROVENANCE_PATH = "docs/implementation/provenance/technical-resource-qualification.json"
+TECHNICAL_RESOURCE_PATHS = {
+    "module-assets-catalog": "shafinMultitool/Multitool2Module/Assets.xcassets",
+    "privacy-manifest": "shafinMultitool/PrivacyInfo.xcprivacy",
+    "info-plist-localization": "shafinMultitool/Resources/InfoPlist.xcstrings",
+    "localized-resources": "shafinMultitool/Resources/Localizable.xcstrings",
+}
 SNAPKIT_ACKNOWLEDGEMENTS = "Pods/Target Support Files/Pods-shafinMultitool/Pods-shafinMultitool-acknowledgements"
 SOURCE_TREE_HASH_METHOD = "SHA256 of concatenated UTF-8 lines <file SHA256><two spaces><POSIX relative path><LF>, sorted by relative path, covering all installed files."
 DISPOSITIONS = frozenset(
@@ -722,6 +729,200 @@ def _validate_record_shape(
     return results
 
 
+def _technical_plist_digest(value: Any) -> str:
+    """Hash decoded plist values with types preserved, not serialization bytes."""
+    def typed(item: Any) -> Any:
+        if type(item) is dict and all(type(key) is str for key in item):
+            return ["dictionary", [[key, typed(item[key])] for key in sorted(item)]]
+        if type(item) is list:
+            return ["array", [typed(child) for child in item]]
+        if type(item) is str:
+            return ["string", item]
+        if type(item) is bool:
+            return ["boolean", item]
+        if type(item) is int:
+            return ["integer", str(item)]
+        if type(item) is float:
+            return ["real", item.hex()]
+        _fail("technical resource plist contains an unsupported value type")
+    return hashlib.sha256(json.dumps(typed(value), ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+
+
+def _technical_inventory_digests(components: list[dict[str, Any]]) -> tuple[str, str]:
+    """Bind evidence to the exact reviewed source and decoded-product inventories."""
+    sources = sorted((dict(component=row["id"], **item) for row in components
+                      for item in row["source_files"]), key=lambda item: item["path"])
+    products = sorted((dict(component=row["id"], **item) for row in components
+                       for item in row["bundle_products"]), key=lambda item: item["path"])
+    return tuple(hashlib.sha256(json.dumps(items, sort_keys=True, separators=(",", ":"),
+                                         ensure_ascii=False).encode("utf-8")).hexdigest()
+                 for items in (sources, products))
+
+
+def validate_technical_resource_provenance(repo_root: Path, app_root: Path | None = None) -> dict[str, Any]:
+    """Qualify exact resource content; never grant legal or replacement approval.
+
+    Xcode's independent source-to-bundle compiler comparison remains required by
+    the complete bundle gate. These recorded product hashes prevent a changed
+    source catalog from inheriting a previous qualification, including if a new
+    build faithfully compiles the changed catalog.
+    """
+    proof = _load_json(repo_root / TECHNICAL_RESOURCE_PROVENANCE_PATH, "technical resource qualification")
+    version = proof.get("schema_version")
+    if type(version) is not int or version not in {1, 2}:
+        _fail("unsupported technical resource qualification schema/scope")
+    evidence_key = "archive_evidence" if version == 1 else "build_evidence"
+    _strict_keys(proof, {"schema", "schema_version", "qualification_scope", "qualified_at",
+                        evidence_key, "components", "limitations"}, set(), "technical resource qualification")
+    if (proof["schema"] != "set-os-technical-resource-qualification"
+            or proof["qualification_scope"] != "content_identity_only"):
+        _fail("unsupported technical resource qualification schema/scope")
+    _nonempty_string(proof, "qualified_at", "technical resource qualification")
+    evidence = _mapping(proof[evidence_key], "technical build evidence")
+    if version == 1:
+        # Historical archive records retain their original meaning. A Debug
+        # product must never be relabelled as archive_evidence for this branch.
+        _strict_keys(evidence, {"archive_id", "source_fingerprint_sha256", "bundle_validation_sha256"}, set(), "technical archive evidence")
+        _nonempty_string(evidence, "archive_id", "technical archive evidence")
+        for key in ("source_fingerprint_sha256", "bundle_validation_sha256"):
+            _sha256(evidence[key], key)
+    else:
+        hash_keys = {"build_receipt_sha256", "source_fingerprint_sha256", "resource_review_sha256",
+                     "resource_source_sha256", "product_inventory_sha256",
+                     "localization_validation_sha256", "privacy_validation_sha256"}
+        _strict_keys(evidence, hash_keys | {"kind", "configuration", "platform", "run_id",
+                     "build_qualification", "native_exit_code", "source_unchanged"}, set(), "technical build evidence")
+        profiles = {
+            "xcode_debug_simulator_test_build": ("Debug", "iPhoneSimulator"),
+            "xcode_debug_simulator_build": ("Debug", "iPhoneSimulator"),
+            "xcode_release_device_archive": ("Release", "iPhoneOS"),
+        }
+        kind = _nonempty_string(evidence, "kind", "technical build evidence")
+        if (kind not in profiles or
+                (evidence["configuration"], evidence["platform"]) != profiles[kind]):
+            _fail("technical build kind/configuration/platform mismatch")
+        if (evidence["build_qualification"] != "PASS" or type(evidence["native_exit_code"]) is not int
+                or evidence["native_exit_code"] != 0 or evidence["source_unchanged"] is not True):
+            _fail("technical build evidence requires a successful unchanged source-bound build")
+        _nonempty_string(evidence, "run_id", "technical build evidence")
+        for key in hash_keys:
+            _sha256(evidence[key], key)
+    limitations = _list(proof["limitations"], "technical resource limitations")
+    if not limitations or any(type(item) is not str or not item for item in limitations):
+        _fail("technical resource qualification must retain its limitations")
+
+    def read(root: Path, relative: str) -> bytes:
+        if _safe_relative_path(relative, "technical resource path") != relative:
+            _fail("technical resource path must be canonical")
+        cursor = root
+        if root.is_symlink():
+            _fail("technical resource root is a symlink")
+        for part in PurePosixPath(relative).parts:
+            cursor /= part
+            if cursor.is_symlink():
+                _fail("technical resource input is a symlink: " + relative)
+        if not cursor.is_file():
+            _fail("technical resource file is missing: " + relative)
+        return cursor.read_bytes()
+
+    result = {}
+    expected_localizations = set()
+    for row in _list(proof["components"], "technical resource components"):
+        row = _mapping(row, "technical component")
+        _strict_keys(row, {"id", "source_path", "source_files", "bundle_products"}, set(), "technical component")
+        component_id = _nonempty_string(row, "id", "technical component")
+        if component_id not in TECHNICAL_RESOURCE_PATHS or component_id in result:
+            _fail("technical resource coverage contains an unknown/duplicate component")
+        source_path = TECHNICAL_RESOURCE_PATHS[component_id]
+        if row["source_path"] != source_path:
+            _fail("technical resource source path changed: " + component_id)
+        files = _list(row["source_files"], "technical source files")
+        expected_files = []
+        for item in files:
+            item = _mapping(item, "technical source file")
+            _strict_keys(item, {"path", "bytes", "sha256"}, set(), "technical source file")
+            relative = _safe_relative_path(item["path"], "technical source file path")
+            if relative != source_path and not relative.startswith(source_path + "/"):
+                _fail("technical source file is outside its component")
+            if relative in expected_files or type(item["bytes"]) is not int or item["bytes"] <= 0:
+                _fail("technical source file is empty or repeated")
+            expected_files.append(relative)
+            data = read(repo_root, relative)
+            if len(data) != item["bytes"] or hashlib.sha256(data).hexdigest() != _sha256(item["sha256"], relative):
+                _fail("technical source content changed; requalification required: " + relative)
+        source = repo_root / source_path
+        if not expected_files or expected_files != sorted(expected_files):
+            _fail("technical source file set must be nonempty and sorted")
+        actual_files = []
+        for path in sorted(source.rglob("*")) if source.is_dir() else [source]:
+            if path.is_symlink():
+                _fail("technical resource input is a symlink: " + str(path))
+            if path.is_dir():
+                continue
+            if not path.is_file():
+                _fail("technical resource input is not a regular file")
+            actual_files.append(path.relative_to(repo_root).as_posix())
+        if actual_files != expected_files:
+            _fail("technical resource file membership changed; requalification required: " + component_id)
+        products = _list(row["bundle_products"], "technical bundle products")
+        required_products = {
+            "module-assets-catalog": set(),
+            "privacy-manifest": {"PrivacyInfo.xcprivacy"},
+            "info-plist-localization": {"en.lproj/InfoPlist.strings", "ru.lproj/InfoPlist.strings"},
+            "localized-resources": {"en.lproj/Localizable.strings", "ru.lproj/Localizable.strings"},
+        }[component_id]
+        seen_products = set()
+        for product in products:
+            product = _mapping(product, "technical bundle product")
+            _strict_keys(product, {"path", "semantic_sha256", "root_key_count"}, set(), "technical bundle product")
+            relative = _safe_relative_path(product["path"], "technical bundle path")
+            if relative in seen_products or relative not in required_products:
+                _fail("technical bundle product is unknown or repeated")
+            seen_products.add(relative)
+            if relative.endswith(".strings"):
+                expected_localizations.add(relative)
+            digest = _sha256(product["semantic_sha256"], "technical plist digest")
+            if type(product["root_key_count"]) is not int or product["root_key_count"] <= 0:
+                _fail("technical bundle product cannot be empty")
+            if app_root is not None:
+                try:
+                    value = plistlib.loads(read(app_root, relative))
+                except (ValueError, plistlib.InvalidFileException) as exc:
+                    _fail("technical bundle product is not a supported XML/binary plist: " + relative)
+                if (type(value) is not dict or len(value) != product["root_key_count"]
+                        or _technical_plist_digest(value) != digest):
+                    _fail("technical bundle content changed; requalification required: " + relative)
+        if seen_products != required_products:
+            _fail("technical bundle product coverage changed: " + component_id)
+        result[component_id] = row
+    if set(result) != set(TECHNICAL_RESOURCE_PATHS):
+        _fail("technical resource qualification must cover exactly four components")
+    if version == 2:
+        source_digest, product_digest = _technical_inventory_digests(list(result.values()))
+        if source_digest != evidence["resource_source_sha256"]:
+            _fail("technical build evidence source inventory digest mismatch")
+        if product_digest != evidence["product_inventory_sha256"]:
+            _fail("technical build evidence product inventory digest mismatch")
+    if app_root is not None:
+        actual_localizations = set()
+        for directory in app_root.glob("*.lproj"):
+            if directory.is_symlink():
+                _fail("technical localization directory is a symlink")
+            for path in directory.rglob("*"):
+                if path.suffix in {".strings", ".stringsdict"}:
+                    read(app_root, path.relative_to(app_root).as_posix())
+                    actual_localizations.add(path.relative_to(app_root).as_posix())
+        if actual_localizations != expected_localizations:
+            _fail("technical localization product membership changed; requalification required")
+        try:
+            info = plistlib.loads(read(app_root, "Info.plist"))
+        except (ValueError, plistlib.InvalidFileException):
+            _fail("technical resource profile needs a readable built Info.plist")
+        if type(info) is not dict or info.get("SETOSSceneBaseURL") != "":
+            _fail("technical privacy qualification covers only the developer-backend-disabled built profile")
+    return result
+
+
 def validate_record(
     repo_root: Path, record_path: Path = DEFAULT_RECORD_PATH, app_root: Path | None = None
 ) -> list[dict[str, Any]]:
@@ -762,6 +963,7 @@ def validate_record(
         snapkit_proof = validate_snapkit_provenance(repo_root, app_root)
         if approved_snapkit[0]["expected"]["source_path"] != snapkit_proof["source_path"]:
             _fail("approved SnapKit lacks matching hash-bound source provenance")
+    validate_technical_resource_provenance(repo_root, app_root)
     blockers: list[dict[str, Any]] = []
     for component, blocker in results:
         if blocker is None:
@@ -804,8 +1006,14 @@ def main(argv: list[str] | None = None) -> int:
     scope_options = parser.add_mutually_exclusive_group()
     scope_options.add_argument("--fonts-only", action="store_true", help="verify admitted font/notice hashes only; not a full release decision")
     scope_options.add_argument("--snapkit-only", action="store_true", help="verify SnapKit source and full MIT notice only; not a full release decision")
+    scope_options.add_argument("--technical-resources-only", action="store_true", help="verify four exact technical resource snapshots only; never a legal/replacement or full release decision")
     args = parser.parse_args(argv)
     try:
+        if args.technical_resources_only:
+            proof = validate_technical_resource_provenance(args.repo_root, args.app)
+            scope = "bundle" if args.app is not None else "source"
+            print(f"PASS TECHNICAL RESOURCE CONTENT: scope={scope} components={len(proof)}; legal/replacement and full bundle gates remain separate")
+            return 0
         if args.fonts_only:
             fonts = validate_font_provenance(args.repo_root, args.app)
             scope = "bundle" if args.app is not None else "source"

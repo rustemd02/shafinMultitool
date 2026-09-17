@@ -12,7 +12,7 @@ PRIVACY_VALIDATOR="$REPO_ROOT/scripts/validate_privacy_manifest.sh"
 BUNDLE_VALIDATOR="$REPO_ROOT/scripts/validate_release_bundle.sh"
 FIXTURE_TEST="$REPO_ROOT/scripts/tests/test_release_bundle_gate.sh"
 LLAMA_PROVENANCE_VALIDATOR="$REPO_ROOT/scripts/validate_llama_framework_provenance.py"
-CIRCLE_PROVENANCE_VALIDATOR="$REPO_ROOT/scripts/validate_circle_asset_provenance.py"
+AR_ASSET_PROVENANCE_VALIDATOR="$REPO_ROOT/scripts/validate_procedural_ar_assets.py"
 COMPONENT_STATUS_VALIDATOR="$REPO_ROOT/scripts/validate_release_component_status.py"
 COMPONENT_STATUS_RECORD="$REPO_ROOT/docs/implementation/provenance/release-component-status.json"
 DERIVED_DATA_ROOT_ARG=""
@@ -187,7 +187,7 @@ for required_script in "$PRIVACY_VALIDATOR" "$BUNDLE_VALIDATOR" "$FIXTURE_TEST";
         fail "preflight" "required release script is missing or not executable: $required_script"
     fi
 done
-for required_validator in "$LLAMA_PROVENANCE_VALIDATOR" "$CIRCLE_PROVENANCE_VALIDATOR"; do
+for required_validator in "$LLAMA_PROVENANCE_VALIDATOR" "$AR_ASSET_PROVENANCE_VALIDATOR"; do
     if [ ! -f "$required_validator" ] || [ -L "$required_validator" ]; then
         fail "preflight" "required offline provenance validator is missing or is a symlink: $required_validator"
     fi
@@ -237,13 +237,13 @@ llama_provenance=(
 run_logged_command "2" "llama framework provenance (offline)" "$RUN_ROOT/llama-provenance.log" "${llama_provenance[@]}"
 cat "$RUN_ROOT/llama-provenance.log"
 
-circle_provenance=(
+ar_asset_provenance=(
     python3
-    "$CIRCLE_PROVENANCE_VALIDATOR"
+    "$AR_ASSET_PROVENANCE_VALIDATOR"
     --repo-root "$REPO_ROOT"
 )
-run_logged_command "3" "Circle asset provenance (offline)" "$RUN_ROOT/circle-provenance.log" "${circle_provenance[@]}"
-cat "$RUN_ROOT/circle-provenance.log"
+run_logged_command "3" "Authored AR asset provenance (offline)" "$RUN_ROOT/ar-asset-provenance.log" "${ar_asset_provenance[@]}"
+cat "$RUN_ROOT/ar-asset-provenance.log"
 
 component_status=(
     python3

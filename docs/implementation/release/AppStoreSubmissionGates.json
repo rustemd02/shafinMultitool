@@ -3,13 +3,16 @@
   "gates": [
     {
       "evidence": [
-        "20260916T152044616359Z-release-archive: xcodebuild archive exit 0, unsigned arm64 device archive, unchanged source fingerprint 1bf1d9290edf71ae543b58236a48205936f8fb296190a47b9f9393e1980b0e8e",
-        "Archive predates the full Camera recording/current-pixel tracking integration; its success does not qualify later source changes. Evidence root: ../setos-backend/local-data/SETOS/verification/release-execution-20260916/"
+        "Historical 19:51 snapshot only: 20260916T195158920366Z-release-archive: xcodebuild archive exit 0; 634 inputs unchanged; baseline c5eb957975cb4f2ee1beb98df49572ec806dd520; fingerprint 3931df3de95e7fcd2542a1fea4ead2edf7254099f58ab2d02cde7b41f9c79200",
+        "Historical 19:51 snapshot only: actual compilation includes all 193 app Swift files, including three new installation-deletion files; all six untracked build inputs are preserved and match the source manifest",
+        "Historical 20260916T152044616359Z-release-archive predates the Camera recording/current-pixel tracking integration; its unchanged fingerprint 1bf1d9290edf71ae543b58236a48205936f8fb296190a47b9f9393e1980b0e8e qualifies only that older snapshot",
+        "20260916T183712055655Z-ipad-unscaled-library-and-privacy:3/3; 20260916T184006267443Z-iphone-library-layout-and-privacy:5/5, exact selectors/source unchanged; screenshots inspected",
+        "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/archives/20260917T050524112755Z-release-archive: build 0, wrapper 2, source unchanged true; 667 frozen inputs / 213 actual app Swift; baseline c5eb957975cb4f2ee1beb98df49572ec806dd520, fingerprint d974816b880e3df4f762e72dd9ffe1f7c7bbd5697f58bb388a344f7e1c6adaba. Placement UI /Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/release-execution-20260916/20260917T045712379671Z-camera-image-placement-content-start-iphone: 2/2 PASS; RU/EN simulator fixture journeys with runtime binary identity bound."
       ],
       "gate": "Стабильная законченная сборка без заглушек и скрытых зависимостей",
       "missing": [
-        "Свежий совместный Xcode/UI gate для записи Camera и текущей привязки объектов ещё выполняется; поворот Camera требует runtime диагностики",
-        "Camera usefulness, stable target tracking, full generated-scene flow and physical camera/media/AR acceptance remain open"
+        "Current archive has an empty SETOSSceneBaseURL; qualify the configured service, full generated-scene flow and installation deletion on the intended signed build",
+        "Camera usefulness, model quality, stable target tracking and physical camera/media/AR plus human acceptance remain open; compilation and resource identity do not close these criteria"
       ],
       "n": 1,
       "owner": false,
@@ -33,7 +36,10 @@
         "all four categories are really used: UserDefaults in 10 files, ProcessInfo.systemUptime in CameraViewModel, stat/attributesOfItem in RecordingArtifactStore/DBService/SETLibraryProductionView, volumeAvailableCapacityForImportantUsage in RecordingArtifactStore",
         "an earlier claim that no file-timestamp or disk-space API was used was wrong and is corrected in AppPrivacyAnswers.json",
         "scripts/validate_privacy_manifest.sh enforces exactly these four category/reason pairs and rejects wrong reasons",
-        "Pods/SnapKit/Sources/PrivacyInfo.xcprivacy ships empty tracking/collected/reason lists"
+        "Pods/SnapKit/Sources/PrivacyInfo.xcprivacy ships empty tracking/collected/reason lists",
+        "Historical 19:51 snapshot only: 20260916T195158920366Z actual archive: exactly app and SnapKit privacy manifests; parsed app source/bundle manifests equal, SHA256 21dd725578c5f3200687542a891ac0480308ac7f484be4ccd57be3057ba11d31",
+        "This technical manifest qualification is limited to the archived remote_disabled profile with empty SETOSSceneBaseURL; production service disclosures and component provenance remain separate gates",
+        "Fresh /Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/archives/20260917T050524112755Z-release-archive: source/bundle privacy result PASS: app/source equality; exactly app and SnapKit manifests; remote_disabled; actual endpoint empty (unconfigured). Operator/provider disclosure qualification remains separate."
       ],
       "gate": "Корректный PrivacyInfo.xcprivacy и аудит Required Reason APIs/сторонних SDK",
       "missing": [],
@@ -43,9 +49,10 @@
     },
     {
       "evidence": [
-        "usage-строки локализованы (InfoPlist.xcstrings, en+ru) и подтверждены в Release-бандле",
+        "Historical 19:51 snapshot only: 20260916T195158920366Z: actual compiler/source-to-bundle equality confirms all five InfoPlist keys in both en and ru",
         "SystemPermissionClient и ScenePhotosExportService реализуют запрос доступа (add-only для Photos)",
-        "поведение при отказе покрыто тестами"
+        "поведение при отказе покрыто тестами",
+        "Fresh source/compiled comparison: 5 InfoPlist keys per RU/EN locale; physical permission behavior remains open."
       ],
       "gate": "Полный permission flow для камеры, микрофона, Speech и Photos",
       "missing": [
@@ -57,13 +64,15 @@
     },
     {
       "evidence": [
-        "draft policy + support content prepared at docs/implementation/release/PrivacySupportPage.draft.md (EN/RU), derived from data-flows.md"
+        "draft policy + support content prepared at docs/implementation/release/PrivacySupportPage.draft.md (EN/RU), derived from data-flows.md",
+        "Existing RU/EN Privacy entry works before Camera permission and from Library; 2026-09-16 iPhone 5/5 and iPad 3/3 simulator checkpoints exercise complete bundled notices and return",
+        "Historical 19:51 snapshot only: 20260916T195158920366Z archive includes the installation-deletion implementation and all 21 corresponding Localizable keys in each of en/ru; this proves compiled inclusion, not configured server or physical acceptance",
+        "Current source includes explicit selected-still Camera request approval and image-space placement UI; the default backend is unconfigured. Actual privacy/copy resource proof: /Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/placement-content-start-qualified-s1lf5kg4/resource-proof/qualification-receipt.json."
       ],
       "gate": "Privacy Policy URL и политика внутри приложения",
       "missing": [
-        "Hosted policy URL requires the existing host/domain configuration",
-        "In-app RU/EN privacy and notices entry is under implementation; technical work is authorized and does not wait on owner approval",
-        "Server content-retention discrepancy is being corrected before finalizing policy promises"
+        "Hosted policy URL, service operator/contact and actual provider policy require the existing host/domain/provider configuration",
+        "Qualify final operator/provider policy and the integrated deletion flow against actual configured app/server behavior; server deletion retains security/replay, quota and spend state"
       ],
       "n": 5,
       "owner": true,
@@ -75,7 +84,7 @@
       ],
       "gate": "Точные App Privacy answers",
       "missing": [
-        "Reconcile the old local-only draft with configured Scene requests, installation authentication metadata and actual retention; technical reconciliation is in progress",
+        "Bind the final configured provider/region/retention/deletion policy to the actual app/server transfer behavior and update the qualified disclosure values",
         "Owner enters the qualified answers in App Store Connect after technical completion"
       ],
       "n": 6,
@@ -85,11 +94,15 @@
     {
       "evidence": [
         "Five exact font binaries and complete OFL notices, and exact SnapKit source/MIT notice, verified against pinned upstream sources and the actual unsigned Release app",
-        "20260916T152455588085Z-archive-validator-repair: actual bundle gate correctly exits 1 with ten remaining component provenance blockers; all 11 corrupted-copy checks pass and original archive is unchanged"
+        "Historical 19:51 snapshot only: 20260916T195158920366Z current source and bundle gates both exit 1 with exactly ten PENDING component rows; all 12 corrupted-copy controls pass and original source/archive are unchanged",
+        "DETR/NIMA compiled weight bytes equal the frozen source weights; localization catalogs and privacy source equal actual compiled resources; the module asset catalog is technically empty. These findings do not change legal/provenance approval",
+        "Historical 20260916T152455588085Z-archive-validator-repair retains 11 passing controls for the preserved older archive; it does not qualify the current artifact",
+        "Six scoped project-resource decisions are recorded in first-party-resource-admission.md; exact source/product guards prevent changed resources inheriting those decisions. The four remaining pending IDs must be confirmed by fresh actual bundle validation; DETR correspondence/notices and external corrected NIMA evidence do not grant blanket model admission.",
+        "Actual 050524 bundle has exactly four bundled PENDING IDs; DETR source/bundle notices, four technical resources and two authored AR assets pass. Twelve corrupted copies are rejected with expected reasons; receipt /Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/release-050524-targeted-controls-9nif362j/receipt.json, SHA 1226cf93a4556c71c16a18f0efab831e56f63c7cb6e77c0c64aa306d7ba88e6b."
       ],
       "gate": "Юридическая проверка моделей, датасетов, изображений и bundled assets",
       "missing": [
-        "Source component rows remain pending: circle-usdz, detr-segmentation-model, info-plist-localization, llama-framework, localized-resources, module-assets-catalog, nima-aesthetic-model, person-usdz, privacy-manifest, resource-assets-catalog",
+        "Current canonical component rows remain PENDING: detr-segmentation-model, llama-framework, nima-aesthetic-model, resource-assets-catalog; unchanged replacement and model/data-quality dependencies remain open.",
         "Complete source/weights/asset provenance or a verified replacement; a bundled notice alone is not model or dataset admission"
       ],
       "n": 7,
@@ -98,21 +111,23 @@
     },
     {
       "evidence": [
-        "монетизация отложена до beta evidence по продуктовому плану (раздел 12)"
+        "SET_OS_APP_STORE_1_0_CODEX_MASTER_PLAN_v2.md §3.9 explicitly excludes subscription, credits, StoreKit and accounts from approved 1.0 scope",
+        "2026-09-13-setos-release-execution.md Q06.4 requires removing the irrelevant StoreKit blocker when no paid feature is approved",
+        "AppStoreMetadata.draft.json shared.in_app_purchases=false; no paid feature is approved in the current execution scope"
       ],
       "gate": "StoreKit 2, restore, entitlement, проверка подписки",
-      "missing": [
-        "выбор модели, реализация, restore"
-      ],
+      "missing": [],
       "n": 8,
-      "owner": true,
-      "status": "not_started"
+      "owner": false,
+      "status": "not_applicable_current_scope"
     },
     {
       "evidence": [
         "bundle id com.vigvamcev-media.shafinMultitool, версия 1.0 (1), iOS 17.0",
         "иконка 1024 universal, CFBundleIconName=AppIcon, в бандле отрендерены размеры",
-        "ITSAppUsesNonExemptEncryption=false подтверждён в собранном plist"
+        "ITSAppUsesNonExemptEncryption=false подтверждён в собранном plist",
+        "Historical 19:51 snapshot only: 20260916T195158920366Z actual unsigned archive confirms this metadata and device families 1/2; distribution signing and configured Scene endpoint are tracked separately",
+        "Fresh artifact metadata receipt: /Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/archives/20260917T050524112755Z-release-archive/archive-files.json, SHA 10e3208d16990d02bd58a9a1d32d40955cf5cd6166c7e03a3097440195cd95bf."
       ],
       "gate": "Валидные App Icon, display name, Bundle ID, версия и release-конфигурация",
       "missing": [],
@@ -123,12 +138,16 @@
     {
       "evidence": [
         "Real XCTest/UI runs retain xcresult, native exit status, source patches/tars and before/after fingerprints; failed and zero-test runs are retained",
-        "tools/release/archive_build.py creates an actual unsigned device archive with a file SHA inventory and arm64 validation; its 11 negative controls pass",
-        "Actual archive manifest SHA256 8588ddf572e12ebab85a39be23873faa8c9347ab9c3ba4820734e8cf2b57b84c; bundle validation now completes and reports the known provenance failures"
+        "Historical 19:51 snapshot only: tools/release/archive_build.py produced the current unsigned arm64 device archive; native build exit 0, wrapper exit 2, bundle validation exit 1 for the known ten PENDING component rows",
+        "Historical 19:51 snapshot only: Current archive-files.json SHA256 28dd55e5f8c6af3e92a9118d7254c5f1a9665a5e0df6dd02a4244829a7a5abdf; post-archive proof verifies 193 app Swift compilation members and six untracked build inputs",
+        "Historical 19:51 snapshot only: Current source-to-compiled localization equality: two catalogs, four EN/RU products, 638 Localizable keys and five InfoPlist keys per language; all 12 corrupted-bundle controls pass",
+        "Historical localization gate tests passed 33/33 and rejected 89 missing keys per language in the old archive against the then-current 615-key source snapshot; that count is historical, not a comparison against the then-current 638 keys",
+        "Historical archive manifest SHA256 8588ddf572e12ebab85a39be23873faa8c9347ab9c3ba4820734e8cf2b57b84c and its original failed/repair receipts remain preserved",
+        "New actual unsigned archive /Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/archives/20260917T050524112755Z-release-archive; status engineering_archive_built_release_validation_failed, post proof engineering_artifact_identity_verified_release_provenance_pending, 682 Localizable and 5 InfoPlist keys per locale; negative controls 12/12 corrupted-copy controls rejected with expected reasons. Four pending components remain; release_ready=false."
       ],
       "gate": "Настоящий UI-test target, CI-gate, clean Archive и Validate",
       "missing": [
-        "Rebuild the final source snapshot after integration and close source/bundle admission blockers",
+        "Close source/bundle admission blockers; changes to build inputs or final backend configuration require a fresh archive and related validation",
         "Distribution signing/export requires a matching certificate/profile; current engineering archive is unsigned",
         "CI required-check configuration is not established"
       ],
@@ -138,12 +157,15 @@
     },
     {
       "evidence": [
-        "iPhone 13 Pro is paired, Developer Mode/DDI ready; last inspection reports passcodeRequired=true",
-        "Owned isolated iPhone 17e and iPad A16 simulators are used for UI checks; these do not qualify physical capture or tracking"
+        "Earlier read-only inspection found iPhone 13 Pro paired and Developer Mode/DDI ready, with passcodeRequired=true; it did not establish installed-app or physical acceptance",
+        "Owned isolated iPhone 17e and iPad A16 simulators are used for UI checks; these do not qualify physical capture or tracking",
+        "20260916T195715143150Z-debug-ieqgn7wo build-receipt.json: actual native exit 65, source unchanged, installed=false, launched=false; receipt SHA256 e24dbdf485728927a7f5f5ca9ebbfc29c9371b28526480008b7def0bfdf6e055",
+        "The selected Personal Development Team 5NAKQ28539 does not support the required App Attest capability; a separate diagnostic Debug app does not close intended signing or physical acceptance"
       ],
       "gate": "Проверка на физических устройствах (первый запуск, отказы, offline, запись, нагрев, память, background)",
       "missing": [
-        "Owner unlock and a matching development provisioning profile are needed for installation; then execute real camera/audio/AR/thermal/background procedures"
+        "Owner selection of an App Attest-capable signing team is pending; obtain its matching development profile and unlocked device access for the intended application",
+        "Then execute first launch, permission denial/retry, offline, real camera/audio/AR, recording/export, thermal/memory and background procedures; preserve physical and human evidence separately"
       ],
       "n": 11,
       "owner": true,
@@ -152,13 +174,14 @@
     {
       "evidence": [
         "docs/implementation/release/AppStoreMetadata.draft.json (ru/en, поля с пометкой owner_decision там, где продуктовый план требует решения после beta)",
-        "docs/implementation/release/ReviewNotes.draft.md"
+        "Historical 19:51 snapshot only: docs/implementation/release/ReviewNotes.draft.md now identifies the 20260916T195158920366Z artifact, exact source/model evidence, empty backend URL and actual physical signing failure; it remains an unsubmitted technical draft",
+        "ReviewNotes.draft.md and ReproducibleBuild.md bind the new artifact and retain 19:51 evidence as historical. Review notes remain NOT READY; no App Store Connect action is performed."
       ],
       "gate": "App Store metadata, screenshots, Support URL, review notes, demo-инструкция",
       "missing": [
         "Support URL и marketing URL",
         "скриншоты после финализации потоков",
-        "имена/название и цена — решение владельца после beta"
+        "имя и подзаголовок — решение владельца после beta; StoreKit/IAP не входят в утверждённый scope"
       ],
       "n": 12,
       "owner": true,
@@ -166,15 +189,14 @@
     },
     {
       "evidence": [
-        "IAP не реализован (гейт 8)"
+        "IAP is outside the approved 1.0 scope under master plan §3.9; AppStoreMetadata.draft.json shared.in_app_purchases=false",
+        "Legacy gate number is retained for traceability; this does not assert execution or acceptance of any agreement"
       ],
       "gate": "Договоры, банковские и налоговые сведения для IAP",
-      "missing": [
-        "заполнить при включении монетизации"
-      ],
+      "missing": [],
       "n": 13,
-      "owner": true,
-      "status": "not_applicable_yet"
+      "owner": false,
+      "status": "not_applicable_current_scope"
     }
   ],
   "owner_decision_2026_09_12": {
@@ -183,17 +205,94 @@
     "metadata_and_screenshots": "deferred",
     "submission": "explicit GO required"
   },
-  "report_id": "appstore-submission-gates-2026-09-16",
-  "source_of_gates": "docs/app-store-product-plan.md раздел 13 (13 обязательных ворот перед отправкой)",
-  "status_note": "Technical work continues under the 2026-09-16 authorization and master plan v2. The dated owner decisions are historical publishing/account constraints, not a reason to stop implementation. The archive and completed checks do not establish release readiness; current recording/tracking, privacy/retention, model quality, provenance and physical acceptance work remain open.",
+  "report_id": "appstore-submission-gates-2026-09-17",
+  "source_of_gates": "Legacy numbering: docs/app-store-product-plan.md §13. Current applicability: SET_OS_APP_STORE_1_0_CODEX_MASTER_PLAN_v2.md §3.9 and 2026-09-13-setos-release-execution.md Q06.4; StoreKit/IAP gates 8 and 13 do not apply to the approved 1.0 scope.",
+  "status_note": "Technical work continues under master plan v2. New unsigned engineering archive /Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/archives/20260917T050524112755Z-release-archive: build 0, bundle validation 1, wrapper 2, source unchanged true. Placement UI 2/2 PASS; RU/EN simulator fixture journeys with runtime binary identity bound; new RU/EN catalog 682 keys per locale, controls 12/12 corrupted-copy controls rejected with expected reasons. Four component rows remain PENDING; the scoped six resource decisions do not admit the application. Backend URL empty (unconfigured); deployed operator/provider, model quality, full product, physical and human acceptance remain open. The Personal team App Attest failure remains historical evidence and suitable team selection/signing is separate; ExportOptions is unqualified. StoreKit/IAP are outside approved 1.0 scope. Older artifact evidence stays historical.",
   "release_ready": false,
   "artifact_index": "../setos-backend/local-data/SETOS/verification/release-execution-20260916/RUNNING_CHECKPOINT.md",
+  "current_artifact": {
+    "archive_path": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/archives/20260917T050524112755Z-release-archive/SETOS.xcarchive",
+    "baseline_commit": "c5eb957975cb4f2ee1beb98df49572ec806dd520",
+    "source_fingerprint": "d974816b880e3df4f762e72dd9ffe1f7c7bbd5697f58bb388a344f7e1c6adaba",
+    "source_files": 667,
+    "compiled_app_swift_files": 213,
+    "untracked_build_inputs": 39,
+    "archive_manifest_sha256": "10e3208d16990d02bd58a9a1d32d40955cf5cd6166c7e03a3097440195cd95bf",
+    "build_exit": 0,
+    "wrapper_exit": 2,
+    "bundle_validation_exit": 1,
+    "source_unchanged_after_negative_controls": true,
+    "archive_unchanged_after_negative_controls": true,
+    "scene_backend_url": "",
+    "distribution_signed": false,
+    "release_ready": false,
+    "component_provenance_pending": 4,
+    "negative_controls_passed": 12,
+    "compiled_weight_sha256": {
+      "DETRResnet50SemanticSegmentationF16P8.mlmodelc": "8e0a22ecc1921f81611864434714ae1989f3e992ec04994ed22a8ead6deccce7",
+      "aesthetic_nima_mobilenet_fp16.mlmodelc": "198486adb600611945b067dd77c1ceb65f3ac5ad19733ace4deed5d7587fd717"
+    },
+    "model_quality_or_training_rights_admitted": false,
+    "evidence_root": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/archives/20260917T050524112755Z-release-archive",
+    "receipt_sha256": {
+      "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/archives/20260917T050524112755Z-release-archive/receipt.json": "ee1d1256630a39f3c1ce72ebd2c5ed5b4b394f48b6adcf36fa8205fe4c10dad8",
+      "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/post-archive-proof-uiaw_dbt/receipt.json": "40ce460a2e54885d961f3a65441159d69cb8a3bbdb5385b90195f9ef21460d94",
+      "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/release-050524-targeted-controls-9nif362j/receipt.json": "1226cf93a4556c71c16a18f0efab831e56f63c7cb6e77c0c64aa306d7ba88e6b"
+    },
+    "placement_ui_receipt": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/release-execution-20260916/20260917T045712379671Z-camera-image-placement-content-start-iphone/receipt.json",
+    "placement_ui_receipt_sha256": "82b99e16128769fab5dba38a3864c26ff9f8c6122e432336aa384e6d1c7d8fd4",
+    "resource_qualification_receipt": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/placement-content-start-qualified-s1lf5kg4/resource-proof/qualification-receipt.json",
+    "resource_qualification_receipt_sha256": "aa3ad741399d24bea5f0565116a00b5670f7772227fe630e911a74a0dae656b1",
+    "status": "engineering_archive_built_release_validation_failed",
+    "source_and_archive_post_controls_receipt": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/release-docs-050524-final/preparation-receipt.json",
+    "runtime_binding_receipt": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/placement-content-start-qualified-s1lf5kg4/runtime-binding-proof/receipt.json",
+    "runtime_binding_receipt_sha256": "21a0efc20a08457753e314f85899acc646262a78dfada1412eb294176c2b77ad",
+    "placement_visual_review": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/placement-content-start-qualified-s1lf5kg4/root-visual-review.json",
+    "placement_visual_review_sha256": "86340af41b6d7cea83a574974e694bfb5bfc235855c76977976695fb2d0cfa3c",
+    "detr_actual_inference_receipt": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/release-execution-20260916/20260917T050227603858Z-detr-typed-bundled-019-inference/receipt.json",
+    "detr_actual_inference_receipt_sha256": "ec62ce9bfbf98d8875063b4a6356678af92caef28de969d926d24f88ca9d525d"
+  },
   "summary": {
     "blocked_or_open": 2,
     "not_started_or_na": 2,
-    "owner_gated": 9,
+    "owner_gated": 7,
     "partial_or_draft": 6,
     "satisfied": 3
   },
-  "utc": "2026-09-16T15:43:00+00:00"
+  "utc": "2026-09-17T05:17:54.126257+00:00",
+  "historical_artifacts": [
+    {
+      "archive_path": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/release-next-preflight-20260916-1hb3qbu4/archives/20260916T195158920366Z-release-archive/SETOS.xcarchive",
+      "baseline_commit": "c5eb957975cb4f2ee1beb98df49572ec806dd520",
+      "source_fingerprint": "3931df3de95e7fcd2542a1fea4ead2edf7254099f58ab2d02cde7b41f9c79200",
+      "source_files": 634,
+      "compiled_app_swift_files": 193,
+      "untracked_build_inputs": 6,
+      "archive_manifest_sha256": "28dd55e5f8c6af3e92a9118d7254c5f1a9665a5e0df6dd02a4244829a7a5abdf",
+      "build_exit": 0,
+      "wrapper_exit": 2,
+      "bundle_validation_exit": 1,
+      "source_unchanged_after_negative_controls": true,
+      "archive_unchanged_after_negative_controls": true,
+      "scene_backend_url": "",
+      "distribution_signed": false,
+      "release_ready": false,
+      "component_provenance_pending": 10,
+      "negative_controls_passed": 12,
+      "compiled_weight_sha256": {
+        "DETRResnet50SemanticSegmentationF16P8.mlmodelc": "8e0a22ecc1921f81611864434714ae1989f3e992ec04994ed22a8ead6deccce7",
+        "aesthetic_nima_mobilenet_fp16.mlmodelc": "198486adb600611945b067dd77c1ceb65f3ac5ad19733ace4deed5d7587fd717"
+      },
+      "model_quality_or_training_rights_admitted": false,
+      "evidence_root": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/release-next-preflight-20260916-1hb3qbu4",
+      "receipt_sha256": {
+        "final-release-archive-verification.json": "13198b3aa57582c95c0a4026f4788c3118341d663c34e9b855da475563d4c75b",
+        "post-archive-proof-cugd5wig/receipt.json": "251fc6f3c13c35fbcb6d85e22a32ef5102d05d6828097b14943c0729106a326d",
+        "post-archive-proof-cugd5wig/model-byte-proof.json": "125f5729dc3a1987f651404e8890924cae2c7a8615460d7f7e44638573db742c",
+        "bundle-controls-k0u8drap/receipt.json": "c6c63d8120ad50d643fe08396f78aa7ba615ebb5846ba6d78def0e673f38971d"
+      },
+      "physical_build_receipt": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/physical-command-package-20260916-m1z9o3ub/20260916T195715143150Z-debug-ieqgn7wo/build-receipt.json",
+      "physical_build_receipt_sha256": "e24dbdf485728927a7f5f5ca9ebbfc29c9371b28526480008b7def0bfdf6e055"
+    }
+  ]
 }

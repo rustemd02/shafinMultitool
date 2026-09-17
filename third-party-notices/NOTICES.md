@@ -16,12 +16,17 @@ rights decision is `owner_required` are listed with that status, not as approved
 
 ### llama.cpp / llama.xcframework — MIT
 
-- Upstream: https://github.com/ggerganov/llama.cpp, commit `8f974d2392da4e6fa422a67050e90f1471d72966`.
+- Upstream: https://github.com/ggml-org/llama.cpp, commit `8f974d2392da4e6fa422a67050e90f1471d72966`.
 - Vendored binary: `Frameworks/llama.xcframework` (MIT).
-- Copyright (c) 2023-2024 The ggml authors / Georgi Gerganov and contributors.
+- Copyright (c) 2023-2026 The ggml authors (the exact pinned upstream notice).
 - Full MIT text is preserved verbatim at
   `docs/implementation/third-party-notices/llama-cpp/LICENSE`
   (sha256 `94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d`).
+- The same complete bytes are present as `llama-cpp-LICENSE.txt` in the
+  `20260916T195158920366Z` unsigned archive. On 2026-09-16 the notice and all nine
+  public framework headers matched the pinned upstream source. This records
+  correspondence and notice delivery; it does not establish a clean rebuild or
+  close the separate verified-replacement gate.
 - Redistribution decision: **owner_approval_pending** (see the inventory record).
 
 ### SnapKit 5.7.1 — MIT
@@ -91,22 +96,59 @@ See `docs/implementation/provenance/font-admission.md` and the hash-bound
 and [SIL's mobile-app guidance, FAQ 1.20](https://openfontlicense.org/ofl-faq/)
 describe the applicable conditions.
 
-## Bundled components with an UNKNOWN or owner-required rights decision
+## Other material resources and unresolved records
 
 These are recorded honestly and are **not** covered by the acknowledgements above:
 
-- `DETRResnet50SemanticSegmentationF16P8.mlpackage` — embedded string says Apache-2.0 and names
-  `facebook/detr-resnet-50-panoptic`, but product/redistribution approval is `owner_required`.
-- `aesthetic_nima_mobilenet_fp16.mlpackage` — no author, license, checkpoint or source;
-  `owner_required`, must not be declared provenance-cleared.
-- `Circle.usdz`, `Person.usdz` — creator/redistribution evidence missing.
-- `Resources/Assets.xcassets`, `Multitool2Module/Assets.xcassets` — branding/AppIcon authorship not recorded.
-- `SETCompositionNet-Stage2-Local.mlpackage` — research-only artifact, currently unregistered and
-  release-blocking until it is excluded or formally registered.
+- `DETRResnet50SemanticSegmentationF16P8.mlpackage` — the exact official Apple ZIP
+  SHA256 `9436f344d7e935ef8f54025a43e760888a058ab9192f18248c3745d25fced4a7`
+  was retained on 2026-09-17; all three model files match current source. Embedded
+  metadata identifies Apache-2.0 and `facebook/detr-resnet-50-panoptic`; pinned
+  model/source distributions retain the same license. The complete upstream text
+  is `Resources/Legal/DETR-Apache-2.0-LICENSE.txt` and SET OS attribution is
+  `Resources/Legal/DETR-NOTICE.txt`. Neither is passed off as a discovered upstream
+  NOTICE. See `docs/implementation/provenance/detr-provenance.json` for exact hashes.
+  Their presence in the final Release bundle, model/product qualification and
+  the verified-replacement dependency remain pending.
+- `aesthetic_nima_mobilenet_fp16.mlpackage` — source-package metadata has no author or license.
+  The 2026-09-16 audit compares all 137 datasets of the public idealo MobileNet aesthetic
+  checkpoint against all 56 learned FP16 constants: every value agrees within one FP16 ULP
+  under the documented BatchNorm fold. The checkpoint SHA-256 is
+  `e563ad91b3d47410e45f7238f07ab8f6abd1bd0c4b18a4b0af9c681a21a91cb2`;
+  its publisher source is [idealo commit 6727629](https://github.com/idealo/image-quality-assessment/tree/67276297918830aa842d1df52adf727925198e51).
+  Current Core ML stride-2 padding differs from that checkpoint's Keras 2.1.6 construction.
+  Exact conversion/output equivalence and product admission remain unverified. This
+  numeric correspondence does not itself approve redistribution or supply a bundled license.
+- `Circle.usdz`, `Person.usdz` — original AI-assisted procedural replacements from
+  `tools/release/generate_ar_assets.py`; the generator builds analytic meshes and a
+  plain material without imported geometry, textures, scans or a person's likeness.
+  Exact generator, source, USDZ and notice identities are recorded in
+  `docs/implementation/provenance/procedural-ar-assets.json`. The shipped notice is
+  `SETOS-Procedural-AR-Assets-NOTICE.txt`. Reproduction and native macOS contract
+  checks establish technical lineage. These exact new resources are admitted
+  under `first-party-resource-admission.md`; final Release byte/notice verification
+  and physical AR acceptance remain separate. The new resources are integrated.
+  The `20260916T195158920366Z` archive retains the former Circle
+  (`8099ec65…`) and Person (`a4af24cd…`) bytes with their original provenance gaps;
+  the old receipts and excluded `Circle.rcproject` have not been reclassified.
+- `Resources/Assets.xcassets` — contains four PNG payloads: AppIcon, logo_menu,
+  background and blur. Current author/source/rights evidence remains incomplete.
+- `Multitool2Module/Assets.xcassets` — contains three JSON scaffold files and no
+  referenced image or color component payload. It must not inherit the separate
+  resource catalog's artwork-provenance claims. Only its three empty configuration
+  files are admitted under the content-bound first-party resource record.
+- `PrivacyInfo.xcprivacy`, `InfoPlist.xcstrings`, `Localizable.xcstrings` — admitted
+  only as the exact reviewed functional app resources described in
+  `docs/implementation/provenance/first-party-resource-admission.md`. Their source
+  and actual Debug compiler products are bound by `technical-resource-qualification.json`.
+  Final Release comparison, UI/permission behavior and deployed provider/privacy
+  qualification remain independent.
 
-## Not bundled (excluded from the app target)
+## Excluded from the current Release archive
 
 `Resources/Models/*.gguf`, `Resources/Textures/SETGrain.png`,
-`Resources/Circle.rcproject`, `Resources/DeviceBenchmark`, `Resources/Fixtures`.
-No notice is required while they remain excluded, but their rights records are still
-unresolved in the inventory.
+`Resources/Circle.rcproject`, `Resources/DeviceBenchmark`, `Resources/Fixtures`
+and the research `SETCompositionNet-Stage2-Local` model.
+The `20260916T195158920366Z` archive contains only the DETR and NIMA compiled
+models. These exclusions do not settle research-data rights or authorize a later
+reintroduction. Debug benchmark resources have their separate research-only scope.

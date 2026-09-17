@@ -1,14 +1,14 @@
 {
   "claim_scope": "Source-derived release draft, not an App Store Connect submission. Select the profile matching the archived binary and deployed service; the absence of an account does not establish anonymous or unlinked collection.",
-  "configuration": "Configuration dependent. SceneParserService.isRemoteOffloadConfigured reports whether a provider is actually wired. Release Camera visual inference is local; SceneRemoteServiceComposition can enable an authenticated remote Scene service from validated deployment configuration.",
+  "configuration": "Configuration dependent. Live Camera inference remains local. The applied Release-capable CameraCloudAnalysisClient can send one explicitly selected paused still only after exact image/content/policy approval, using the same App Attest installation and API root as Scene. SceneParserService.isRemoteOffloadConfigured and CameraCloudServiceBootstrap.client report their actual composition. Current checked build settings leave SETOS_SCENE_BASE_URL empty and provide no Camera policy; the 20260916T195158920366Z archive predates Camera Cloud integration and is remote_disabled. A fresh archive must establish the final configuration.",
   "data_collection": {
     "question": "What data does the app collect off the device?",
     "answer": "configuration dependent; remote-enabled operation collects data",
     "off_device_processing": "Spoken input uses SFSpeechAudioBufferRecognitionRequest without requiresOnDeviceRecognition; Apple may process microphone audio remotely. Apple-only collection is not declared as developer collection. The transcript remains editable text and becomes Other User Content if submitted to the configured Scene service. Local recording and the local sound meter do not upload audio.",
-    "conditional": "The final archive endpoint configuration, App Attest state, hosting logs, provider retention and privacy manifest must be revisited before release. A generic no-data-collected answer is invalid when remote Scene requests are enabled.",
+    "conditional": "The final archive endpoint and Scene/Camera policy configuration, App Attest state, hosting logs, provider retention and privacy manifest must be revisited before release. A generic no-data-collected answer is invalid when remote collection is enabled. The Scene categories below cannot silently stand in for the selected-image Camera flow; its image and analysis-context inventory is a separate pending deployment requirement.",
     "profiles": {
       "remote_disabled": {
-        "developer_collection": "No developer collection demonstrated by the current local Camera/AR/Scene/media paths, provided no remote provider is wired and no additional telemetry is deployed.",
+        "developer_collection": "No developer collection demonstrated by the local Camera/AR/Scene/media paths, provided both Scene and Camera remote composition remain disabled and no additional telemetry is deployed. Dormant Release-capable transport code does not itself demonstrate an off-device transfer.",
         "manifest": "The current empty NSPrivacyCollectedDataTypes list is bounded to this profile and is not evidence for a remotely configured binary.",
         "categories": []
       },
@@ -47,7 +47,17 @@
             ]
           }
         ],
+        "camera_selected_still_inventory": {
+          "status": "publication_requires_actual_deployment_classification",
+          "activation": "Configured shared HTTPS/App Attest service root, matching Scene and Camera public policies, and explicit ephemeral approval of one selected JPEG/body hash and policy fingerprint before token acquisition.",
+          "transferred": "One JPEG (maximum long edge 1024 pixels, maximum 512 KiB) plus local entity references/regions, detector labels, issue/strength identifiers, intent answers and correlation metadata. Faces and visible text remain; resizing and metadata removal do not anonymize the image. No automatic video or audio upload is implemented.",
+          "local_server_retention": "JPEG/context stay in active request/provider-task memory. The backend has no durable image store; response bytes are held in an in-memory cache of at most 64 entries with 60-second expiry and maintenance/access cleanup. Deletion purges owner cache and cancels/joins body intake and provider tasks. This is a source implementation fact, not proof of provider or host retention.",
+          "durable_metadata": "Shared provider_budget v2 retains execution/request/owner digests, timestamps, status, charges, quota rows and cancellation tombstones without automatic expiry to prevent duplicate execution. These survive content deletion; the 30-day Scene job-metadata lifetime does not apply to this separate ledger.",
+          "classification_needed": "Evaluate Photos or Videos, any retained visual observations/text and local analysis context, Device ID linkage, Product Interaction and deployed diagnostics against actual service/provider handling before selecting the public collection answers. These are required inventory candidates, not approved App Store Connect answers.",
+          "source_owners": ["CameraCloudAnalysisClient.swift", "CameraCloudTransferConsent.swift", "CameraCloudReviewControls.swift", "setos-backend/camera_evidence_routes.py", "setos-backend/provider_budget.py"]
+        },
         "additional_deployment_inventory_required": [
+          "Qualify the selected-still Camera flow and its actual provider terms separately; do not reuse the Scene-only category list or the current empty manifest for enabled image transfer.",
           "Classify actual hosted diagnostic/error/performance logs if retained; the local server fixture does not prove production logging or reverse-proxy IP policy.",
           "Provider retention, secondary uses, subprocessors, location and linkage need the actual account/model agreement. A local database purge does not establish provider deletion.",
           "Update NSPrivacyCollectedDataTypes for the selected remote-enabled release profile and validate the built privacy report; the current empty manifest does not satisfy this profile."
@@ -56,7 +66,8 @@
     },
     "evidence": [
       "SceneGenerationClient creates a typed script/marker/clarification request without camera frames, recordings or AR maps.",
-      "VisualSemanticEvidenceProviderFactory constructs the remote visual provider only in DEBUG.",
+      "The legacy VisualSemanticEvidenceProviderFactory remote-selection branch is DEBUG-only; the adapter type itself compiles. The actual ambient caller uses structuredOnly, nil image input and a non-explicit trigger with remote consent false by default. This does not describe the separately applied explicit CameraCloudAnalysisClient path.",
+      "CameraCloudAnalysisClient prepares inert selected-still bytes, shows those exact JPEG pixels and endpoint/provider-bound policy, and checks ephemeral approval before obtaining the shared installation token. Current public configuration leaves this path disabled; source presence is not performed egress.",
       "Camera recording and Scene recording use local RecordingArtifactStore; Photos/share are explicit user actions.",
       "setos-backend/store.py retains owner/idempotency hashes, timestamps and fixed versions after clearing job content.",
       "setos-backend/app_attest_state.py retains installation identity and replay counters separately from job metadata."
@@ -81,7 +92,7 @@
     "question": "Privacy policy URL",
     "answer": null,
     "status": "owner_hosting_and_final_service_policy_required",
-    "note": "The in-app Privacy & licenses page is prepared for Library and pre-camera entry. It is an information page, not explicit consent to transfer a scene. No public URL or support contact is fabricated. Provider-specific consent and the matching hosted policy remain required before enabling remote generation for publication."
+    "note": "The in-app Privacy & licenses page is implemented for Library and pre-camera entry. Opening it grants no transfer permission. Separate Scene and selected-still Camera approval flows bind exact content and public policy; installation deletion requires another explicit confirmation. No public URL or support contact is fabricated. Actual provider/operator policy and deployment qualification remain required before enabling either remote path for publication."
   },
   "report_id": "app-privacy-answers-2026-09-16",
   "required_reason_apis": {
@@ -144,7 +155,9 @@
   "retention": {
     "working_job_database": "Verified local implementation removes raw request on terminal state, completed result after 14 minutes, and all unfinished job content at 23 hours 59 minutes from creation. Maintenance is bounded to 30-second intervals and runs at startup/access. Explicit owned DELETE purges completed content and retains the idempotency tombstone. These operational margins target the master 15-minute/24-hour limits while the service is running.",
     "job_metadata": "Owner/idempotency/request hashes, IDs, fixed versions and timestamps expire 30 days from job creation.",
-    "app_attest_security_state": "Installation key, replay counter and revocation identity are retained separately without automatic expiry. An approved identity deletion/retirement policy is still required; blindly deleting these records would weaken replay protection.",
+    "app_attest_security_state": "Installation deletion is implemented and blocks further enrollment/token use, clears local credentials after a valid complete receipt, and retires the server installation. Replay/security identity tombstones remain without automatic expiry; deletion does not promise that these retained records are erased. Their disclosed retention/retirement policy still requires the actual operator facts.",
+    "camera_selected_still": "The applied source uses bounded in-memory image/context handling and an expiring response cache; see camera_selected_still_inventory. No real provider/hosting retention has been qualified.",
+    "provider_budget": "Shared Scene/Camera dispatch and spend records, Camera owner-quota rows and cancellation tombstones have no automatic expiry in provider_budget v2. Installation deletion does not reset them or restore a spend/quota budget.",
     "excluded_from_local_proof": [
       "External AI provider storage",
       "Backups and restored copies",

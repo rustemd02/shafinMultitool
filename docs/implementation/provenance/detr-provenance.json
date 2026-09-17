@@ -1,0 +1,111 @@
+{
+  "schema": "setos-detr-source-and-notice-provenance-v1",
+  "component_id": "detr-segmentation-model",
+  "source_path": "shafinMultitool/Multitool2Module/Models/CoreML/DETRResnet50SemanticSegmentationF16P8.mlpackage",
+  "official_distribution": {
+    "path": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/detr-official-correspondence-20260917/DETRResnet50SemanticSegmentationF16P8.mlpackage.zip",
+    "bytes": 40257844,
+    "sha256": "9436f344d7e935ef8f54025a43e760888a058ab9192f18248c3745d25fced4a7",
+    "url": "https://ml-assets.apple.com/coreml/models/Image/Segmentation/DETR/DETRResnet50SemanticSegmentationF16P8.mlpackage.zip"
+  },
+  "source_files": [
+    {
+      "path": "Manifest.json",
+      "bytes": 617,
+      "official_sha256": "e7154240ddfd55b776642ae4f6b47d42bf8ad1b9425d97151d4d7b7875d0bf95",
+      "source_sha256": "e7154240ddfd55b776642ae4f6b47d42bf8ad1b9425d97151d4d7b7875d0bf95",
+      "equal": true
+    },
+    {
+      "path": "Data/com.apple.CoreML/model.mlmodel",
+      "bytes": 337183,
+      "official_sha256": "3d3666837fe990d3948308e417949864b5c2ab0dd9f21091c755c8effa005c40",
+      "source_sha256": "3d3666837fe990d3948308e417949864b5c2ab0dd9f21091c755c8effa005c40",
+      "equal": true
+    },
+    {
+      "path": "Data/com.apple.CoreML/weights/weight.bin",
+      "bytes": 42748128,
+      "official_sha256": "8e0a22ecc1921f81611864434714ae1989f3e992ec04994ed22a8ead6deccce7",
+      "source_sha256": "8e0a22ecc1921f81611864434714ae1989f3e992ec04994ed22a8ead6deccce7",
+      "equal": true
+    }
+  ],
+  "evidence_receipt": {
+    "path": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/detr-official-correspondence-20260917/receipt.json",
+    "sha256": "bd26c340910aaab8aa1d3656cd204335db4b07afb2657045edcc24656cf3fdac"
+  },
+  "upstream": {
+    "model_url": "https://huggingface.co/facebook/detr-resnet-50-panoptic",
+    "model_commit": "d53b52a799403a8867920f82c869e40732b47037",
+    "source_url": "https://github.com/facebookresearch/detr",
+    "source_commit": "29901c51d7fe8712168b8d0d64351170bc0f83e0"
+  },
+  "license": {
+    "spdx_id": "Apache-2.0",
+    "source_path": "shafinMultitool/Resources/Legal/DETR-Apache-2.0-LICENSE.txt",
+    "bundle_path": "DETR-Apache-2.0-LICENSE.txt",
+    "sha256": "b208c52b00a2df2c8f4c3298c34407bf2bfe409968213372251c91fcc737a1a5",
+    "upstream_url": "https://raw.githubusercontent.com/facebookresearch/detr/29901c51d7fe8712168b8d0d64351170bc0f83e0/LICENSE"
+  },
+  "attribution": {
+    "source_path": "shafinMultitool/Resources/Legal/DETR-NOTICE.txt",
+    "bundle_path": "DETR-NOTICE.txt",
+    "sha256": "f7f0a77cfb7d88e8a83e638d67d7a0e638699a3a7e6f811f1d19d8e317ead29a",
+    "kind": "SETOS attribution; not an upstream NOTICE"
+  },
+  "inspected_notice_scope": {
+    "apple_zip_notice_paths": [],
+    "meta_root_files": [
+      ".github",
+      ".gitignore",
+      "Dockerfile",
+      "LICENSE",
+      "README.md",
+      "d2",
+      "datasets",
+      "engine.py",
+      "hubconf.py",
+      "main.py",
+      "models",
+      "requirements.txt",
+      "run_with_submitit.py",
+      "test_all.py",
+      "tox.ini",
+      "util"
+    ],
+    "hf_distribution_files": [
+      ".gitattributes",
+      "README.md",
+      "config.json",
+      "preprocessor_config.json",
+      "pytorch_model.bin"
+    ]
+  },
+  "artifact_modifications": "Three Apple package files unchanged; Xcode compilation is separate from these source bytes.",
+  "admission": {
+    "source_identity": "VERIFIED",
+    "full_license_preserved": true,
+    "final_release_notice_presence": "VERIFIED_FOR_ARCHIVE_SNAPSHOT",
+    "legal_state": "PENDING",
+    "replacement_dependency": "PENDING",
+    "product_quality": "PENDING",
+    "physical_device": "PENDING"
+  },
+  "final_release_notice_evidence": {
+    "archive_run": "20260917T050524112755Z-release-archive",
+    "archive_receipt_sha256": "ee1d1256630a39f3c1ce72ebd2c5ed5b4b394f48b6adcf36fa8205fe4c10dad8",
+    "archive_source_fingerprint": "d974816b880e3df4f762e72dd9ffe1f7c7bbd5697f58bb388a344f7e1c6adaba",
+    "targeted_controls_receipt": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/verification/source-resource-admission-20260917/final-verification/release-050524-targeted-controls-9nif362j/receipt.json",
+    "targeted_controls_receipt_sha256": "1226cf93a4556c71c16a18f0efab831e56f63c7cb6e77c0c64aa306d7ba88e6b",
+    "check": "detr-legal",
+    "exit_code": 0,
+    "check_log_sha256": "9aa840c320f023211ec83e0a9b1816cce6470229b52a59e490de3e3f4fc872e9",
+    "scope": "Two exact source notice files and two flattened notice files in this unsigned archive; later artifacts require a fresh check. Legal, replacement, quality and physical-device admission remain PENDING."
+  },
+  "limits": [
+    "The retained 19:51 compiled weight match is historical artifact evidence, not a current Release archive.",
+    "No inference, training, probability calibration, advice-utility or physical performance claim.",
+    "This record does not alter component disposition or fulfill the verified-replacement requirement."
+  ]
+}

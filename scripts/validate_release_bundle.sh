@@ -12,6 +12,7 @@ REPO_ROOT=""
 PRIVACY_VALIDATOR=""
 COMPONENT_STATUS_VALIDATOR=""
 COMPONENT_STATUS_RECORD=""
+LOCALIZATION_VALIDATOR=""
 
 DETR_MODEL_ROOT="DETRResnet50SemanticSegmentationF16P8.mlmodelc"
 NIMA_MODEL_ROOT="aesthetic_nima_mobilenet_fp16.mlmodelc"
@@ -101,7 +102,6 @@ validate_app_metadata() {
     local font_xml="$TEMP_ROOT/uiappfonts.xml"
     local font
     local font_count=0
-    local locale
     local asset_info="$TEMP_ROOT/assets.car.json"
 
     printf 'STAGE 5: bundle metadata, fonts, localizations, and app icon\n'
@@ -136,11 +136,9 @@ validate_app_metadata() {
     fi
     printf 'PASS UIAppFonts: %s declared root font file(s) present\n' "$font_count"
 
-    for locale in en ru; do
-        require_file "${locale}.lproj/InfoPlist.strings" "$APP_ROOT/${locale}.lproj/InfoPlist.strings"
-        require_file "${locale}.lproj/Localizable.strings" "$APP_ROOT/${locale}.lproj/Localizable.strings"
-    done
-    printf 'PASS localized resources: en/ru InfoPlist.strings and Localizable.strings present\n'
+    if ! python3 -B "$LOCALIZATION_VALIDATOR" --repo-root "$REPO_ROOT" --app "$APP_ROOT"; then
+        fail "localized resources do not match Xcode compilation of the current source catalogs"
+    fi
 
     if [ -n "${ASSETUTIL_BIN_OVERRIDE:-}" ]; then
         ASSETUTIL_BIN="$ASSETUTIL_BIN_OVERRIDE"
@@ -515,6 +513,10 @@ require_directory "supplied app" "$APP_ROOT"
 PRIVACY_VALIDATOR="$REPO_ROOT/scripts/validate_privacy_manifest.sh"
 COMPONENT_STATUS_VALIDATOR="$REPO_ROOT/scripts/validate_release_component_status.py"
 COMPONENT_STATUS_RECORD="$REPO_ROOT/docs/implementation/provenance/release-component-status.json"
+LOCALIZATION_VALIDATOR="$REPO_ROOT/scripts/validate_release_localizations.py"
+AR_ASSET_PROVENANCE_VALIDATOR="$REPO_ROOT/scripts/validate_procedural_ar_assets.py"
+require_file "authored AR asset validator" "$AR_ASSET_PROVENANCE_VALIDATOR"
+require_file "localization validator" "$LOCALIZATION_VALIDATOR"
 require_file "privacy validator" "$PRIVACY_VALIDATOR"
 if [ ! -x "$PRIVACY_VALIDATOR" ]; then
     fail "privacy validator is not executable: $PRIVACY_VALIDATOR"
@@ -534,6 +536,12 @@ validate_required_structure
 validate_app_metadata
 validate_forbidden_and_family_paths
 validate_acknowledgements
+if ! python3 "$AR_ASSET_PROVENANCE_VALIDATOR" --repo-root "$REPO_ROOT" --app "$APP_ROOT"; then
+    fail "authored AR source/bundle provenance failed"
+fi
+if ! python3 "$REPO_ROOT/scripts/validate_detr_legal.py" --repo-root "$REPO_ROOT" --app "$APP_ROOT"; then
+    fail "DETR legal source/bundle provenance failed"
+fi
 validate_component_status
 report_material_sizes
 printf 'MANIFEST_COUNT=2\n'

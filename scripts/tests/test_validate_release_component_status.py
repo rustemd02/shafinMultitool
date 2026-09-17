@@ -40,12 +40,20 @@ class ReleaseComponentStatusTests(unittest.TestCase):
             if component["kind"] == "font":
                 path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(REPO_ROOT / source_path, path)
+            elif component["id"] in MODULE.TECHNICAL_RESOURCE_PATHS:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if (REPO_ROOT / source_path).is_dir():
+                    shutil.copytree(REPO_ROOT / source_path, path)
+                else:
+                    shutil.copy2(REPO_ROOT / source_path, path)
             else:
                 path.mkdir(parents=True)
         self.font_proof = json.loads((REPO_ROOT / MODULE.FONT_PROVENANCE_PATH).read_text())
         font_proof_path = self.root / MODULE.FONT_PROVENANCE_PATH
         font_proof_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPO_ROOT / MODULE.FONT_PROVENANCE_PATH, font_proof_path)
+        self.technical_proof = json.loads((REPO_ROOT / MODULE.TECHNICAL_RESOURCE_PROVENANCE_PATH).read_text())
+        shutil.copy2(REPO_ROOT / MODULE.TECHNICAL_RESOURCE_PROVENANCE_PATH, self.root / MODULE.TECHNICAL_RESOURCE_PROVENANCE_PATH)
         for font in self.font_proof["fonts"]:
             shutil.copy2(REPO_ROOT / font["notice_path"], self.root / font["notice_path"])
         shutil.copy2(REPO_ROOT / "shafinMultitool/Info.plist", self.root / "shafinMultitool/Info.plist")
@@ -304,6 +312,7 @@ class ReleaseComponentStatusTests(unittest.TestCase):
             (app / bundle_path).write_bytes(b"bundle fixture")
         self._copy_font_bundle(app)
         shutil.copy2(self.root / self.snapkit_proof["notice_source_path"], app / self.snapkit_proof["notice_bundle_path"])
+        self._copy_technical_bundle(app)
         blockers = MODULE.validate_record(self.root, self.record_path, app)
         self.assertEqual(
             len(blockers),
@@ -325,6 +334,257 @@ class ReleaseComponentStatusTests(unittest.TestCase):
             shutil.copy2(self.root / font["source_path"], app / font["bundle_path"])
             shutil.copy2(self.root / font["notice_path"], app / font["notice_bundle_path"])
         shutil.copy2(self.root / "shafinMultitool/Info.plist", app / "Info.plist")
+
+    def _copy_technical_bundle(self, app: Path) -> None:
+        app.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(self.root / "shafinMultitool/PrivacyInfo.xcprivacy", app / "PrivacyInfo.xcprivacy")
+        info = plistlib.loads((self.root / "shafinMultitool/Info.plist").read_bytes())
+        info["SETOSSceneBaseURL"] = ""
+        (app / "Info.plist").write_bytes(plistlib.dumps(info))
+        # Test fixtures only: the currently qualified catalogs have explicit flat
+        # values for every en/ru key. Production fallback/plural compilation is
+        # still owned by Xcode in validate_release_localizations.py.
+        for table in ("InfoPlist", "Localizable"):
+            catalog = json.loads((self.root / f"shafinMultitool/Resources/{table}.xcstrings").read_bytes())
+            for locale in ("en", "ru"):
+                values = {key: row["localizations"][locale]["stringUnit"]["value"] for key, row in catalog["strings"].items()}
+                directory = app / (locale + ".lproj")
+                directory.mkdir(exist_ok=True)
+                (directory / (table + ".strings")).write_bytes(plistlib.dumps(values, fmt=plistlib.FMT_BINARY))
+
+    def test_technical_qualification_preserves_pending_decisions(self) -> None:
+        # An identity proof cannot make an admission decision. Make that pending
+        # state explicit even when the repository has separately admitted it.
+        for component in self.record["components"]:
+            if component["id"] in MODULE.TECHNICAL_RESOURCE_PATHS:
+                component["legal_state"] = "PENDING"
+        self._write_record()
+        expected_pending = {
+            component["id"] for component in self.record["components"]
+            if component["release_config_membership"]["Release"] == "bundled"
+            and component["legal_state"] == "PENDING"
+        }
+        proof = MODULE.validate_technical_resource_provenance(self.root)
+        self.assertEqual(set(proof), set(MODULE.TECHNICAL_RESOURCE_PATHS))
+        blockers = MODULE.validate_record(self.root, self.record_path)
+        self.assertEqual({row["id"] for row in blockers}, expected_pending)
+        self.assertTrue(set(proof).issubset({row["id"] for row in blockers}))
+        self.assertTrue(all(row["legal_state"] == "PENDING" for row in blockers))
+
+    def test_empty_or_unknown_technical_proof_cannot_pass(self) -> None:
+        path = self.root / MODULE.TECHNICAL_RESOURCE_PROVENANCE_PATH
+        for change in ("empty", "missing", "unknown", "duplicate"):
+            with self.subTest(change=change):
+                proof = copy.deepcopy(self.technical_proof)
+                if change == "empty": proof["components"] = []
+                elif change == "missing": proof["components"].pop()
+                elif change == "unknown": proof["components"][0]["id"] = "another-catalog"
+                else: proof["components"].append(copy.deepcopy(proof["components"][0]))
+                path.write_text(json.dumps(proof))
+                with self.assertRaises(MODULE.ComponentStatusValidationError):
+                    MODULE.validate_technical_resource_provenance(self.root)
+
+    def test_new_image_cannot_inherit_empty_catalog_qualification(self) -> None:
+        directory = self.root / MODULE.TECHNICAL_RESOURCE_PATHS["module-assets-catalog"]
+        (directory / "new-image.png").write_bytes(b"unqualified image fixture")
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "membership changed"):
+            MODULE.validate_technical_resource_provenance(self.root)
+
+    def test_missing_changed_or_symlink_scaffold_fails(self) -> None:
+        path = self.root / MODULE.TECHNICAL_RESOURCE_PATHS["module-assets-catalog"] / "Contents.json"
+        original = path.read_bytes()
+        for change in ("missing", "changed", "symlink"):
+            with self.subTest(change=change):
+                path.unlink()
+                if change == "changed": path.write_bytes(original + b"\n")
+                if change == "symlink": path.symlink_to(REPO_ROOT / MODULE.TECHNICAL_RESOURCE_PATHS["module-assets-catalog"] / "Contents.json")
+                with self.assertRaises(MODULE.ComponentStatusValidationError):
+                    MODULE.validate_technical_resource_provenance(self.root)
+                if path.is_symlink() or path.exists(): path.unlink()
+                path.write_bytes(original)
+
+    def test_changed_source_locale_key_value_or_format_requires_requalification(self) -> None:
+        path = self.root / MODULE.TECHNICAL_RESOURCE_PATHS["localized-resources"]
+        original = json.loads(path.read_bytes())
+        key = next(iter(original["strings"]))
+        for change in ("extra_locale", "missing_locale", "extra_key", "missing_key", "value", "format"):
+            with self.subTest(change=change):
+                catalog = copy.deepcopy(original)
+                entry = catalog["strings"][key]
+                if change == "extra_locale": entry["localizations"]["fr"] = copy.deepcopy(entry["localizations"]["en"])
+                elif change == "missing_locale": del entry["localizations"]["ru"]
+                elif change == "extra_key": catalog["strings"]["new.unqualified.key"] = copy.deepcopy(entry)
+                elif change == "missing_key": del catalog["strings"][key]
+                else: entry["localizations"]["en"]["stringUnit"]["value"] = "%d %@" if change == "format" else "changed value"
+                path.write_text(json.dumps(catalog, ensure_ascii=False))
+                with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "source content changed"):
+                    MODULE.validate_technical_resource_provenance(self.root)
+
+    def test_actual_qualified_bundle_values_allow_alternate_plist_serialization(self) -> None:
+        app = self.root / "technical.app"
+        self._copy_technical_bundle(app)
+        self.assertEqual(len(MODULE.validate_technical_resource_provenance(self.root, app)), 4)
+        target = app / "en.lproj/Localizable.strings"
+        target.write_bytes(plistlib.dumps(plistlib.loads(target.read_bytes()), fmt=plistlib.FMT_XML))
+        self.assertEqual(len(MODULE.validate_technical_resource_provenance(self.root, app)), 4)
+
+    def test_bundle_missing_extra_locale_key_value_and_plural_cannot_pass(self) -> None:
+        for change in ("missing_locale", "extra_locale", "missing_key", "extra_key", "changed_value", "changed_type", "extra_plural"):
+            with self.subTest(change=change):
+                app = self.root / (change + ".app")
+                self._copy_technical_bundle(app)
+                target = app / "en.lproj/Localizable.strings"
+                if change == "missing_locale": shutil.rmtree(app / "ru.lproj")
+                elif change == "extra_locale": shutil.copytree(app / "en.lproj", app / "fr.lproj")
+                elif change == "extra_plural": (app / "en.lproj/Localizable.stringsdict").write_bytes(plistlib.dumps({"unqualified": {"other": "value"}}))
+                else:
+                    values = plistlib.loads(target.read_bytes())
+                    key = next(iter(values))
+                    if change == "missing_key": del values[key]
+                    elif change == "extra_key": values["unqualified.key"] = "extra"
+                    else: values[key] = True if change == "changed_type" else "changed"
+                    target.write_bytes(plistlib.dumps(values))
+                with self.assertRaises(MODULE.ComponentStatusValidationError):
+                    MODULE.validate_technical_resource_provenance(self.root, app)
+
+    def test_privacy_change_or_enabled_backend_needs_new_qualification(self) -> None:
+        app = self.root / "privacy.app"
+        self._copy_technical_bundle(app)
+        source = self.root / MODULE.TECHNICAL_RESOURCE_PATHS["privacy-manifest"]
+        original = source.read_bytes()
+        source.write_bytes(original + b"\n")
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "source content changed"):
+            MODULE.validate_technical_resource_provenance(self.root, app)
+        source.write_bytes(original)
+        target = app / "PrivacyInfo.xcprivacy"
+        values = plistlib.loads(target.read_bytes())
+        values["NSPrivacyTracking"] = True
+        target.write_bytes(plistlib.dumps(values))
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "bundle content changed"):
+            MODULE.validate_technical_resource_provenance(self.root, app)
+        target.write_bytes(original)
+        info = plistlib.loads((app / "Info.plist").read_bytes())
+        info["SETOSSceneBaseURL"] = "https://configured.invalid/v1"
+        (app / "Info.plist").write_bytes(plistlib.dumps(info))
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "backend-disabled"):
+            MODULE.validate_technical_resource_provenance(self.root, app)
+
+    def _v2_technical_proof(self) -> dict:
+        proof = copy.deepcopy(self.technical_proof)
+        proof["schema_version"] = 2
+        proof.pop("archive_evidence", None)
+        source_digest, product_digest = MODULE._technical_inventory_digests(proof["components"])
+        proof["build_evidence"] = {
+            "kind": "xcode_debug_simulator_test_build", "configuration": "Debug",
+            "platform": "iPhoneSimulator", "run_id": "unit-fixture-not-a-real-build",
+            "build_qualification": "PASS", "native_exit_code": 0, "source_unchanged": True,
+            "build_receipt_sha256": "a" * 64, "source_fingerprint_sha256": "b" * 64,
+            "resource_review_sha256": "c" * 64, "resource_source_sha256": source_digest,
+            "product_inventory_sha256": product_digest, "localization_validation_sha256": "d" * 64,
+            "privacy_validation_sha256": "e" * 64,
+        }
+        return proof
+
+    def _write_technical_proof(self, proof: dict) -> None:
+        (self.root / MODULE.TECHNICAL_RESOURCE_PROVENANCE_PATH).write_text(json.dumps(proof))
+
+    def test_v2_records_explicit_build_profiles_without_archive_alias(self) -> None:
+        for kind, configuration, platform in (
+            ("xcode_debug_simulator_test_build", "Debug", "iPhoneSimulator"),
+            ("xcode_debug_simulator_build", "Debug", "iPhoneSimulator"),
+            ("xcode_release_device_archive", "Release", "iPhoneOS"),
+        ):
+            with self.subTest(kind=kind):
+                proof = self._v2_technical_proof()
+                proof["build_evidence"].update(kind=kind, configuration=configuration, platform=platform)
+                self._write_technical_proof(proof)
+                self.assertEqual(len(MODULE.validate_technical_resource_provenance(self.root)), 4)
+                self.assertNotIn("archive_evidence", proof)
+
+    def test_v2_rejects_mismatched_unknown_build_profiles(self) -> None:
+        for field, value in (("kind", "anything"), ("configuration", "Release"), ("platform", "iPhoneOS")):
+            with self.subTest(field=field):
+                proof = self._v2_technical_proof()
+                proof["build_evidence"][field] = value
+                self._write_technical_proof(proof)
+                with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "kind/configuration/platform"):
+                    MODULE.validate_technical_resource_provenance(self.root)
+
+    def test_v2_failed_build_or_changed_source_cannot_qualify_content(self) -> None:
+        for field, value in (("build_qualification", "FAIL"), ("native_exit_code", 65),
+                             ("native_exit_code", False), ("source_unchanged", False)):
+            with self.subTest(field=field, value=value):
+                proof = self._v2_technical_proof()
+                proof["build_evidence"][field] = value
+                self._write_technical_proof(proof)
+                with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "successful unchanged"):
+                    MODULE.validate_technical_resource_provenance(self.root)
+
+    def test_v2_requires_every_external_evidence_digest(self) -> None:
+        fields = [field for field in self._v2_technical_proof()["build_evidence"] if field.endswith("_sha256")]
+        self.assertEqual(len(fields), 7)
+        for field in fields:
+            for missing in (True, False):
+                with self.subTest(field=field, missing=missing):
+                    proof = self._v2_technical_proof()
+                    if missing:
+                        del proof["build_evidence"][field]
+                    else:
+                        proof["build_evidence"][field] = "not-a-digest"
+                    self._write_technical_proof(proof)
+                    with self.assertRaises(MODULE.ComponentStatusValidationError):
+                        MODULE.validate_technical_resource_provenance(self.root)
+
+    def test_v2_source_and_product_inventories_cannot_refer_to_another_review(self) -> None:
+        for field, label in (("resource_source_sha256", "source"), ("product_inventory_sha256", "product")):
+            with self.subTest(field=field):
+                proof = self._v2_technical_proof()
+                proof["build_evidence"][field] = "0" * 64
+                self._write_technical_proof(proof)
+                with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, label + " inventory digest mismatch"):
+                    MODULE.validate_technical_resource_provenance(self.root)
+
+    def test_v2_cannot_mix_or_reinterpret_v1_archive_fields(self) -> None:
+        for mutation in ("wrong_version", "both_fields", "boolean_version"):
+            with self.subTest(mutation=mutation):
+                proof = self._v2_technical_proof()
+                if mutation == "wrong_version":
+                    proof["schema_version"] = 1
+                elif mutation == "boolean_version":
+                    proof["schema_version"] = True
+                else:
+                    proof["archive_evidence"] = {"archive_id": "not-an-archive"}
+                self._write_technical_proof(proof)
+                with self.assertRaises(MODULE.ComponentStatusValidationError):
+                    MODULE.validate_technical_resource_provenance(self.root)
+
+    def test_v2_debug_reference_still_checks_actual_later_bundle_values(self) -> None:
+        self._write_technical_proof(self._v2_technical_proof())
+        app = self.root / "later-device-product.app"
+        self._copy_technical_bundle(app)
+        info = plistlib.loads((app / "Info.plist").read_bytes())
+        info["CFBundleSupportedPlatforms"] = ["iPhoneOS"]
+        (app / "Info.plist").write_bytes(plistlib.dumps(info))
+        self.assertEqual(len(MODULE.validate_technical_resource_provenance(self.root, app)), 4)
+        path = app / "ru.lproj/Localizable.strings"
+        values = plistlib.loads(path.read_bytes())
+        values[next(iter(values))] += " changed after review"
+        path.write_bytes(plistlib.dumps(values))
+        with self.assertRaisesRegex(MODULE.ComponentStatusValidationError, "bundle content changed"):
+            MODULE.validate_technical_resource_provenance(self.root, app)
+
+    def test_v1_historical_archive_record_retains_original_semantics(self) -> None:
+        proof = copy.deepcopy(self.technical_proof)
+        proof["schema_version"] = 1
+        proof.pop("build_evidence", None)
+        proof["archive_evidence"] = {"archive_id": "unit-historical-archive-fixture",
+            "source_fingerprint_sha256": "a" * 64, "bundle_validation_sha256": "b" * 64}
+        self._write_technical_proof(proof)
+        self.assertEqual(len(MODULE.validate_technical_resource_provenance(self.root)), 4)
+
+
+    def test_typed_plist_hash_distinguishes_boolean_integer_and_real(self) -> None:
+        self.assertEqual(len({MODULE._technical_plist_digest({"key": value}) for value in [True, 1, 1.0, "1"]}), 4)
 
     def test_font_approval_requires_matching_notice_bytes(self) -> None:
         notice = self.root / self.font_proof["fonts"][0]["notice_path"]

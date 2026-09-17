@@ -17,7 +17,7 @@ Usage:
     --release-app /absolute/path/to/shafinMultitool.app
 
 Copies the supplied fresh Release app to a temporary fixture directory,
-checks the known-blocked clean copy, then checks eleven independent metadata
+checks the known-blocked clean copy, then checks twelve independent metadata
 and contamination fixtures. The supplied app is never modified.
 EOF
 }
@@ -44,6 +44,26 @@ copy_fixture() {
         fail "could not copy Release app fixture: label=$label"
     fi
     printf '%s\n' "$destination/shafinMultitool.app"
+}
+
+release_fixture() {
+    local label="$1"
+    local fixture_app="$2"
+
+    case "$label" in
+        ''|*[!a-z0-9-]*)
+            fail "refusing to release fixture with unsafe label"
+            ;;
+    esac
+    if [ -z "$TEMP_ROOT" ] || [ ! -d "$TEMP_ROOT" ] || [ -L "$TEMP_ROOT" ] \
+        || [ "$fixture_app" != "$TEMP_ROOT/$label/shafinMultitool.app" ] \
+        || [ ! -d "$TEMP_ROOT/$label" ] || [ -L "$TEMP_ROOT/$label" ] \
+        || [ ! -d "$fixture_app" ] || [ -L "$fixture_app" ]; then
+        fail "refusing to release a path outside the owned fixture directory"
+    fi
+    if ! rm -rf -- "$fixture_app"; then
+        fail "could not release verified temporary fixture: label=$label"
+    fi
 }
 
 assert_fixture_failure() {
@@ -79,6 +99,7 @@ assert_fixture_failure() {
     matched_output="$(grep -F "$expected_token" "$log_path" | sed -n '1p')"
     printf 'PASS negative fixture: label=%s exit=%s token=%s output=%s\n' \
         "$label" "$status" "$expected_token" "$matched_output"
+    release_fixture "$label" "$fixture_app"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -162,6 +183,10 @@ if grep -Fq 'PASS RELEASE BUNDLE VALIDATION' "$TEMP_ROOT/clean.log"; then
     cat "$TEMP_ROOT/clean.log" >&2
     fail "clean validation emitted PASS RELEASE BUNDLE VALIDATION while blocked"
 fi
+if ! grep -Fq 'PASS localization source/bundle equality:' "$TEMP_ROOT/clean.log"; then
+    cat "$TEMP_ROOT/clean.log" >&2
+    fail "clean validation omitted source-to-bundle localization equality"
+fi
 find "$clean_app" -print0 > "$TEMP_ROOT/clean-after.paths"
 if ! cmp -s "$TEMP_ROOT/clean-before.paths" "$TEMP_ROOT/clean-after.paths"; then
     fail "validation-only mode mutated the clean copied app"
@@ -173,6 +198,8 @@ if ! cmp -s "$TEMP_ROOT/clean-before.tar" "$TEMP_ROOT/clean-after.tar"; then
     fail "validation-only mode mutated clean app content or metadata"
 fi
 printf 'PASS clean copied Release app blocked by known provenance: exit=%s\n' "$clean_status"
+release_fixture clean "$clean_app"
+rm -f -- "$TEMP_ROOT/clean-before.tar" "$TEMP_ROOT/clean-after.tar"
 
 missing_font_app="$(copy_fixture missing-declared-font)"
 missing_font_name="$(plutil -extract 'UIAppFonts.0' raw -o - -- "$missing_font_app/Info.plist")"
@@ -182,7 +209,13 @@ assert_fixture_failure missing-declared-font 'declared UIAppFonts entry' "$missi
 
 missing_ru_strings_app="$(copy_fixture missing-ru-infoplist-strings)"
 rm -f "$missing_ru_strings_app/ru.lproj/InfoPlist.strings"
-assert_fixture_failure missing-ru-infoplist-strings 'ru.lproj/InfoPlist.strings file is missing' "$missing_ru_strings_app"
+assert_fixture_failure missing-ru-infoplist-strings 'missing localization product: ru.lproj/InfoPlist.strings' "$missing_ru_strings_app"
+
+changed_ru_strings_app="$(copy_fixture changed-ru-infoplist-value)"
+if ! plutil -replace CFBundleDisplayName -string 'Wrong localized name' -- "$changed_ru_strings_app/ru.lproj/InfoPlist.strings"; then
+    fail "could not replace localized display name in fixture"
+fi
+assert_fixture_failure changed-ru-infoplist-value 'ru.lproj/InfoPlist.strings: missing_keys=0 extra_keys=0 changed_values=1' "$changed_ru_strings_app"
 
 missing_bundle_version_app="$(copy_fixture missing-bundle-version)"
 if ! plutil -remove CFBundleVersion -- "$missing_bundle_version_app/Info.plist"; then
@@ -232,4 +265,4 @@ mkdir -p "$extra_privacy_app/Frameworks/Unexpected.bundle"
 cp "$SOURCE_MANIFEST" "$extra_privacy_app/Frameworks/Unexpected.bundle/PrivacyInfo.xcprivacy"
 assert_fixture_failure unexpected-extra-privacy 'unexpected PrivacyInfo.xcprivacy in built app at exact relative path' "$extra_privacy_app"
 
-printf 'PASS release bundle gate self-test: known-blocked clean plus eleven metadata/contamination fixtures\n'
+printf 'PASS release bundle gate self-test: known-blocked clean plus twelve metadata/contamination fixtures\n'

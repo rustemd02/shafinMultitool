@@ -59,9 +59,10 @@ run_case() {
     local gate_log="$case_root/gate.log"
     local status
     local llama_line
-    local circle_line
+    local ar_asset_line
     local component_line
     local xcode_line
+    local run_output_root
 
     mkdir -p -- "$fake_bin" "$derived_root"
     resolved_derived_root="$(CDPATH= cd -- "$derived_root" && pwd -P)"
@@ -74,7 +75,7 @@ run_case() {
         'printf "\\n" >> "$FAKE_GATE_LOG"' \
         'case "$FAKE_PROVENANCE_FAILURE:$1" in' \
         '    llama:*validate_llama_framework_provenance.py) exit 41 ;;' \
-        '    circle:*validate_circle_asset_provenance.py) exit 42 ;;' \
+        '    ar-asset:*validate_procedural_ar_assets.py) exit 42 ;;' \
         '    component-malformed:*validate_release_component_status.py) printf "FAIL COMPONENT STATUS: malformed record\\n" >&2; exit 43 ;;' \
         '    component-pending:*validate_release_component_status.py) printf "KNOWN_BLOCKER: id=pending-component component=pending kind=model disposition=KEEP scope=CAMERA_ONLY legal_state=PENDING blocker=legal-state-pending\\n"; printf "KNOWN_BLOCKER_COUNT=%s\\n" "$(printf "pending\\n" | wc -l | tr -d "[:space:]")"; exit 44 ;;' \
         'esac' \
@@ -106,29 +107,35 @@ run_case() {
     assert_absent '--upstream-checkout' "$invocation_log"
 
     if [ "$failure_mode" = "" ]; then
-        assert_present 'validate_circle_asset_provenance.py' "$invocation_log"
+        assert_present 'validate_procedural_ar_assets.py' "$invocation_log"
         assert_present 'validate_release_component_status.py' "$invocation_log"
         assert_present 'xcodebuild' "$invocation_log"
         llama_line="$(line_number 'validate_llama_framework_provenance.py' "$invocation_log")"
-        circle_line="$(line_number 'validate_circle_asset_provenance.py' "$invocation_log")"
+        ar_asset_line="$(line_number 'validate_procedural_ar_assets.py' "$invocation_log")"
         component_line="$(line_number 'validate_release_component_status.py' "$invocation_log")"
         xcode_line="$(line_number 'xcodebuild' "$invocation_log")"
-        if [ -z "$llama_line" ] || [ -z "$circle_line" ] || [ -z "$component_line" ] || [ -z "$xcode_line" ] || \
-            [ "$llama_line" -ge "$circle_line" ] || [ "$circle_line" -ge "$component_line" ] || [ "$component_line" -ge "$xcode_line" ]; then
-            fail "$label did not run llama, Circle, component status, then xcodebuild in order"
+        if [ -z "$llama_line" ] || [ -z "$ar_asset_line" ] || [ -z "$component_line" ] || [ -z "$xcode_line" ] || \
+            [ "$llama_line" -ge "$ar_asset_line" ] || [ "$ar_asset_line" -ge "$component_line" ] || [ "$component_line" -ge "$xcode_line" ]; then
+            fail "$label did not run llama, AR asset, component status, then xcodebuild in order"
         fi
-        assert_present "$resolved_derived_root/shafin-release-gates/DebugDerivedData" "$invocation_log"
-        [ -f "$derived_root/shafin-release-gates/llama-provenance.log" ] || fail "$label missing llama log"
-        [ -f "$derived_root/shafin-release-gates/circle-provenance.log" ] || fail "$label missing Circle log"
+        [ "$(grep -c '^RUN_OUTPUT_ROOT: ' "$gate_log")" -eq 1 ] || fail "$label must report one owned output root"
+        run_output_root="$(sed -n 's/^RUN_OUTPUT_ROOT: //p' "$gate_log")"
+        case "$run_output_root" in
+            "$resolved_derived_root"/shafin-release-gates/run-*) ;;
+            *) fail "$label reported an output root outside its owned run directory" ;;
+        esac
+        assert_present "$run_output_root/DebugDerivedData" "$invocation_log"
+        [ -f "$run_output_root/llama-provenance.log" ] || fail "$label missing llama log"
+        [ -f "$run_output_root/ar-asset-provenance.log" ] || fail "$label missing AR asset log"
     elif [ "$failure_mode" = "llama" ]; then
-        assert_absent 'validate_circle_asset_provenance.py' "$invocation_log"
+        assert_absent 'validate_procedural_ar_assets.py' "$invocation_log"
         assert_absent 'xcodebuild' "$invocation_log"
-    elif [ "$failure_mode" = "circle" ]; then
-        assert_present 'validate_circle_asset_provenance.py' "$invocation_log"
+    elif [ "$failure_mode" = "ar-asset" ]; then
+        assert_present 'validate_procedural_ar_assets.py' "$invocation_log"
         assert_absent 'validate_release_component_status.py' "$invocation_log"
         assert_absent 'xcodebuild' "$invocation_log"
     elif [ "$failure_mode" = "component-malformed" ] || [ "$failure_mode" = "component-pending" ]; then
-        assert_present 'validate_circle_asset_provenance.py' "$invocation_log"
+        assert_present 'validate_procedural_ar_assets.py' "$invocation_log"
         assert_present 'validate_release_component_status.py' "$invocation_log"
         assert_absent 'xcodebuild' "$invocation_log"
         assert_absent '--app' "$invocation_log"
@@ -144,11 +151,12 @@ assert_present 'validate_release_component_status.py' "$REPO_ROOT/scripts/valida
 assert_present 'release-component-status.json' "$REPO_ROOT/scripts/validate_release_bundle.sh"
 assert_absent 'component=llama.framework owner_task=' "$REPO_ROOT/scripts/validate_release_bundle.sh"
 assert_absent 'component=Circle.usdz owner_task=' "$REPO_ROOT/scripts/validate_release_bundle.sh"
+assert_absent 'component=Person.usdz owner_task=' "$REPO_ROOT/scripts/validate_release_bundle.sh"
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/release-provenance-gate.XXXXXX")"
 
 run_case success-before-build "" 77
 run_case llama-failure llama 41
-run_case circle-failure circle 42
+run_case ar-asset-failure ar-asset 42
 run_case component-malformed component-malformed 43
 run_case component-pending component-pending 44
 
