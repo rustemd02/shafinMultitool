@@ -2769,6 +2769,118 @@
         }
       }
     },
+    "set.a11y.region.bottom": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "lower part"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "нижняя часть"
+          }
+        }
+      }
+    },
+    "set.a11y.region.centre": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "centred"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "по центру"
+          }
+        }
+      }
+    },
+    "set.a11y.region.left": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "on the left"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "слева"
+          }
+        }
+      }
+    },
+    "set.a11y.region.middle": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "middle"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "середина"
+          }
+        }
+      }
+    },
+    "set.a11y.region.right": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "on the right"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "справа"
+          }
+        }
+      }
+    },
+    "set.a11y.region.target": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Target area"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Целевая область"
+          }
+        }
+      }
+    },
+    "set.a11y.region.top": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "upper part"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "верхняя часть"
+          }
+        }
+      }
+    },
     "set.a11y.recheck": {
       "localizations": {
         "en": {
@@ -6519,6 +6631,22 @@
         }
       }
     },
+    "set.library.loading": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LOADING LIBRARY"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ЗАГРУЖАЕМ БИБЛИОТЕКУ"
+          }
+        }
+      }
+    },
     "set.library.open": {
       "localizations": {
         "en": {
@@ -6659,6 +6787,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "ПЕРЕИМЕНОВАТЬ"
+          }
+        }
+      }
+    },
+    "set.library.rename.confirm": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SAVE"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "СОХРАНИТЬ"
           }
         }
       }
@@ -6819,6 +6963,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "РАЗБОР НЕ СОБРАН"
+          }
+        }
+      }
+    },
+    "set.pause.failure.detail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TRY ONE MORE TAKE."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "СНИМИТЕ ЕЩЁ РАЗ."
           }
         }
       }

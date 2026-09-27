@@ -282,14 +282,14 @@ private struct SETCameraCoachRuntimeSurface: View {
                             Group {
                                 if dynamicTypeSize.isAccessibilitySize {
                                     Image(systemName: "slider.horizontal.3")
-                                        .font(.system(size: 22, weight: .semibold))
+                                        .font(.system(size: SETTypographySize.title, weight: .semibold))
                                 } else {
                                     Text(SETCopyKey.proControlsToggle.localizedString(locale: locale))
                                         .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.micro, relativeTo: .caption2))
                                 }
                             }
                                 .foregroundStyle(.setTextPrimary)
-                                .padding(.horizontal, 12)
+                                .padding(.horizontal, SETSpacing.x3)
                                 .frame(minWidth: SETComponentMetric.minimumHitTarget,
                                        minHeight: SETComponentMetric.minimumHitTarget)
                                 .background(
@@ -884,7 +884,7 @@ private struct SETCameraLiveOverlay: View {
                     cue: cue,
                     onAnswer: { intended in viewModel.answerIntentClarification(intended: intended) }
                 )
-                .padding(.horizontal, 16)
+                .padding(.horizontal, SETSpacing.x4)
                 .frame(maxWidth: canvasSize.width, alignment: .center)
                 .offset(y: -max(0, canvasSize.height * 0.18))
             }
@@ -893,7 +893,7 @@ private struct SETCameraLiveOverlay: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(CameraOverlayAccessibilityID.surface)
-        .accessibilityValue(Text(verbatim: presentation.verificationClarity?.label(locale: locale) ?? ""))
+        .accessibilityValue(Text(verbatim: liveSurfaceAccessibilityValue(presentation)))
         // C07: conversation controls only. Repeating the hint re-announces the
         // exact accepted copy through VoiceOver (never synthetic speech, so no
         // audio can leak into a recording). Skip mirrors the visible Continue
@@ -915,6 +915,7 @@ private struct SETCameraLiveOverlay: View {
             if newID != nil {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
+            announceNewHintIfNeeded()
         }
         .onChange(of: viewModel.coachingEpisodeEventID) { _, _ in
             isExpanded = false
@@ -923,6 +924,31 @@ private struct SETCameraLiveOverlay: View {
 
     @State private var isExpanded = false
     @State private var isHintsPaused = false
+    /// UI-008 live-region cadence owner: admits one announcement per changed
+    /// accepted copy and rejects re-announcing the same text.
+    @State private var hintAnnouncementGate = CameraCoachHintAnnouncementGate()
+
+    /// UI-008 cadence: a genuinely new accepted copy is announced exactly once
+    /// through the system VoiceOver announcement channel. Identity churn with
+    /// unchanged copy stays silent, so the loop cannot spam; the explicit
+    /// repeat action above bypasses this gate by design.
+    private func announceNewHintIfNeeded() {
+        guard UIAccessibility.isVoiceOverRunning, !isHintsPaused else { return }
+        let copy = presentation.accessibilityLabel
+        guard hintAnnouncementGate.shouldAnnounce(copy: copy) else { return }
+        UIAccessibility.post(notification: .announcement, argument: copy)
+    }
+
+    /// UI-008 target-overlay alternative: the drawn arrow/underline/outline is
+    /// hidden from VoiceOver, so the region reaches the value channel as words
+    /// next to the comparison clarity. Empty when neither applies.
+    private func liveSurfaceAccessibilityValue(_ presentation: CameraOverlayUXPresentation) -> String {
+        let clarity = presentation.verificationClarity?.label(locale: locale)
+        let region = presentation.targetRegion.map {
+            CameraOverlayUXPresentation.regionWords(for: $0, locale: locale)
+        }
+        return [clarity, region].compactMap { $0 }.joined(separator: ". ")
+    }
 
     /// Repeats the currently accepted copy through the system VoiceOver
     /// announcement channel. No synthesizer is started, so nothing here can be
@@ -1880,6 +1906,10 @@ private struct SETCameraCommandBand: View {
                 if showsWhy {
                     Button(action: onWhy) {
                         Text((isExpanded ? SETCopyKey.cameraHideWhy : SETCopyKey.cameraWhy).localizedTextKey)
+                            // Inline HUD controls keep the compact fixed label:
+                            // their layout model is single-line, and their
+                            // function stays reachable at accessibility sizes
+                            // through the surface's named VoiceOver actions.
                             .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
                             .fontWeight(.semibold)
                             .foregroundStyle(.setOrange)
@@ -1946,7 +1976,10 @@ private struct SETCameraCommandBand: View {
         case .corrective, .explanation:
             VStack(alignment: .leading, spacing: SETSpacing.x1) {
                 Text(verbatim: observation)
-                    .font(SETTypography.font(.hudMono, size: SETTypographySize.body))
+                    // The observation line is never a fixed-size layout: it
+                    // follows Dynamic Type and wraps to the measured rail
+                    // height at every category up to AX5/XXXL.
+                    .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.body, relativeTo: .body))
                     .foregroundStyle(.setTextPrimary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -1962,7 +1995,7 @@ private struct SETCameraCommandBand: View {
             }
         case .seeking, .keep, .fallback:
             Text(verbatim: observation.isEmpty ? actionKey.localizedString(locale: .current) : observation)
-                .font(SETTypography.font(.hudMono, size: SETTypographySize.body))
+                .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.body, relativeTo: .body))
                 .foregroundStyle(state == .fallback ? .setTextPrimary : .setTextPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier(CameraOverlayAccessibilityID.action)
@@ -2071,6 +2104,13 @@ private struct SETCameraStatusOverlay: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locale) private var locale
+    // The status rail's primary action scales with Dynamic Type exactly like
+    // the shared SETCommandLabel: relative to `.headline`, clamped to the
+    // bounded command range so it never becomes a second poster title.
+    @ScaledMetric(relativeTo: .headline) private var scaledStatusActionSize: CGFloat = SETTypographySize.title
+    private var statusActionFontSize: CGFloat {
+        min(max(scaledStatusActionSize, SETTypographySize.title), SETTypographySize.commandMaximum)
+    }
 
     init(
         canvasSize: CGSize,
@@ -2106,10 +2146,14 @@ private struct SETCameraStatusOverlay: View {
     }
 
     var body: some View {
+        // The status rail reserves height from its actual rendered copy, so a
+        // wrapping observation or a scaled stacked action can never overflow
+        // the reserved rail at accessibility sizes.
         let railHeight = SETCameraCoachMetric.liveRailHeight(
             canvasSize: canvasSize,
             isAccessibilityType: dynamicTypeSize.isAccessibilitySize,
-            isExpanded: false
+            isExpanded: false,
+            content: statusRailContent
         )
         let railWidth = SETCameraCoachMetric.liveRailWidth(
             canvasSize: canvasSize,
@@ -2129,23 +2173,25 @@ private struct SETCameraStatusOverlay: View {
             HStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: SETSpacing.x2) {
                     Text(verbatim: observationText)
-                        .font(SETTypography.font(.hudMono, size: SETTypographySize.body))
+                        .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.body, relativeTo: .body))
                         .foregroundStyle(.setTextPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier(CameraOverlayAccessibilityID.observation)
 
                     if let supportingObservation = presentation?.supportingObservation {
                         Text(verbatim: supportingObservation)
-                            .font(SETTypography.font(.hudMono, size: SETTypographySize.label))
+                            .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.label, relativeTo: .caption2))
                             .foregroundStyle(.setTextSecondary)
-                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     if let actionText {
                         Button(action: onAction) {
                             Text(verbatim: actionText)
-                                .font(SETTypography.font(.display, size: SETTypographySize.title))
+                                .font(SETTypography.font(.display, size: statusActionFontSize))
                                 .fontWeight(.bold)
                                 .foregroundStyle(.setTextPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .frame(minWidth: SETComponentMetric.minimumHitTarget,
                                        minHeight: SETComponentMetric.minimumHitTarget,
                                        alignment: .leading)
@@ -2168,6 +2214,17 @@ private struct SETCameraStatusOverlay: View {
             .padding(.bottom, SETCameraCoachMetric.liveRailBottomInset)
         }
         .accessibilityIdentifier(CameraOverlayAccessibilityID.surface)
+    }
+
+    /// The exact copy the rail renders, handed to the shared measurement so the
+    /// reserved height and the drawn band stay identical at every Dynamic Type
+    /// category (nil category = the process' current setting, as rendered).
+    private var statusRailContent: SETCameraCoachRailContent {
+        SETCameraCoachRailContent(
+            observation: observationText,
+            supportingObservation: presentation?.supportingObservation,
+            stackedActionLabel: actionText
+        )
     }
 
     private var observationText: String {
@@ -2398,6 +2455,15 @@ private struct SETPauseReviewOverlay: View {
             .clipped()
         }
         .accessibilityElement(children: .contain)
+        // UI-008 target-overlay alternative: the drawn pause outline is hidden
+        // from VoiceOver, so the observed region reaches the container value
+        // channel as words. Empty outside the success mode without a marker.
+        .accessibilityValue(Text(verbatim: pauseMarkerWords))
+    }
+
+    private var pauseMarkerWords: String {
+        guard mode == .success, let markerRegion else { return "" }
+        return CameraOverlayUXPresentation.regionWords(for: markerRegion, locale: locale)
     }
 
     private func reviewBandHeight(in canvasSize: CGSize) -> CGFloat {
@@ -2514,7 +2580,7 @@ private struct SETPauseReviewOverlay: View {
                             // against bright pixels as well as dark ones.
                             Rectangle().stroke(Color.black.opacity(0.9), lineWidth: 4)
                                 .overlay {
-                                    Rectangle().stroke(Color.setWarmWhite, lineWidth: 2)
+                                    Rectangle().stroke(Color.setWarmWhite, lineWidth: SETStroke.guideInner)
                                 }
                                 .frame(width: observed.width, height: observed.height)
                                 .offset(x: observed.minX, y: observed.minY)
@@ -2594,7 +2660,11 @@ private struct SETPauseReviewOverlay: View {
         case .displayRenderFailed: return .pauseFailureRenderDetail
         case .pipelineUnavailable: return .pauseFailurePipelineDetail
         case .timeout: return .pauseFailureTimeoutDetail
-        case nil: return .pauseFailureRecovery
+        // Generic failure: the detail is its own recovery sentence. It used to
+        // reuse .pauseFailureRecovery (the button label), so the sheet printed
+        // the same "ЕЩЁ ДУБЛЬ / ONE MORE TAKE" twice — once as body copy and
+        // once as the action (UI-004 visual acceptance, 2026-09-27).
+        case nil: return .pauseFailureDetail
         }
     }
 
@@ -2808,7 +2878,7 @@ struct SETCameraIntentClarificationPrompt: View {
             // label has to wrap inside a narrow capsule.
             let answersLayout: AnyLayout = dynamicTypeSize.isAccessibilitySize
                 ? AnyLayout(VStackLayout(spacing: 10))
-                : AnyLayout(HStackLayout(spacing: 12))
+                : AnyLayout(HStackLayout(spacing: SETSpacing.x3))
             answersLayout {
                 Button {
                     onAnswer(true)
