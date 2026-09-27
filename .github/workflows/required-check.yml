@@ -1,0 +1,89 @@
+# REL-003 — minimal required check (tracker §16, docs/implementation/APP_STORE_RELEASE_TRACKER.md).
+#
+# WHAT THIS IS: a GitHub Actions configuration that runs the same local required
+# check as `scripts/required_check.sh`:
+#   (1) source sanity — ML contract validators (ml/camera_coach/contracts/),
+#   (2) privacy/provenance — scripts/validate_privacy_manifest.sh (source + built app),
+#   (3) M0 smoke lane — 133 blocking tests from docs/implementation/test-command-matrix-v1.md.
+#
+# ARTIFACT / LOG RETENTION: uploaded logs and the xcodebuild result bundle use
+# retention-days from REQUIRED_CHECK_ARTIFACT_RETENTION_DAYS (default 14).
+# This repository-level retention setting is plain configuration, not a secret.
+#
+# OWNER BOUNDARIES — READ BEFORE ENABLING:
+#   - This workflow is a PREPARED CONFIGURATION. Hosted-runner reproducibility is
+#     NOT verified: no push against a hosted macOS runner has been performed, and
+#     enabling real CI (choosing the runner image/Xcode version, committing this
+#     file and scripts/required_check.sh, any secrets if they ever appear) is an
+#     explicit owner decision per tracker REL-003 / §0.
+#   - The script pins an iOS Simulator destination by default, but hosted runners
+#     ship different simulator runtimes; the resolution step below selects the
+#     first available iPhone simulator instead. Until a real hosted run is
+#     reproduced and receipted, a green local run is the only verified evidence.
+#   - No secrets are used by this workflow. If a future step ever needs one,
+#     that is a new owner decision.
+
+name: required-check
+
+on:
+  push:
+    branches: [store]
+  pull_request:
+    branches: [store]
+  workflow_dispatch:
+
+env:
+  # Artifact/log retention in days. Configurable here on purpose; no secrets.
+  REQUIRED_CHECK_ARTIFACT_RETENTION_DAYS: "14"
+
+jobs:
+  required-check:
+    name: required-check (source, privacy, M0 smoke)
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain (recorded in run log for reproducibility evidence)
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphonesimulator || true
+          xcrun simctl list runtimes available
+          sw_vers
+
+      # The default destination inside required_check.sh pins a local simulator
+      # UDID (docs/implementation/test-command-matrix-v1.md). A hosted runner
+      # cannot have that UDID, so resolve any available iPhone simulator here.
+      # NOTE: hosted-runner behavior is unverified until the owner enables CI.
+      - name: Resolve iOS Simulator destination
+        id: sim
+        run: |
+          UDID="$(xcrun simctl list devices available \
+            | awk '/iPhone/ { if (match($0, /[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}/)) { print substr($0, RSTART, RLENGTH); exit } }')"
+          if [ -z "$UDID" ]; then
+            echo "::error::No available iPhone simulator found on this runner"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "Resolved simulator UDID: $UDID"
+
+      - name: Run required check (source sanity, Pods prebuild, M0 smoke, privacy manifest)
+        env:
+          REQUIRED_CHECK_DESTINATION: id=${{ steps.sim.outputs.udid }}
+          REQUIRED_CHECK_DERIVED_DATA: ${{ runner.temp }}/setos-required-check
+          REQUIRED_CHECK_KEEP: "1"
+        run: scripts/required_check.sh
+
+      # Keep evidence even on failure. The script keeps its scratch dir because
+      # REQUIRED_CHECK_KEEP=1; upload the logs (and any diagnostics) from there.
+      - name: Upload required-check logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-check-logs
+          path: |
+            ${{ runner.temp }}/setos-required-check/logs/
+          retention-days: ${{ fromJSON(env.REQUIRED_CHECK_ARTIFACT_RETENTION_DAYS) }}
+          if-no-files-found: error
