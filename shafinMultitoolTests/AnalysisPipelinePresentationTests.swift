@@ -476,7 +476,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         XCTAssertNotEqual(corrected.verdict, .good)
         XCTAssertFalse(corrected.actions.contains { $0.semanticActionType == .keepCurrentSetup })
         XCTAssertTrue(corrected.traceRootIds.contains("technical_quality_overexposure"))
-        XCTAssertFalse(corrected.actions.isEmpty)
+        XCTAssertTrue(corrected.actions.isEmpty)
         XCTAssertEqual(corrected.actions.map(\.semanticActionType), measuredControl.actions.map(\.semanticActionType))
         XCTAssertEqual(corrected.actions.map(\.confidence), measuredControl.actions.map(\.confidence))
         XCTAssertEqual(corrected.verdictConfidence, measuredControl.verdictConfidence)
@@ -484,8 +484,10 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         XCTAssertEqual(corrected.technicalQualityMeasurement.signal, clipping)
         XCTAssertTrue(CameraReviewPresentation.make(critique: corrected, locale: locale)
             .uncertainties.contains { $0.reason == .limitedToAvailableSignals })
-        XCTAssertNotEqual(SETLocalizedPauseCopy.summary(for: corrected, locale: locale),
-                          SETCopyKey.pauseAssessmentUnavailable.localizedString(locale: locale))
+        // The measured defect remains in the presentation, but its specific
+        // command and action copy are withheld when no region is grounded.
+        XCTAssertEqual(SETLocalizedPauseCopy.summary(for: corrected, locale: locale),
+                       SETCopyKey.pauseAssessmentUnavailable.localizedString(locale: locale))
         let unavailable: [FrameTechnicalQualityEvidence?] = [
             nil,
             FrameTechnicalQualityEvidence(frameID: frameID, capturedAt: capturedAt,
@@ -1293,26 +1295,19 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
 
         XCTAssertTrue(result.pauseRow.shown)
         XCTAssertTrue(result.pauseRow.futureActions.contains(TechnicalQualityActionType.reduceExposure.rawValue))
-        XCTAssertTrue(
-            result.pauseRow.semanticActions.contains(SemanticActionType.removeBackgroundHotspot.rawValue),
-            "semanticActions=\(result.pauseRow.semanticActions) debugActionTypes=\(result.pauseRow.debugActionTypes) futureActions=\(result.pauseRow.futureActions) summary=\(result.pauseRow.pauseSummary ?? "")"
-        )
-        XCTAssertTrue(
-            result.pauseRow.semanticActions.contains(SemanticActionType.changeCameraAngle.rawValue),
-            "semanticActions=\(result.pauseRow.semanticActions) debugActionTypes=\(result.pauseRow.debugActionTypes) futureActions=\(result.pauseRow.futureActions) summary=\(result.pauseRow.pauseSummary ?? "")"
-        )
-        // C05: the generic simplify_background label is no longer an
-        // independent executable command for this cause; the hotspot and the
-        // camera reposition are alternatives of ONE card.
         XCTAssertFalse(
-            result.pauseRow.semanticActions.contains(SemanticActionType.simplifyBackground.rawValue),
+            result.pauseRow.semanticActions.contains(where: {
+                [SemanticActionType.removeBackgroundHotspot.rawValue,
+                 SemanticActionType.changeCameraAngle.rawValue,
+                 SemanticActionType.waitForBackgroundClearance.rawValue].contains($0)
+            }),
             "semanticActions=\(result.pauseRow.semanticActions) debugActionTypes=\(result.pauseRow.debugActionTypes) futureActions=\(result.pauseRow.futureActions) summary=\(result.pauseRow.pauseSummary ?? "")"
         )
         XCTAssertFalse(result.pauseRow.semanticActions.contains(SemanticActionType.keepCurrentSetup.rawValue))
     }
 
     @MainActor
-    func testStillImageReplayMapsUnderlitReadablePortraitToFrontFill() async throws {
+    func testStillImageReplayWithholdsFrontFillWithoutGroundedSubjectRegion() async throws {
         let pipeline = AnalysisPipeline(
             reasoningProvider: nil,
             visualEvidenceProvider: nil,
@@ -1332,7 +1327,7 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
         XCTAssertTrue(result.liveRow.shown)
         XCTAssertLessThan(result.liveRow.confidence, 0.75)
         XCTAssertTrue(result.pauseRow.futureActions.contains(TechnicalQualityActionType.increaseExposure.rawValue))
-        XCTAssertTrue(
+        XCTAssertFalse(
             result.pauseRow.semanticActions.contains(SemanticActionType.addFrontFillLight.rawValue),
             "semanticActions=\(result.pauseRow.semanticActions) futureActions=\(result.pauseRow.futureActions) summary=\(result.pauseRow.pauseSummary ?? "") debugLabels=\(result.pauseRow.debugSemanticLabels)"
         )
@@ -2976,12 +2971,40 @@ final class AnalysisPipelinePresentationTests: XCTestCase {
     }
 
     func testConfidencePresentationMapsUserFacingBands() {
-        XCTAssertEqual(ConfidencePresentation.make(0.91).label, "высокая")
+        // UI-003 (product decision): пользователю — качественное слово тона;
+        // численный процент остаётся модельной деталью для порогов/тестов.
+        XCTAssertEqual(ConfidencePresentation.make(0.91).tone, .high)
         XCTAssertEqual(ConfidencePresentation.make(0.91).percent, 91)
-        XCTAssertEqual(ConfidencePresentation.make(0.64).label, "средняя")
-        XCTAssertEqual(ConfidencePresentation.make(0.31).label, "низкая")
+        XCTAssertEqual(ConfidencePresentation.make(0.64).tone, .medium)
+        XCTAssertEqual(ConfidencePresentation.make(0.31).tone, .low)
         XCTAssertEqual(ConfidencePresentation.make(1.42).percent, 100)
         XCTAssertEqual(ConfidencePresentation.make(-0.4).percent, 0)
+    }
+
+    func testConfidenceUserFacingTextHidesNumericPrecisionInRuAndEn() {
+        // Регрессия UI-003: численный процент — псевдоточность, он не рендерится
+        // и не проговаривается ни в одном канале, а слово тона локализовано.
+        let ru = Locale(identifier: "ru")
+        let en = Locale(identifier: "en")
+        var previousByLocale: [String: String] = [:]
+        for raw in [0.91, 0.64, 0.31] {
+            let presentation = ConfidencePresentation.make(raw)
+            for locale in [ru, en] {
+                let label = presentation.label(locale: locale)
+                let spoken = presentation.accessibilityText(locale: locale)
+                XCTAssertFalse(label.isEmpty)
+                XCTAssertEqual(spoken, label)
+                XCTAssertFalse(label.contains(where: { $0.isNumber || $0 == "%" }),
+                               "псевдоточность запрещена: \(label)")
+                let key = locale.identifier + String(describing: presentation.tone)
+                if let previous = previousByLocale[key] {
+                    XCTAssertEqual(previous, label)
+                }
+                previousByLocale[key] = label
+            }
+            XCTAssertNotEqual(presentation.label(locale: ru), presentation.label(locale: en),
+                              "слово тона должно быть локализовано, а не захардкожено")
+        }
     }
 
     func testPauseActionConfidenceIsCappedByPlanAndLinkedIssue() {

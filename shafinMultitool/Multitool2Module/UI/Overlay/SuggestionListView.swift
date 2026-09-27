@@ -11,9 +11,9 @@ struct SuggestionListView: View {
     let suggestions: [Suggestion]
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: SETSpacing.x2) {
             ForEach(suggestions) { s in
-                HStack(spacing: 8) {
+                HStack(spacing: SETSpacing.x2) {
                     Text(icon(for: s.type))
                     Text(s.text)
                         .font(.headline)
@@ -28,7 +28,7 @@ struct SuggestionListView: View {
                 .accessibilityValue(s.text)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, SETSpacing.x4)
         .transition(.opacity)
     }
 
@@ -74,10 +74,10 @@ struct PauseCritiqueCardView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView(showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: SETSpacing.x3) {
                     content
                 }
-                .padding(16)
+                .padding(SETSpacing.x4)
             }
             .frame(maxHeight: maxHeight)
 
@@ -92,7 +92,7 @@ struct PauseCritiqueCardView: View {
             }
         }
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, 16)
+        .padding(.horizontal, SETSpacing.x4)
         .transition(.move(edge: .bottom).combined(with: .opacity))
         .accessibilityElement(children: .contain)
     }
@@ -157,7 +157,7 @@ struct PauseCritiqueCardView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: SETSpacing.x2) {
             HStack(alignment: .top, spacing: 10) {
                 Text(critique.shortVerdict)
                     .font(.headline.weight(.semibold))
@@ -170,7 +170,7 @@ struct PauseCritiqueCardView: View {
                     .padding(.vertical, 6)
                     .background(Color.white.opacity(0.2), in: Capsule())
             }
-            ConfidenceBadgeView(confidence: .make(critique.verdictConfidence), showsPercent: true)
+            ConfidenceBadgeView(confidence: .make(critique.verdictConfidence))
         }
         .accessibilityElement(children: .combine)
     }
@@ -301,7 +301,7 @@ struct PauseStatusPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView(showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: SETSpacing.x3) {
                     HStack(spacing: 10) {
                         ProgressView()
                             .tint(.white)
@@ -320,10 +320,10 @@ struct PauseStatusPanelView: View {
 
                     if !suggestions.isEmpty {
                         SuggestionListView(suggestions: suggestions)
-                            .padding(.horizontal, -16)
+                            .padding(.horizontal, -SETSpacing.x4)
                     }
                 }
-                .padding(16)
+                .padding(SETSpacing.x4)
             }
             .frame(maxHeight: maxHeight)
 
@@ -336,7 +336,7 @@ struct PauseStatusPanelView: View {
             )
         }
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, 16)
+        .padding(.horizontal, SETSpacing.x4)
         .transition(.move(edge: .bottom).combined(with: .opacity))
         .accessibilityElement(children: .contain)
     }
@@ -357,7 +357,7 @@ private struct PausePanelActionBar: View {
                 .accessibilityLabel("Показать объяснение решения")
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: SETSpacing.x2)
 
             if let onContinue {
                 Button(action: onContinue) {
@@ -367,8 +367,8 @@ private struct PausePanelActionBar: View {
                 .accessibilityLabel("Продолжить анализировать кадр")
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, SETSpacing.x4)
+        .padding(.vertical, SETSpacing.x3)
     }
 }
 
@@ -388,7 +388,7 @@ private struct PausePanelSecondaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.white.opacity(configuration.isPressed ? 0.65 : 0.96))
-            .padding(.horizontal, 12)
+            .padding(.horizontal, SETSpacing.x3)
             .padding(.vertical, 9)
             .background(Color.white.opacity(configuration.isPressed ? 0.10 : 0.16), in: Capsule())
     }
@@ -399,13 +399,13 @@ private struct PauseTipRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .center, spacing: SETSpacing.x2) {
                 Text(row.title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.8))
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                ConfidenceBadgeView(confidence: .make(row.confidence), showsPercent: true)
+                ConfidenceBadgeView(confidence: .make(row.confidence))
             }
 
             Text(row.reason)
@@ -420,7 +420,7 @@ private struct PauseTipRowView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, SETSpacing.x3)
         .padding(.vertical, 10)
         .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .combine)
@@ -432,13 +432,13 @@ private struct PauseEvidenceRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .center, spacing: SETSpacing.x2) {
                 Text(row.label)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.72))
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                ConfidenceBadgeView(confidence: .make(row.confidence), showsPercent: true)
+                ConfidenceBadgeView(confidence: .make(row.confidence))
             }
 
             Text(row.text)
@@ -446,7 +446,7 @@ private struct PauseEvidenceRowView: View {
                 .foregroundStyle(.white.opacity(0.88))
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, SETSpacing.x3)
         .padding(.vertical, 9)
         .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .combine)
@@ -455,16 +455,18 @@ private struct PauseEvidenceRowView: View {
 
 private struct ConfidenceBadgeView: View {
     let confidence: ConfidencePresentation
-    let showsPercent: Bool
+    @Environment(\.locale) private var locale
 
     var body: some View {
-        Text(showsPercent ? confidence.shortText : confidence.label)
+        // UI-003: качественное слово тона; численный процент — псевдоточность,
+        // пользователю не показывается и не проговаривается.
+        Text(confidence.label(locale: locale))
             .font(.caption2.weight(.bold))
             .foregroundStyle(foregroundColor)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, SETSpacing.x2)
+            .padding(.vertical, SETSpacing.x1)
             .background(toneColor.opacity(0.70), in: Capsule())
-            .accessibilityLabel(confidence.accessibilityText)
+            .accessibilityLabel(confidence.accessibilityText(locale: locale))
     }
 
     private var toneColor: Color {

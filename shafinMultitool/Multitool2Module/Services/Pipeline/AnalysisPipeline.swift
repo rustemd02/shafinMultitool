@@ -184,34 +184,45 @@ enum ConfidenceTone: String, Equatable, Sendable {
 struct ConfidencePresentation: Equatable, Sendable {
     let value: Double
     let percent: Int
-    let label: String
     let tone: ConfidenceTone
 
-    var shortText: String {
-        "\(label) · \(percent)%"
+    /// UI-003: уверенность показывается пользователю только качественно — словом
+    /// тона. Численный процент — модельная деталь (`percent` остаётся для порогов
+    /// и тестов) и не рендерится ни в одном канале: псевдоточность «74%» запрещена.
+    var copyKey: SETCopyKey {
+        switch tone {
+        case .high:
+            return .traceConfidenceHigh
+        case .medium:
+            return .traceConfidenceMedium
+        case .low:
+            return .traceConfidenceLow
+        }
     }
 
-    var accessibilityText: String {
-        "Уверенность \(label), \(percent) процентов"
+    /// Локализованное слово тона (RU/EN), без цифр.
+    func label(locale: Locale) -> String {
+        copyKey.localizedString(locale: locale)
+    }
+
+    /// Spoken form: то же качественное слово, численный процент не проговаривается.
+    func accessibilityText(locale: Locale) -> String {
+        label(locale: locale)
     }
 
     static func make(_ rawValue: Double) -> ConfidencePresentation {
         let value = min(1.0, max(0.0, rawValue))
         let percent = Int((value * 100.0).rounded())
         let tone: ConfidenceTone
-        let label: String
         switch value {
         case 0.75...:
             tone = .high
-            label = "высокая"
         case 0.55..<0.75:
             tone = .medium
-            label = "средняя"
         default:
             tone = .low
-            label = "низкая"
         }
-        return ConfidencePresentation(value: value, percent: percent, label: label, tone: tone)
+        return ConfidencePresentation(value: value, percent: percent, tone: tone)
     }
 }
 

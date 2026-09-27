@@ -262,38 +262,15 @@ private struct DecisionTraceConfidenceText: View {
     let confidence: ConfidencePresentation
     @Environment(\.locale) private var locale
 
-    private var key: SETCopyKey {
-        switch confidence.tone {
-        case .high:
-            return .traceConfidenceHigh
-        case .medium:
-            return .traceConfidenceMedium
-        case .low:
-            return .traceConfidenceLow
-        }
-    }
-
     var body: some View {
-        (Text(key.localizedTextKey) + Text(verbatim: " · \(confidence.percent)%"))
+        // UI-003: только качественное слово тона — без численного процента.
+        Text(confidence.copyKey.localizedTextKey)
             .font(SETTypography.font(.hudMono, size: SETTypographySize.micro))
             .tracking(0.35)
             .monospacedDigit()
             .foregroundStyle(.setTextSecondary)
-            .accessibilityLabel(Text(verbatim: localizedConfidenceText(confidence, locale: locale)))
+            .accessibilityLabel(Text(verbatim: confidence.accessibilityText(locale: locale)))
     }
-}
-
-private func localizedConfidenceText(_ confidence: ConfidencePresentation, locale: Locale) -> String {
-    let key: SETCopyKey
-    switch confidence.tone {
-    case .high:
-        key = .traceConfidenceHigh
-    case .medium:
-        key = .traceConfidenceMedium
-    case .low:
-        key = .traceConfidenceLow
-    }
-    return "\(key.localizedString(locale: locale)) · \(confidence.percent)%"
 }
 
 private struct DecisionTraceEvidenceRow: View {
@@ -343,7 +320,7 @@ private struct DecisionTraceEvidenceRow: View {
         VStack(alignment: .leading, spacing: SETSpacing.x1) {
             metadataValue(.traceMetadataID, row.sourceId)
             if let severity = row.severity {
-                metadataValue(.traceMetadataSeverity, localizedConfidenceText(severity, locale: locale))
+                metadataValue(.traceMetadataSeverity, severity.label(locale: locale))
             }
             if let regionDescription = row.regionDescription {
                 metadataValue(.traceMetadataRegion, regionDescription)
