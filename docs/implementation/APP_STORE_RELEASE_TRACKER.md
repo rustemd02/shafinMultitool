@@ -1,0 +1,550 @@
+# SET OS 1.0 — канонический трекер реализации до App Store
+
+Статус: **ACTIVE / NOT RELEASE READY**  
+Последнее обновление приоритетов: **2026-09-23**; даты технических проверок указаны в строках задач.  
+Репозиторий приложения: `/Users/unterlantas/Documents/XCode/shafinMultitool`  
+Снимок при создании: ветка `store`, HEAD `f8b6afd5de714c5c1c6e80c16c3c2a1bcdeb43ee`, в рабочем дереве сохранён чужой untracked-каталог `docs/admission/`  
+Локальные backend/data artifacts: `/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/`  
+App Store Connect upload/submission: **вне полномочий этого трекера; выполняет владелец после явного GO**.
+
+---
+
+## 0. Назначение и правило единственного владельца статуса
+
+Этот файл — **единственный изменяемый владелец текущего статуса, приоритета и следующей исполнимой задачи** до получения App Store-ready candidate. Он заменяет роль текущего трекера у `STATUS.md` и `BACKLOG.md`, но не удаляет их историю.
+
+При конфликте применяется такой порядок:
+
+1. Реальный код, свежий исполнимый тест и hash-bound receipt конкретного артефакта.
+2. `docs/implementation/PRODUCTION_ACCEPTANCE.md` — неизменённый контракт приёмки продукта.
+3. Этот файл — текущие status, dependencies, backlog и owner blockers.
+4. `docs/app-store-product-plan.md` — продуктовый контекст и исходные намерения.
+5. `docs/implementation/release/AppStoreSubmissionGates.json` — формальный снимок release-гейтов; после изменения build inputs должен быть пересоздан.
+6. Оставшиеся `docs/aegis/**`, `docs/cameraanalysis/**`, `docs/thesis/**` — evidence и контракты, но не конкурирующий текущий backlog. Старые status/backlog/master/handover/runbook файлы перечислены как retired ниже и удалены.
+
+Если свежая проверка опровергла строку этого трекера, исполнитель **не подгоняет код под строку**: сохраняет evidence, меняет статус строки и записывает обнаруженный факт.
+
+### Что не делать
+
+- Не переписывать hash-bound receipts, старые абсолютные пути и исторические журналы.
+- Не создавать новые project data в `/Library` или `~/Library/Application Support`; использовать только backend `local-data/SETOS/`.
+- Не складывать raw media, датасеты, checkpoints или Colab bundles в iOS-репозиторий и Xcode bundle.
+- Не выдавать silver/research-only данные за human gold или release-admissible evidence.
+- Не делать commit, push, PR, merge, rebase, reset или App Store Connect action без отдельного разрешения.
+- Не закрывать задачу словами «код выглядит правильно»: нужен указанный минимальный check и путь к evidence.
+
+---
+
+## 1. Короткий контекст продукта
+
+SET OS 1.0 состоит из двух пользовательских частей:
+
+1. **Camera Coach — главный продукт.** Камера в реальном времени определяет сцену и главный объект, находит композиционные/световые/технические проблемы, даёт одно конкретное безопасное действие, отслеживает выполнение и честно подтверждает улучшение либо воздерживается.
+2. **Scene Mode — вторичный продукт.** Пользователь описывает сцену, backend строит проверенный план, приложение показывает его в 2D/AR, позволяет записать результат и сохранить его в Library.
+
+Зафиксированные границы 1.0:
+
+- Live Camera Coach, detection, tracking и подсказки работают **локально**.
+- Scene generation требует backend; локальный deterministic fallback допускается только как явно обозначенный degraded mode.
+- Cloud VLM Deep Review, Jev reranking и платная монетизация — **post-1.0**, пока отдельное решение не изменит scope.
+- StoreKit, subscription, credits и account system в текущий scope 1.0 не входят.
+- Хороший Camera Coach важнее количества функций: неверная уверенная подсказка хуже честного молчания.
+
+### Полный пользовательский цикл Camera Coach
+
+`разрешение камеры → видоискатель → выбор/фиксация цели → анализ → одна подсказка → действие пользователя → проверка результата → keep/следующая подсказка → фото/видео → просмотр/сохранение`
+
+Release недопустим, если какой-либо переход молча не работает, обещает неподдерживаемое действие, хвалит неверное движение или не объясняет отказ.
+
+---
+
+## 2. Словарь статусов и как работать маленькой LLM
+
+### Статусы
+
+| Статус | Значение |
+|---|---|
+| `DONE` | Результат уже существует и привязан к конкретному evidence. |
+| `PARTIAL` | Основной путь есть, но перечисленная часть или доказательство отсутствует. |
+| `TODO` | Задача исполнима сейчас. |
+| `VERIFY` | Реализация предположительно есть, но нет свежего доказательства на текущем baseline. |
+| `BLOCKED_OWNER` | Нужны решение, credential, устройство, деньги или юридическое подтверждение владельца. |
+| `BLOCKED_EXTERNAL` | Нужен внешний сервис/событие после завершения локальной подготовки. |
+| `DEFERRED` | Намеренно не входит в 1.0. |
+| `RETIRED` | Старый путь больше не должен определять продукт. |
+
+### Протокол одного исполнителя
+
+Маленькая LLM получает **ровно одну строку задачи** из разделов 8–17 и выполняет её так:
+
+1. Прочитать `AGENTS.md`, этот раздел, строку задачи и только перечисленные `Read/Own` файлы.
+2. Зафиксировать `git rev-parse HEAD` и `git status --short`; не трогать чужие изменения.
+3. Проверить, не существует ли уже нужный владелец/паттерн. Расширять существующий путь, не создавать параллельный.
+4. Изменять только `Own`; если нужен другой файл — остановиться и записать blocker.
+5. Выполнить только `Check`, сохранить evidence в указанном месте, если задача его требует.
+6. Вернуть: `STATUS`, `TASK`, `HEAD`, `CHANGES`, `CHECK`, `EVIDENCE`, `GAPS`, `GIT STATUS`.
+7. Оркестратор проверяет результат и только затем меняет статус здесь.
+
+Одна строка — одна bounded-задача. Не объединять соседние строки «для удобства».
+
+---
+
+## 3. Текущее фактическое состояние
+
+### 3.1 Что уже получено
+
+- Главный route приложения открывает fullscreen Camera Coach; Scene Mode доступен вторичным компактным входом.
+- Работает локальная цепочка Apple Vision/saliency/horizon/lighting, gated DETR/NIMA, deterministic critique/planner и UI presentation.
+- Существуют typed camera actions, safety gates, target tracking, pause/review и часть closed-loop verification.
+- Release bundle очищен от примерно 1 ГБ исследовательского GGUF и DeviceBenchmark assets.
+- Есть `PrivacyInfo.xcprivacy`, RU/EN usage descriptions, app icon, bundle/version metadata и drafts App Privacy/Review Notes.
+- Scene backend package реализует jobs, clarification, cancellation, quotas, App Attest protocol, installation deletion и deterministic fallback.
+- Annotation UI показывает фото/видео, получает vision-предложение, принимает natural-language correction, поддерживает клавиатуру и prefetch current+5.
+- Получен первый research-only Stage-2 fit и Core ML parity artifact.
+
+### 3.2 Чего это не доказывает
+
+- Текущий Stage-2 checkpoint обучен только на `issue_logits`, `action_utility_logits`, `continuous_target_deltas` и silver labels.
+- Он не обучает/не доказывает `good_frame_probability`, `risk_probability`, `abstention_probability`, калибровку, temporal verification или production-safe semantic advice.
+- Последний qualified fit использовал 1 340 кадров, 636 fit pairs и 142 held-out family pairs; action top-1 0.831. Positive-only issue accuracy 1.0 не измеряет false positives на хороших кадрах.
+- Core ML artifact исключён из app target, production scorer не подключён, `CameraConfidenceCalibrator` остаётся unavailable.
+- Simulator/UI/build evidence не заменяет физическую камеру, AR, audio/video sync, thermal/memory, VoiceOver и beta acceptance.
+- Последний engineering archive unsigned, собран на старом baseline, имеет пустой Scene URL и четыре PENDING provenance components.
+
+### 3.3 Известный test baseline
+
+- **2026-09-23 — свежий полный M5 на объединённом дереве всех принятых слайсов (Xcode 27.0, обход Pods, симулятор iPhone 17e/iOS 26.5):** 2 325 исполненных методов (198 классов) = **2 264 зелёных / 44 красных raw / 17 by-design skip**; serial-сверка всех 44 → **40 genuine / 4 parallel-артефакта**. Классификация: 30 B (27 oracle-дивергенций + 3 perceptual diagnostic CAM-009), 3 C fixture-gap (168/179/190.jpg hard-throw), 3 D NIMA hard-throw (payload отсутствует в `local-data/SETOS/verification/` — рестейдж невозможен), 4 E device-gated, 1 F AR blank; **0 G, 0 неизвестных** — инвариант «неизвестный failure = release gate» матрицы REL-001 выполнен.
+- Категория A закрыта по CAM-002: 9 методов serial-зелёные (кандидаты на снятие с order-artifact), 1 contention-класс (scene-cut, DETR warmup), 2 SceneControl EN/RU — воспроизведённый drift copy (решение владельца), 1 env-gated iPad.
+- Diff против бейзлайна 2026-09-20 (2 233 pass / 25 unique): **G-семья ×2 починена принятыми слайсами** (openSettings re-prompt; deletion-drain); B 32→30 (CAM-009 вернул 7 селекторов зелёными); D ухудшился — NIMA/legacy payloads отсутствуют в local-data, 10 методов теперь честные in-file skip; новых красных семей не появилось.
+- Пять старых reference assets по-прежнему не восстановлены (§19 п.7). Латентный баг скрипта владельца `stage_nima_qualification.sh` (`shift` вместо `shift 2` при `--udid`) — записан в ресипте, вне зоны агентов.
+- Receipt: `receipts/2026-09-23-m5-full-suite-baseline-refresh.md`.
+
+### 3.4 Формальные release-гейты
+
+| Gate | Сейчас | Что закрывает |
+|---|---|---|
+| Продуктовая сборка | `PARTIAL` | Текущий candidate, полезность, backend и физическая приёмка. |
+| Apple SDK | `DONE` | Xcode 26.6 / iOS SDK 26.5 evidence. |
+| Privacy manifest | `DONE` | Четыре Required Reason API категории и bundle validation. |
+| Permissions | `PARTIAL` | Физический denial/retry/restricted. |
+| Privacy Policy | `PARTIAL` | Hosted URL и фактические provider/retention/deletion. |
+| App Privacy answers | `PARTIAL` | Привязка к production backend и ввод владельцем. |
+| Provenance/rights | `TODO` | DETR, Llama framework, NIMA, resource asset catalog. |
+| StoreKit/IAP | `DEFERRED` | Не входит в 1.0. |
+| Icon/bundle/version | `DONE` | Уже подтверждено engineering archive. |
+| CI/archive/validate | `PARTIAL` | Fresh candidate, required check, signed export. |
+| Physical devices | `BLOCKED_OWNER` | App Attest-capable team/profile и устройства. |
+| Metadata/screenshots | `PARTIAL` | Финальные flows, URLs, title/subtitle. |
+
+---
+
+## 4. Покрытие Camera Coach, которое требуется к релизу
+
+Канонические подробности и 68 исходных кейсов: `docs/cameraanalysis/34-case-traceability-map.md`. Релизная агрегация ниже не заменяет этот словарь, а превращает его в измеримые группы.
+
+| Группа | Минимально распознавать | Минимально уметь советовать | Release evidence |
+|---|---|---|---|
+| Композиция | crop/edge, масштаб героя, head/look room, пустота, баланс, симметрия, горизонт, ракурс, перспектива | сдвиг кадра, ближе/дальше, выровнять, выше/ниже, изменить позицию камеры | human-gold still eval + wrong-direction=0 |
+| Главный объект | один/несколько объектов, группа, неизвестная цель, потеря target | выбрать/уточнить цель, generic region, abstain | target identity clips + selection UX |
+| Свет/цвет | недосвет/пересвет, hotspot, harsh shadow, glare, mixed WB, direction of light | экспозиция, поворот к свету, перемещение света/объекта только при доказанной возможности | balanced good/bad pairs + safety audit |
+| Фон/окклюзия | clutter, merger, photobomb, occlusion, distracting object/text/edge | боковой перенос, убрать предмет, дождаться, упростить; generic advice при слабой grounding | region-grounded eval + no hallucinated object |
+| Техническое качество | blur, shake, focus, dirty lens, noise, framing mismatch | стабилизировать, refocus, очистить линзу, изменить экспозицию | device captures + before/after verification |
+| Люди | лицо/глаза, headroom, pose, group, consent-sensitive movement | просьба, а не приказ; не придумывать позу/эмоцию | human review + safety copy |
+| Объекты сцены | лампа/стул/стол/декор как movable target | «лампу немного правее», «стол ближе к центру» только с identity, region и movable evidence | target-specific action accuracy |
+| Формат/пересъёмка | 9:16/16:9/1:1 crop, title-safe zone, finished-photo defects, take comparison | изменить framing, оставить safe area, выбрать лучший дубль | format fixtures + retake set |
+| Временное поведение | выполнил/не выполнил, target moved, scene changed, lens changed | подтвердить fixed/improved или incomparable; не хвалить неправильное действие | locked before/after clips |
+| Хороший кадр | no-issue, намеренный low-key/silhouette/negative space | keep current setup, не искать дефект насильно | large negative corpus + calibrated abstention |
+
+Главный fail-closed инвариант: без подтверждённых `target identity + target region + movable/allowed + supported verification metric` нельзя давать конкретную команду переместить объект. Допустима общая композиционная подсказка или abstention.
+
+---
+
+## 5. Release Definition of Done
+
+Версия 1.0 может получить статус `READY_FOR_OWNER_APP_STORE_ACTIONS` только одновременно при выполнении всех пунктов:
+
+- [ ] Все P0 задачи этого файла имеют `DONE`; нет неизвестных P0 regression.
+- [ ] Camera Coach проходит locked human-gold still и temporal eval пороги из `PRODUCTION_ACCEPTANCE.md`.
+- [ ] Good-frame false positives, wrong-direction success, risk и abstention отдельно измерены и проходят пороги.
+- [ ] Production Core ML model hash, contract, parity и app bundle admission подтверждены.
+- [ ] Полный Camera Coach loop проверен на физическом iPhone; iPad contract либо принят, либо iPad support честно исключён до submission.
+- [ ] Scene Mode production backend настроен, защищён App Attest, прошёл end-to-end, либо Scene Mode удалён из 1.0 отдельным owner decision.
+- [ ] Recording/export/Library recovery проверены на физических устройствах.
+- [ ] Privacy/provenance/security gates закрыты фактической production конфигурацией.
+- [ ] Свежий clean archive создан из зафиксированного candidate HEAD; validation и release checks проходят.
+- [ ] RU/EN UI, Dynamic Type, VoiceOver, contrast, rotation, denied/offline/error states приняты.
+- [ ] External beta завершена, критические дефекты закрыты, release decision записан.
+- [ ] Владелец получил готовые metadata, screenshots, privacy answers, support URL и review notes.
+
+---
+
+## 6. Уже выполненный baseline
+
+| ID | Статус | Полученный результат | Основное evidence |
+|---|---|---|---|
+| BASE-001 | `DONE` | Fullscreen Camera Coach — основной route; Scene — вторичный вход. | `docs/aegis/plans/2026-08-17-camera-coach-fullscreen-navigation.md` |
+| BASE-002 | `DONE` | Research assets/GGUF исключены из Release bundle. | `docs/implementation/audits/release-bundle-inventory.md` |
+| BASE-003 | `DONE` | Typed permission foundation и add-only Photos path. | `docs/implementation/audits/privacy-permissions-inventory.md` |
+| BASE-004 | `DONE` | Privacy manifest с четырьмя Required Reason API families. | `shafinMultitool/PrivacyInfo.xcprivacy`, `scripts/validate_privacy_manifest.sh` |
+| BASE-005 | `DONE` | Local camera analysis/planner/safety/verification owners существуют. | `AnalysisPipeline.swift`, `SemanticTipPlanner.swift`, `ActionVerifier.swift` |
+| BASE-006 | `DONE` | Annotation tool поддерживает vision proposal, natural-language correction, keyboard и rolling prefetch. | `docs/aegis/plans/2026-09-15-camera-visual-prefetch-review.md` |
+| BASE-007 | `DONE` | Dataset relocation из Library завершён; canonical local-data root задан. | `../setos-backend/LOCAL_DATA.md`, `AGENTS.md` |
+| BASE-008 | `DONE` | Stage 1 encoder и первый research-only Stage 2 checkpoint получены. | `ml/camera_coach/INTEGRATION.md`, локальные hash-bound verification receipts в `setos-backend/local-data/SETOS/` |
+| BASE-009 | `DONE` | Research Core ML export и PyTorch/Core ML parity выполнены. | `ml/camera_coach/INTEGRATION.md` |
+| BASE-010 | `DONE` | Backend service package, deploy templates и operations docs существуют. | `../setos-backend/README.md`, `OPERATIONS.md`, `deployment/` |
+| BASE-011 | `DONE` | Loopback backend fail-closed: unconfigured/unattested запрос не проходит. | backend verification receipts 2026-09-18 |
+| BASE-012 | `DONE` | App icon, display name, bundle ID, version и release config проверены. | `AppStoreSubmissionGates.json` gate 9 |
+| BASE-013 | `DONE` | Drafts privacy page, metadata, review notes и App Privacy answers созданы. | `docs/implementation/release/` |
+| BASE-014 | `DONE` | StoreKit/IAP исключены из текущего scope. | master plan §3.9, metadata draft |
+| BASE-015 | `DONE` | 68 Camera Coach cases и defect/action audits сохранены. | `docs/cameraanalysis/34-case-traceability-map.md`, `36-frame-defect-coverage-audit.md` |
+
+`DONE` здесь означает только существование названного baseline, а не готовность всего продукта.
+
+---
+
+## 7. Критический путь — сначала модель и данные
+
+**Решение владельца 2026-09-22:** сократить работу, которая будет дублировать модель. Модель предлагает verdict/issue/action/target/delta; приложение проверяет контракт, свежесть и identity цели, разрешение на действие, калибровку, риск и доступность verification. Наличие модели не отменяет эти проверки и не доказывает качество её решений.
+
+Следующая задача по умолчанию — **DATA-001**, затем **DATA-002**. Незавершённый CAM-009 требует ограниченной проверки текущего diff перед его интеграцией, но не блокирует подготовку данных. Не продолжать подбор визуальных порогов, чтобы закрыть старый replay suite.
+
+1. **Контракт и данные:** DATA-001/002, существующий inventory DATA-003, coverage DATA-004, annotation DATA-005…009; затем human review и splits DATA-010…016. Существующую реализацию сначала проверить; расширять только при выявленном пробеле.
+2. **Подготовка модели и интеграции:** ML-002/003 и CAM-003 после label contract. Пока ожидаются human labels, готовить trainer и загрузку/валидацию typed outputs; не запускать final fit на silver вместо gold.
+3. **Обучение и оценка:** ML-004…009 на замороженных данных. ML-010 сравнивает варианты на validation до locked test. ML-011 использует существующий verifier, если он уже доказывает нужный outcome; отдельная temporal модель нужна только для подтверждённого пробела.
+4. **Экспорт и приложение:** ML-012/013/014 → ML-015 и CAM-011 → CAM-012. Проверять model decisions через существующий planner/safety/target/verification путь. CAM-010/013/014/021 и UI-мост завершать относительно этого контракта, не строить отдельный ручной визуальный классификатор.
+5. **Качество продукта:** ML-016/017/018, CAM-002/022, target/permission/intent checks, UI и физические DEV-проверки. Неподдерживаемые действия остаются unavailable/incomparable. Открытые safety, identity, wrong-direction и data-loss дефекты остаются блокерами релиза.
+6. **Релиз:** SEC, REL и BETA по фактическим зависимостям. Scene/backend остаются на паузе по GOV-002; до submission требуется возобновление или отдельное изменение scope. iPhone+iPad и остальные условия приёмки сохраняются.
+
+Номера фаз не требуют завершить весь предыдущий раздел: выбирать готовую строку по `Depends`, не запускать задачу с незакрытой зависимостью. Human labels, устройства и credentials нельзя заменить догадкой. Final training требует DATA-016; Release bundle — ML-013 parity, ML-014 и SEC-006 admission; default-on — ML-018. Финальные screenshots выполняются после стабилизации UI/backend/device flows.
+
+### Ограничение работы над эвристиками
+
+- CAM-004…007 сохраняют принятые результаты. Не повторять их проверки без изменения соответствующего кода или новой регрессии.
+- CAM-009 закрывает только проверку текущего незавершённого diff, routing и консервативного fallback. Новые family-specific пороги, ручные confidence floors и исключения для получения KEEP на отдельных картинках — POST-007.
+- При недоступной/некалиброванной модели fallback может молчать, запросить цель или дать только доказуемое поддерживаемое действие. Он не обязан повторять всю семантическую компетенцию модели.
+- Исторические perceptual replay assertions сохраняются как diagnostic evidence для ML-006/010. Их не удалять и не ослаблять ради зелёного suite; REL-001 явно отделяет их от runtime/safety release gates. Итоговые good-frame/false-positive пороги из `PRODUCTION_ACCEPTANCE.md` остаются обязательны для интегрированного продукта.
+- Этот порядок заменяет требование CAM-008 восстановить все исторические эвристики перед ML. Сам triage receipt и его исходные выводы сохраняются без изменения. Diagnostic-классификация допустима только для прежней heuristic policy; падения требований `PRODUCTION_ACCEPTANCE.md` и runtime/safety тестов остаются release blockers.
+- Если после одного ограниченного цикла исправления и проверки остаются расхождения визуальной классификации, записать их и перейти к данным/модели. Реальные ошибки target, permissions, partial evidence, направления, загрузки и lifecycle этим правилом не откладываются.
+
+---
+
+## 8. GOV — scope, baseline и управление evidence
+
+| ID | Статус | P | Depends | Read / Own | Действие | Check / Done when |
+|---|---|---:|---|---|---|---|
+| GOV-001 | `DONE` | P0 | — | Read this file, `git`; Own this row/evidence only | Сделан fresh inventory HEAD/status, tracked/untracked build inputs, toolchain и локальных data roots. Full suite не запускался. | `docs/implementation/receipts/2026-09-20-gov-001-fresh-inventory.md`: HEAD/branch/status, Xcode/SDK, disk, data root; чужие файлы сохранены. |
+| GOV-002 | `DONE` | P0 | GOV-001 | Own owner decision note in this file | Подтвердить: Scene Mode остаётся в App Store 1.0 или переносится. Default: остаётся, значит backend обязателен. | **Owner decision 2026-09-20:** «фичу пока не вырезаем, но и не делаем» — Scene Mode остаётся в 1.0; активная backend-разработка на паузе. Следствие: release-admissibility Scene остаётся незакрытой (BE-001 остаётся `BLOCKED_OWNER`); перед submission владелец либо возобновляет BE/DEV-цепочку, либо явно пере-решает вырезание. |
+| GOV-003 | `DONE` | P0 | GOV-001 | Own owner decision note | Подтвердить device families: iPhone+iPad или только iPhone. Не считать симуляторный portrait-like iPad доказательством landscape. | **Owner decision 2026-09-20:** iPhone+iPad. UI-009/DEV-011/REL-009 остаются в scope; вырезание iPad capability запрещено. Контракт: `docs/implementation/ipad-platform-contract-v1.md`. |
+| GOV-004 | `DONE` | P0 | GOV-001 | Read `PRODUCTION_ACCEPTANCE.md`; Own acceptance snapshot | Сопоставить каждую acceptance секцию A–L с task IDs этого файла; добавить только реально отсутствующие строки. | Mapping полный: нет gate без task owner, нет P0 task без gate; Gates I/J scope-deferred с обязательной явной записью решения в BETA-007/REL-008. Evidence: `receipts/2026-09-20-gov-004-acceptance-task-map.md`. |
+| GOV-005 | `DONE` | P1 | GOV-001 | Own `docs/implementation/evidence-index.md` | Создать компактный индекс свежих receipts: candidate HEAD, model, backend, UI, physical, archive. Не копировать логи. | `docs/implementation/evidence-index.md` создан; current/historical разделены. |
+| GOV-006 | `DONE` | P1 | GOV-005 | Own tracker update only | После каждого принятого slice обновлять статус, evidence и last-updated; не вести второй backlog. | **2026-09-23:** дисциплина подтверждена журналом §21 (записи 2026-09-20…23, 15+ принятых слайсов — каждый со статусом, evidence и датой в каноническом трекере); retired `STATUS.md`/`BACKLOG.md` не воссозданы; второй backlog не заведён (единственные сводные списки — §19 очередь владельца и evidence-index GOV-005, обновлён 2026-09-23). Практика продолжается постоянно. |
+| GOV-007 | `DONE` | P1 | GOV-001, DATA-003 | Read local-data + repo + Xcode cache roots; Own storage audit receipt only. **Запрещено удалять/перемещать данные** | Построить полную карту занятого проектом пространства (iOS repo, `setos-backend`, backend `local-data/SETOS`, Xcode DerivedData/Caches/DeviceSupport, симуляторные контейнеры, `/tmp` артефакты трекера) и найти byte-level дубликаты одинаковых данных между `Datasets/camera-coach/colab_package*`, `research/*`, `verification/*`, `silver-fit-*` через content-hash группы (по файлам ≤ заданного порога + aggregate-хеши манифестов). | **2026-09-22:** прошито SHA-256 95 206 файлов / 21.09 GB; 12 066 кросс-семейных дубликат-групп; консервативный reclaim `attempt1…5`+v1 = **13.197 GB** (весь медиа-контент байт-идентичен `research/`/v2; крупнейшая группа — `tapvid…zip` 0.19 GB ×8). Полная карта: repo 4.9 GB, `local-data` 37 GB, DerivedData 9.2 GB (8.0 GB — чужой `Bonus_Exchange`), DeviceSupport 13 GB (6.3 GB — beta-символы 24A5430a), симуляторы 9.0 GB, Archives 2.3 GB (evidence, не кандидат). Зеркало `verification/` из предварительной оценки 2026-09-20 не существует (284 KB). Не прошит 1 файл > 4 ГиБ (`bedroom1_shelf_sim_800.zip`, 5.55 GiB, есть распакованный `frames/`). Проектные данные: **удалено ровно ничего**; очищен только агентский `/tmp`-скретч (32 MB, явное разрешение владельца). План архивации/удаления на owner decision готов (§19 п.8). Receipt: `receipts/2026-09-22-gov-007-storage-audit.md`. |
+
+---
+
+## 9. CAM — Camera Coach runtime, semantics и closed loop
+
+| ID | Статус | P | Depends | Read / Own | Действие | Check / Done when |
+|---|---|---:|---|---|---|---|
+| CAM-001 | `DONE` | P0 | GOV-001 | Own test receipt only | Перезапустить только текущие Camera Coach unit/test batches и пересчитать уникальные failures на candidate HEAD. | **2026-09-20:** полный suite 2 358 тестов на HEAD `f8b6afd` (parallel) + изоляционный serial перезапуск всех падений. Итог: 48 persistent genuine (категории B–G), 12 parallel-order-dependent (категория A → CAM-002). Receipt: `receipts/2026-09-20-cam-001-camera-test-baseline.md`. |
+| CAM-002 | `PARTIAL` | P0 | CAM-001 | Own `CameraCoachClosedLoopTests` setup/shared owners | Устранить suite-order interference через общий root cause, не через retries/disable. | **2026-09-22 бисекция (22 serial-прогона, обход Xcode 27.0):** blanket-статус «order-artifact» для 12 методов опровергнут — cross-class отравления не найдены (6 пар кандидатов → capture-path методы чисты). Разбор: **9 методов чисты** (в т.ч. lens-switch subject-change, committed-pause; M1-линия 209/0 serial) — предложение: снять с A-статуса при следующем CAM-001 перепрогоне; **1 — класс ресурсной конкуренции** (`…SceneCutRejectsLatePreCutSample…` 1/20: первый DETR-inference 1676/2192 мс против стабильных 607–656 мс, 2с-окно голодает; root cause в production heavy-model lifecycle `AnalysisPipeline.swift` — файл закрыт CAM-009 diff'ом, правка за владельцем; в serial-линиях держать warmup-запуск); **2 — новый release-gated факт**: `testSceneControlRuntimeEN/RU` красны В ИЗОЛЯЦИИ — тест ждёт copy, а shipped keys `set.camera.corrective.change_angle`/`set.trace.action.change_angle` несут «Move with the phone…» — вероятный drift принятых uncommitted UI/локализационных слайсов, классификация stale-oracle-vs-регрессия за владельцем; **1 iPad** — env-gated (M7). `testFreshReplanningPreservesEpisodeThroughVerification` зелёный, genuine-статус CAM-008 не тронут; `testTorchStateResetsOnRelease` (E) сам флакует на новом тулчейне. Receipt: `receipts/2026-09-22-cam-002-interference-bisection.md`. |
+| CAM-003 | `DONE` | P0 | CAM-001, DATA-001 | Own `CameraConfidenceCalibrator.swift` and existing calibration loading path | Определить typed production calibration artifact contract и fail-closed loading. Не подставлять константу. | **2026-09-22:** `CameraProductionCalibrationArtifactV1` typed-конверт (schemaVersion, coveredHeads, payload = существующий `CameraActionCalibrationSchemaV1` "cal1" без параллельного формата, `payloadSHA256`, show/silent thresholds по ML-002 H7) + `CameraCalibrationArtifact.load` как единственная точка входа; production default `.unavailable`; любой сбой (hash/schema/version/curve/provenance/thresholds) → typed unavailable, только `.loaded` даёт калибратор. Focused: 20 tests, 0 failures (missing/tampered → unavailable; valid fixture → байт-идентичные детерминированные выходы). Артефакт пока не существует и не admitted (ML-007 создаст, ML-015 admitted). Факт среды: Xcode 27.0 drift; каноническая -workspace lane падает до компиляции (Pods deployment target pins), обход без изменения файлов задокументирован; полный baseline на новом тулчейне не перепроверялся. Receipt: `receipts/2026-09-22-cam-003-calibration-contract.md`. |
+| CAM-004 | `DONE` | P0 | CAM-001 | Own `ActionVerifier.swift`, `UserMovementObserver.swift` | Проверить fail-closed `change_camera_angle`: horizon rotation сама по себе не доказывает cleanup; до qualified contour/occlusion metric действие остаётся incomparable. | **2026-09-22:** контрпример «завал без очистки фона» не проходит: `change_camera_angle` остаётся unsupported/incomparable даже при изменении horizon rotation; qualified contour/occlusion metric отсутствует, поэтому lateral/background pass path не заявляется. Serial focused run: 67 tests (28 `ActionVerifierTests` + 39 `UserMovementObserverTests`), 0 failures, 0 skipped. Receipt: `receipts/2026-09-22-cam-004-verification.md`. |
+| CAM-005 | `DONE` | P0 | CAM-004 | Same owners | Привязать verification metric к target объекта действия, а не всегда к primary subject. | **2026-09-22:** target-scoped displacement verified: commanded-object movement is `improved`, movement of another object is `unchanged`, and swapped/lost target identity is incomparable; target-scoped area cannot reuse the unrelated primary-subject scalar. Serial focused run: 4 selected methods, 0 failures, 0 skipped. Receipt: `receipts/2026-09-22-cam-005-verification.md`. |
+| CAM-006 | `DONE` | P0 | CAM-005 | Same owners + existing contracts | Для remove/reposition/simplify/wait определить честные result metrics либо исключить их из closed-loop promise. | **2026-09-22:** closed-loop exclusion verified: unsupported remove/reposition/simplify/wait/keep labels have no action family and cannot start a live executable episode; verifier returns unsupported/incomparable. Generic labels only expand with a grounded target, and the downstream verifier gate still withholds unsupported actuators. Removal retains a unit-only explicit-absence predicate; no live closed-loop or perceptual/model quality is claimed. Serial focused run: 5 selected tests, 0 failures, 0 skipped. Receipt: `receipts/2026-09-22-cam-006-closed-loop-exclusion.md`. |
+| CAM-007 | `DONE` | P0 | CAM-001 | Own `AnalysisPipeline.swift` technical pause action selection | Из одной причины выбирать одну приоритетную команду с обязательной region; wait использовать только при evidence временности. | **2026-09-22:** technical pause boundary now selects one executable row per alternative group, drops hotspot-specific rows without a valid target region, grounds underexposure front-fill only from the same-frame primary candidate region, and no longer derives wait from clutter/object counts. Focused serial run: 5 tests, 0 failures, 0 skipped. Receipt: `receipts/2026-09-22-cam-007-technical-pause-selection.md`. |
+| CAM-008 | `DONE` | P0 | CAM-001 | Own presentation oracle/decision record | Разобрать presentation failures на code regression vs stale oracle. Для каждого зафиксировать product decision. | **2026-09-20:** вердикт — code regression от `d4815f3` (удалена вся confidence-band/keep-preservation оркестрация: 11 предикатов + numeric-wide establishing early-return); oracle остаётся контрактом, ожидания не правились. Все семьи категоризированы (B–G), план восстановления по слайсам. Receipt: `receipts/2026-09-20-cam-008-presentation-triage.md`. Реализация — CAM-009/010. |
+| CAM-009 | `DONE` | P0 | CAM-008 | Own current deterministic/presentation diff and bounded receipt | **2026-09-22:** bounded fix removes the replay-only family classifier, manual replay confidence floor, and `additionalRecognizedFamily` bypass. The shared KEEP owner now projects only eligible `.good`/positive `.mixed` verdicts with no non-KEEP correction; the replay presentation selector requires `structuredDecision.isAvailable` before projecting that KEEP, preserving frame-identity, confidence, explainable-content, partial/unavailable, and ca090/ca232 false-KEEP gates; no `.needsFix` → `.good` reopening remains. Existing measured-luma fixture reuse is retained as an honest exact-contract scene setup; no production fixture IDs, model work, or CAM-010 lighting changes. | Serial focused run with `-collect-test-diagnostics never`: runtime/safety controls **8/8 passed** (including structured availability, partial boundary, false-keep, low-key/object KEEP, confidence controls, and closed-loop replanning). Historical perceptual methods intentionally keep their assertions and remain diagnostic evidence: **3 methods / 8 assertions failed** after removing out-of-scope replay heuristics (`testStillImageReplayPreservesCinematicEstablishingDespiteTechnicalFuture`, `testStillImageReplayPreservesNarrativeEstablishingFramesWithKeepCurrentSetup`, `testStillImageReplayPromotesWideUnknownGoodEstablishingConfidence`). These discrepancies are routed to ML-006/010; no old replay assertion is claimed green. External `190.jpg` remains absent and unauthenticated. Receipt: `receipts/2026-09-22-cam-009-deterministic-keep-restoration.md`. |
+| CAM-010 | `TODO` | P0 | DATA-002, CAM-011, CAM-012 | Own existing lighting gate/planner path | Провести admitted model lighting action через существующие target/permission/resource gates и UI; fallback выдаёт только измеримо обоснованные команды. Не разрабатывать отдельный heuristic-классификатор света и не ослаблять thresholds ради старых replay ожиданий. | Typed supported positive проходит; intentional-low-key, отсутствие target/resource, invalid output и insufficient evidence дают предусмотренный keep/ask/abstain. Perceptual accuracy подтверждается ML eval, не подменяется fixture output. |
+| CAM-011 | `TODO` | P0 | CAM-003, ML-014 | Own existing neural scorer composition | Подключить admitted Core ML scorer за internal feature flag, сохранив deterministic fail-closed fallback. | Hash/contract mismatch отключает neural advice; valid model участвует в measured path. |
+| CAM-012 | `TODO` | P0 | CAM-011 | Own safety gate | Объединить issue/action/delta, calibrated confidence, risk и abstention в одно решение show/generic/ask/keep/silent. | Ни одна конкретная команда не проходит без всех required gates; reason codes логируются локально. |
+| CAM-013 | `TODO` | P0 | CAM-012 | Own `SemanticTipPlanner.swift` | Привести 16 action copies к «исполнитель + движение + ориентир» RU/EN; просьбы людям отделить от команд телефону. | Copy table покрыта focused tests/localization keys; нет недоказанных объектов/направлений. |
+| CAM-014 | `TODO` | P0 | CAM-012 | Own technical action UI bridge | Вывести существующие refocus/stabilize/exposure/occlusion/clean-lens действия через единую карточку и supported verification. | Каждое действие появляется в положительном fixture и молчит в отрицательном. |
+| CAM-015 | `TODO` | P1 | CAM-012, DATA-010 | Own subject selection/binding | Различать похожие экземпляры, группу как target и unknown target; при неоднозначности просить tap/selection. | Two-similar-object clips не переключают identity молча. |
+| CAM-016 | `TODO` | P1 | CAM-015 | Own intent/style clarification | Добавить bounded clarification для silhouette, low-key, negative space и intentional tilt. | Intentional fixtures сохраняют стиль; отсутствие ответа ведёт к generic/abstain. |
+| CAM-017 | `TODO` | P1 | CAM-015 | Own movable/permission facts | Конкретное перемещение лампы/стула/декора разрешать только при target identity, region и user-confirmed movable context. | Museum/street/unknown ownership fixture не получает приказ двигать объект. |
+| CAM-018 | `TODO` | P1 | CAM-012 | Own format contracts | Добавить target aspect ratio и title-safe zone в analysis context. | 9:16/16:9/1:1 fixtures дают разные допустимые framing decisions. |
+| CAM-019 | `TODO` | P1 | CAM-018 | Own capture/review flow | Сравнивать preview crop с captured output и предупреждать о потерянном важном элементе. | Deterministic crop fixtures; no silent preview/capture mismatch. |
+| CAM-020 | `TODO` | P2 | CAM-019 | Own review/library comparison | Реализовать bounded выбор лучшего из 2–5 дублей одного intent; не смешивать разные сцены. | Same-intent set ranked; scene/lens mismatch → incomparable. |
+| CAM-021 | `TODO` | P0 | CAM-012 | Own telemetry/eval event schema, local by default | Писать privacy-safe reason codes для shown/suppressed/verified advice без изображения и PII. | Event schema/version documented; offline path works; no remote send without consent/config. |
+| CAM-022 | `TODO` | P0 | CAM-002…CAM-021 | Own focused regression receipt | Прогнать bounded Camera Coach regression matrix и классифицировать остаток. | Все P0 Camera tests pass либо каждый остаток имеет explicit release blocker; no suite-order failures. |
+
+---
+
+## 10. DATA — human-gold, annotation и locked corpora
+
+| ID | Статус | P | Depends | Read / Own | Действие | Check / Done when |
+|---|---|---:|---|---|---|---|
+| DATA-001 | `DONE` | P0 | GOV-001 | Own `ml/camera_coach/contracts/` docs/schema | Зафиксировать release label contract: verdict, issues, action, target identity/region, magnitude, risk, abstain, intent, movability, before/after outcome. | **2026-09-22:** `camera_release_label_v1.schema.json` is closed/versioned; persistent `validate_camera_release_label.py` passes the positive fixture, rejects 16 named negative mutations, and accepts only the bounded `metric_unavailable` same-target incomparable case. Coverage is exhaustive across all 15 release issue heads; action references, target identity/continuity (including fail-closed `target_missing`), V3 region containment, frame identity, and fixed-goal evidence are checked. Exact app raw enum cross-check and command output are in the receipt. Receipt: `receipts/2026-09-22-data-001-release-label-contract.md`. |
+| DATA-002 | `DONE` | P0 | DATA-001 | Own contract mapping doc | Сопоставить 68 cases, app enums, trainer heads, Core ML outputs и UI actions. | **2026-09-22:** validator PASS: pinned canonical inputs, exact ordered 68/68 source projections, 20 registry operations, 15 issues, 33 actions; capability statuses 8 blocked / 12 app-only / 6 deferred. It validates structured consumer owners/symbols (including `CameraAnalysisV3ContractValidator`), the exact 33/33 action-disposition ledger, frozen/technical action subsets (including no invented `rotate_entity` mapping), capability statuses/counts, model head/output state, and six in-memory negative controls. Current v2 heads remain research/planned only and Core ML `production_admitted=false`; unsupported technical/lens/moment paths retain explicit downstream blockers. `clear_lens_obstruction` stays limited to `occlusion`/`avoid_occlusion`; `lens_smudge` and `clean_lens` are separate unsupported paths. Stale source aggregate 16/33/9/10 is preserved and reported against derived 16/35/7/10. Receipt: `receipts/2026-09-22-data-002-release-capability-mapping.md`. |
+| DATA-003 | `DONE` | P0 | GOV-001 | Read local-data; Own inventory receipt | Инвентаризировать relocated datasets/checkpoints/manifests по family, count, bytes, hash, rights tier, human/silver. | **2026-09-22:** current canonical tree: 46 meaningful families, 149,849 regular files, 39,467,986,588 logical bytes, 76 symlinks; no deletion/move/rewrite; old Library alias absent; historical old-prefix paths, 180.jpg missing reference and stale 2026-09-20 225-family inventory are explicit. Metadata aggregate/hash and rights/label tiers are recorded; no human_gold/release_admissible family inferred. Receipt: `receipts/2026-09-22-data-003-local-data-inventory.md`. |
+| DATA-004 | `DONE` | P0 | DATA-001, DATA-003 | Own sampling plan | Построить coverage matrix по группам §4: good negatives, hard negatives, defects, actions, directions, magnitudes, devices, languages, intents. | **2026-09-22:** `docs/implementation/data-coverage-matrix-v1.md`: 10 групп §4 × (silver-raw источники с counts, silver labels, human gold, target locked, gap) + 9 размерностей; слои против Gate C1/C3/K (≥250 stills / ≥30 sequences / ≥200 beta sessions) и квот shot-list (350/700/350/210). Факт: human-gold = 0 во всех ячейках; movable/occlusion/формат-семейства — 0 источников; silver-распределение по issue-heads не аудировано (отмечено перед DATA-008). Целевые числа внутри ячеек — рабочий план распределения квоты 350, пороги acceptance не изменялись. |
+| DATA-005 | `DONE` | P0 | DATA-001 | Own annotation tool schema/export | Обновить разметчик под новый contract без потери natural-language UX; raw opinion хранить рядом со structured label. | **2026-09-22 (2 слайса):** (1) `release_label_adapter.py`: v1 review → `camera-release-label-v1` + envelope с raw opinion рядом; enum'ы из schema (v1 issues ⊂ 15 heads проверяется при импорте); 8 fail-closed правил; round-trip raw→proposal(id only)→human edit→export прошёл `validate_record`; 8 негативов отклонены. (2) Остаток закрыт: `annotate_gui.py` собирает все элиcitации (severity/confidence/evidence, target-факты, movability, source-поля с честным «пустой captured_at не выдумывается»), `release_label_config.py` строит config (fail-fast до записи), экспорт через CLI адаптера — REJECTED без записи, VALID с авто-валидацией; экспорт не обходит human-гейты и всегда human_gold=false. 13 новых тестов (перепроверено оркестратором) + headless Tk смоук полного потока. Записанные границы flow'а: verdict `mixed` из v1 недостижим; risk/before_after экспортируются not_observed (элиcitации — ML-007/DATA-013); captured_at без EXIF-вывода (фабрикация provenance запрещена). Факт: пред-существующее падение `test_annotation_roundtrip.py::test_queue_hashes_still_match_the_files_on_disk` — очередь v3 хранит старые `~/Library/Application Support` пути после релокации BASE-007; к слайсу не относится, требует отдельного bounded решения. Receipts: `receipts/2026-09-22-data-005-annotation-release-label.md`, `receipts/2026-09-22-data-005-gui-elicitation.md`. |
+| DATA-006 | `DONE` | P0 | DATA-005 | Own annotation API adapter | Проверить vision payload, structured output validation, retries/backoff, ZDR header и secret handling Command Code. | **2026-09-22:** аудит по 4 пунктам + bounded фиксы (`review_pipeline.py`, `language_review.py`): строгий wire-schema гейт `schema_violation()` в `validate_proposal` (закрыт реальный drift: 3 действия проходили старые проверки при `actions maxItems=2`; NaN/Infinity отвергаются; гейт на teacher и assemble), `redact()` на ошибки/argv, bounded retry только для free-вызовов (paid single-attempt), typed timeout без контента. Invalid/partial JSON не записывается; ключ env/getpass, скан на secret-утечки чист. 19 тестов (мок-транспорт) + 3 self-check passed; перепроверено оркестратором (19 passed). Честные gaps: pinned Command Code модель отвергает ZDR (`cmd_zdr_no_providers`) — решение о provider/model за владельцем; Polza-пробник без ZDR (записано); keychain нет (env достаточен). Receipt: `receipts/2026-09-22-data-006-annotation-api-audit.md`. |
+| DATA-007 | `DONE` | P0 | DATA-005 | Own identity/import path | Запретить import по коллидирующему raw `record_id`; использовать stable source/frame/content identity. | **2026-09-22:** существующий guard 2026-09-17 верифицирован свежо + 2 focused негатива добавлены (`tools/tests/test_annotation_record_identity.py`, 11 passed): same record_id с другим `image_sha256` → `Conflicting record ID`, output не создаётся; intake-коллизия → reject до journal. Реальный CLI dry-run: raw SceneTrans-манифест (900 rows/450 unique IDs) → exit 1 без output; normalized package (11 810 rows) → байт-равный идемпотентный проход; 900 rows/450 pair links сохранены (READ-ONLY, SHA-256 в ресипте). Дизамбигуация суффиксом сознательно не вводится — reject разрешён строкой. Факт: пакет-свидетельство `annotation-record-identity-s2y7d7p6` отсутствует на диске — ссылка в thesis evidence map stale (согласуется с GOV-007; исторические записи не переписываются). Receipt: `receipts/2026-09-22-data-007-import-identity.md`. |
+| DATA-008 | `PARTIAL` | P0 | DATA-004…DATA-007 | Own pilot journal | Провести pilot 100 diverse items одним reviewer, измерить время, disagreement с proposal и schema gaps. | **2026-09-23 подготовка завершена, разметка за владельцем:** `local-data/SETOS/annotation/pilot-20260923-strata-v1/queue.jsonl` (100 строк, sha `cbb55e63…`) — детерминированный отбор по strata 10 групп §4 × 10, 20 intentional-style (≥15), ноль пересечений с queue-v1/v2/v3 и pilot-20260914-v4 (union 1 086 ID), 100/100 hash-верифицированы против манифеста v2-пакета; байт-идентичные scenetrans-дубликаты исключены. README содержит команду запуска `annotate_gui.py` и правила export'а в contract-valid release label. Честные ограничения зафиксированы: strata по семейству источника (per-frame меток нет); technical/people/movable/temporal/format — слабые замещения из-за отсутствия источников (см. coverage matrix). **Дальше — человек:** разметить 100 (инструмент готов), измерить время/disagreement/schema gaps. Receipt: `receipts/2026-09-23-data-008-pilot-queue-prep.md`. **2026-09-27 — ремонт идентичности queue v2 (data path):** подтверждённый root cause — `record_id pilot23-composition-07` стоял на двух строках разных кадров (scenetrans `…pair_0186__B` и commons `…101220534`), `annotate_fast` резолвит кадр по dict record_id (last wins) — обе позиции обхода показывали commons, scenetrans не показывался; human-записи спасены без переписывания (обе пары `fast_labels`/`fast_details` — проходы по commons, sha сохранены байт-в-байт), `pilot23-composition-07` остаётся за commons-кадром, неразмеченный scenetrans переименован в `pilot23-composition-11` (`record_id_history` сохранён, исходные байты в `identity-repair-20260927/*.orig`), очередь `3519f675…` → `dd47f199…`, кадр возвращён в конец обхода сессии (index 8→7, продолжение с `pilot23-composition-09`). Корневая причина закрыта в инструменте: fail-closed 1:1 record_id↔кадр + привязка записи к своему `image_sha256`, отказ на запуске/экспорте, CLI `--check-identity`; 80/0 тестов инструмента (6 новых + read-only тест по реальным файлам), аудит v2+хранилище OK, v1+хранилище блокируется (7 привязок к другим кадрам — тот же класс). Receipt: `receipts/2026-09-27-data-008-queue-v2-identity-repair.md`. |
+| DATA-009 | `TODO` | P0 | DATA-008 | Own adjudication guide | Исправить schema/UI по pilot и написать короткие примеры спорных verdict/action/target/risk. | Второй reviewer одинаково размечает calibration subset; ambiguities перечислены. |
+| DATA-010 | `BLOCKED_OWNER` | P0 | DATA-009 | Own annotation outputs only | Владелец/назначенные reviewers размечают balanced still corpus; модель только предлагает. | Минимум из acceptance contract; независимый holdout не видел trainer/author. |
+| DATA-011 | `BLOCKED_OWNER` | P0 | DATA-009 | Same | Собрать second-review и adjudication для safety-critical/object-move/wrong-direction/no-issue cases. | Disagreement и final adjudicator recorded; human_gold=true только после adjudication. |
+| DATA-012 | `TODO` | P0 | DATA-010, DATA-011 | Own split manifests/receipts | Заморозить train/val/test по source family, near-duplicate cluster и scene, исключив leakage. | Hash-bound manifests; test недоступен training loop; duplicate audit passes. |
+| DATA-013 | `BLOCKED_OWNER` | P0 | DATA-009 | Own temporal annotation outputs | Разметить before/after clips: fixed, improved, unchanged, wrong direction, incomparable, target lost, lens/scene change. | Каждая supported action family имеет positives и counterexamples. |
+| DATA-014 | `TODO` | P0 | DATA-013 | Own temporal split manifests | Заморозить temporal train/val/test без соседних frames/scenes между splits. | Scene-group leakage audit passes; frame timestamps/provenance valid. |
+| DATA-015 | `PARTIAL` | P1 | DATA-003, DATA-004 | Own acquisition manifests under backend local-data | Дособрать только доказанные coverage gaps; не накачивать ещё AVA-like MOS ради объёма. | **2026-09-23 (bounded prep, 0 байт скачано by design):** `docs/implementation/acquisition/acquisition-manifests-v1.json` + README — все 4 named gap'а из coverage matrix покрыты кандидатами (occlusion 40, группы-как-герой 40, dirty-lens/focus-miss органика 40, 9:16/1:1+title-safe 25 = 145 в пределах квоты 350); rights-field contract полный (source/author/license/SHA-256/R1–R6/label tier/per-item license gate); policy запрещает AVA-like MOS/scrape/Pexels-класс; верификация 120/120 PASS. Всё `prepared_not_downloaded`. **Решение владельца:** одобрить кандидатов (A3/B3 Open Images — под blocker'ом) → тогда загрузка отдельным слайсом в local-data. Номенклатурное отклонение записано: текстовые манифесты в `docs/implementation/acquisition/`, путь загрузки — local-data. Receipt: `receipts/2026-09-23-data-015-acquisition-prep.md`. |
+| DATA-016 | `TODO` | P0 | DATA-012, DATA-014, DATA-015 | Own dataset release candidate receipt | Собрать deduplicated training package и Colab manifest в единицы ГБ; raw media остаётся local-data. | Package hash, counts, schema version, split hashes, README и upload method проверены. |
+
+---
+
+## 11. ML — обучение, калибровка, Core ML и admission
+
+| ID | Статус | P | Depends | Read / Own | Действие | Check / Done when |
+|---|---|---:|---|---|---|---|
+| ML-001 | `DONE` | P2 | — | Existing artifacts | Сохранён research-only Stage-2 silver baseline; не использовать как production claim. | Receipt/checkpoint hashes существуют. |
+| ML-002 | `DONE` | P0 | DATA-002 | Own model architecture contract | Определить минимальные production heads и loss: verdict/good, issues, action utility, deltas, risk, abstention; temporal отдельно. | **2026-09-22:** `ml/camera_coach/contracts/camera_production_heads_v1.md` + `check_production_heads_v1.py`: 7 позиций — good_frame_probability, issue_logits (15/15 heads), action_utility_logits (ровно 26 mapped из DATA-002), continuous_target_deltas (5 осей), risk_probability, abstention_probability (reason-коды — детерминированные на стороне приложения в v1), calibration_artifact (не-тензорный head, путь CAM-003/ML-007); temporal — `deferred_to_ML_011`. Check PASS: 7/7 target/mask/loss/metric/consumer; 41 consumer-символ сверён с capability mapping; partition всех 33 действий (26 proposed + 7 excluded); 5 негативов → FAIL. Зафиксирован drift: обученный action_utility_logits[26] называет другую 26-выборку (4 unsupported включены, 5 mapped technical исключены). Достижение порогов Gate C2 не заявляется (ML-006/008/011). Receipt: `receipts/2026-09-22-ml-002-production-heads-contract.md`. |
+| ML-003 | `DONE` | P0 | ML-002 | Own trainer/config | Расширить trainer на отсутствующие heads с masked losses; старый focused checkpoint остаётся загрузимым только как research baseline. | **2026-09-22:** `ml/camera_coach/production_heads.py`: layout выводится read-only из pinned контрактов (15 issue / 26 mapped / 5 deltas / good+risk+abstention); маска = наличие label — отсутствующий label даёт mask 0 и ровно нулевой градиент (анти-паттерн «missing label стал zero target» покрыт отдельным тестом); masked_bce/masked_huber; полностью замаскированная head = differentiable zero; старый research checkpoint грузится только с `research_only=True`, `production_admitted=False`, старый layout зафиксирован. pytest: 14 новых тестов + 74 total passed (torch 2.10 CPU). Обучение не запускалось (по строке); финальный fit ждёт DATA-016. Receipt: `receipts/2026-09-22-ml-003-masked-heads-trainer.md`. |
+| ML-004 | `PARTIAL` | P0 | DATA-016, ML-003 | Own Colab bundle/notebook | Собрать reproducible training bundle: pinned code/config/data hashes, resume, Drive paths, receipts. | **2026-09-23 (bounded prep):** `ml/camera_coach/colab_bundle/`: build_bundle.py (детерминированный tar.gz: 18 файлов кода с хешами; pinned config — ширины 1/15/26/5/1/1, masked losses, seed + 2 seeds для ML-009, resume на Drive), check_environment.py (fail-closed preflight: код-хеши 18/18, контракт-чек, hash-верификация данных, **human-gold gate: `final_fit` exit 3 без контракт-валидных human меток — silver не проходит**), colab_training_template.ipynb (preflight→verify→smoke→train→per-head eval→FP16 export sketch→receipts), README (сборка/Drive/rclone/Colab Pro A100-T4). data_manifest: 11 810 package_frame + 636 silver + слот human_labels (queue pin `cbb55e63…`). Тест: сборка PASS (sha `8caa5b14…`), preflight dry_run PASS exit 0, final_fit блокируется exit 3, smoke-ячейка warning-clean; /tmp очищен. **Остаток:** загрузка на Drive + preflight на реальном Colab runtime + human-gold наполнение (DATA-010+). Receipt: `receipts/2026-09-23-ml-004-colab-bundle-prep.md`. |
+| ML-005 | `TODO` | P0 | ML-004 | Own training run artifacts | Обучить human-gold candidate с early stopping/checkpoints, не трогая locked test. | Complete receipt, metrics.jsonl, config, environment, final hash. |
+| ML-006 | `TODO` | P0 | ML-005 | Own eval script/report | Посчитать per-head/per-case metrics на validation, включая no-issue false positives и direction/magnitude errors. | Report не агрегирует safety failures в одну среднюю accuracy. |
+| ML-007 | `TODO` | P0 | ML-005 | Own calibration artifact | Калибровать probabilities/thresholds на calibration split: good, issues, risk, abstain, show/silent. | Reliability/ECE/selective-risk curves; artifact hash и schema. |
+| ML-008 | `TODO` | P0 | ML-007, DATA-012 | Own locked eval report | Однократно оценить locked still test по acceptance thresholds. | Immutable report; expected-action/forbidden/wrong-direction/good-frame/abstention отдельно. |
+| ML-009 | `TODO` | P0 | ML-005 | Own repeated-run report | Запустить минимум 3 seeds или документированный эквивалент variance check. | Mean/range записаны; один удачный seed не объявлен production. |
+| ML-010 | `TODO` | P1 | ML-006, ML-009 | Own ablation report | Ограниченно сравнить existing deterministic baseline и model+gates на validation; дополнительные crop/intent/vector ablations делать только для конкретной гипотезы. Завершить выбор до ML-008; locked test не использовать для подбора. | Зафиксирован минимальный вариант и validation evidence. Если ablation не нужна, решение записано до locked test без заявления о проверенном выигрыше. |
+| ML-011 | `TODO` | P0 | DATA-014, ML-002 | Own existing temporal verifier/eval | Сначала оценить существующий target-scoped verifier на locked temporal clips. Обучать отдельный outcome scorer только для доказанного пробела поддерживаемой action family; unsupported остаётся incomparable. | Wrong-direction false success=0 и остальные acceptance thresholds выполнены. Receipt фиксирует: existing verifier sufficient либо named gap и квалифицированный scorer; отдельная модель не обязательна сама по себе. |
+| ML-012 | `TODO` | P0 | ML-007, ML-008, ML-009 | Own export script | Экспортировать FP16 `mlprogram` со всеми каноническими I/O и calibration metadata. Temporal scorer — отдельный artifact, только если ML-011 доказал необходимость; он не блокирует экспорт still scorer. | Model compiles; names/shapes/ranges match contract; hash recorded. |
+| ML-013 | `TODO` | P0 | ML-012 | Own parity harness/report | Выполнить PyTorch↔Core ML parity на fixed diverse batch для каждого output. | Max/mean deltas ниже заранее заданных tolerances; mismatch blocks admission. |
+| ML-014 | `TODO` | P0 | ML-008, ML-009, ML-013 | Own model card/receipt | Собрать production-candidate model card: data, rights, metrics, limits, hashes, intended/forbidden use. | Никаких research_only/release_admissible=false источников без отдельного admission. |
+| ML-015 | `TODO` | P0 | ML-014, SEC-006 | Own Xcode resource integration | Добавить admitted model/calibration в Release bundle и generated binding; исключить research checkpoints. | Bundle inventory содержит ровно approved artifact; runtime verifies hash/schema. |
+| ML-016 | `TODO` | P0 | ML-015, CAM-011 | Own device benchmark path | Измерить latency, memory, energy/thermal и frame scheduling на supported physical devices. | P50/P95, memory peak, thermal degradation и fallback соответствуют acceptance. |
+| ML-017 | `TODO` | P0 | ML-016 | Own robustness report | Проверить low light, motion, orientation, lens switch, crowded scenes, no-subject, adversarial clutter. | Каждый failure maps to abstain/fallback; no crash/NaN/stale advice. |
+| ML-018 | `TODO` | P0 | ML-008…ML-017 | Own admission decision | Подписать технический ML admission: pass или fail с конкретными unmet thresholds. | Только `pass` разрешает default-on; fail оставляет model disabled/research-only. |
+
+---
+
+## 12. UI — интерфейс, анимации, accessibility и localization
+
+| ID | Статус | P | Depends | Read / Own | Действие | Check / Done when |
+|---|---|---:|---|---|---|---|
+| UI-001 | `DONE` | P0 | GOV-001 | Own UI matrix doc | Инвентаризировать все user-visible states Camera/Scene/Library/Privacy: loading, permission, live, paused, capture, error, offline, empty. | **2026-09-22:** `docs/implementation/ui-states-matrix-v1.md`: 91 user-visible state в 8 зонах (Entry/Permission 10, Camera live 13, Pause/Review 5, Cloud review/consent 11, Recording/Export 12, Scene Mode 20, Library 10, Privacy/deletion 10), каждая строка — entry/exit/владелец файл:строка/fixture-классификация/expected screenshot + VoiceOver/Dynamic Type/RU-EN; iPhone+iPad ориентационные примечания по GOV-003. 44 state с fixture, 47 без dedicated (44 из них с unit-покрытием; полностью без тестов — A10 settings-fallback и G6 rename, презентация отсутствует). Честные gaps: отдельного offline-state в Camera live нет (локальный продукт), S05 — нумерационная дыра enum, зоны D/E/H без скриншот-фикстур. RU/EN подтверждены парсом `Localizable.xcstrings` (689 ключей, en+ru). Receipt: `receipts/2026-09-22-ui-001-states-matrix.md`. |
+| UI-002 | `DONE` | P0 | UI-001 | Own existing design-system tokens only | Свести типографику, spacing, color, corner, material и motion к существующим tokens; не делать новый parallel design system. | **2026-09-22:** bounded diff 5 файлов / 35↔35 строк, все замены value-identical 1:1 на существующие токены (SETSpacing x1–x4, `SETComponentMetric.minimumHitTarget`, `SETRadius.control`, `SETTypographySize.micro/displayLarge`, `SETStroke.standard`); новых токенов НЕ создавалось; контраст/Dynamic Type не менялись по построению. Минимальный чек — зелёная сборка app-таргета (focused-тестов на эти вьюхи нет): Pods-prebuild + -project lane по документированному обходу Xcode 27.0. Честный token-пробел зафиксирован (spacing 2/3/5/6/9/10/14, radius 12/16, статусные цвета, материалы, motion-длительности — без эквивалентов; не фабриковать). Receipt: `receipts/2026-09-22-ui-002-token-consolidation.md`. |
+| UI-003 | `TODO` | P0 | CAM-012 | Own `SETCameraCoachProductionView.swift` and existing overlay components | Сделать live overlay спокойным: одна primary instruction, region/arrow при evidence, confidence не показывать как псевдоточность. | No overlapping controls/text; stale instruction expires; safe-area/rotation fixtures. |
+| UI-004 | `TODO` | P0 | CAM-012 | Own pause/review sheet | Показать «что увидели → что сделать → как проверить», allow dismiss/skip/repeat только когда action exists. | Skip/Repeat accessibility actions реально выполняют действие или отсутствуют. |
+| UI-005 | `TODO` | P1 | UI-003, UI-004 | Own motion/haptics owners | Добавить минимальные transitions/haptics для acquired target, advice change, verified improvement, error; respect Reduce Motion. | No animation loop/jank; Reduce Motion path and haptic availability verified. |
+| UI-006 | `PARTIAL` | P0 | UI-003 | Own camera permission screens | Проверить first ask, denied, restricted, Settings return, no camera device. | **2026-09-22 (выполнено досрочно от матрицы UI-001, поскольку Depends UI-003 заблокирован CAM-012; конфликтов с владельцами нет):** симуляторно-проверяемая часть закрыта: матрица A1–A10 в receipt — notDetermined→first ask (один request на явный тап); denied→OPEN SETTINGS+CHECK AGAIN+fallback; restricted→отдельный copy «КАМЕРА ОГРАНИЧЕНА СИСТЕМОЙ», recheck-only; no camera device→`.blocked(.unavailable)` до авторизационных веток; Settings return — foreground-цепочка SceneDelegate→recheck (только blocked); prompt loop отсутствует. `.limited`→`blocked(.unknown)` честный маппинг (Photos-only на iOS). RU/EN: все 24 ключа зоны существуют в xcstrings (en+ru). A10 settings-fallback извлечён в тестируемую политику + исправлен stale-footer; 43 tests / 0 failures (serial, обход Xcode 27.0). **Остаток:** физический Settings round-trip / реальный restricted / отсутствие камеры — DEV-002. Receipt: `receipts/2026-09-22-ui-006-permission-states.md`. |
+| UI-007 | `DONE` | P0 | UI-001 | Own Dynamic Type issues | Устранить clipping; observation line не должна иметь fixed-size layout. | **2026-09-22:** observation line переведена на scaled-шрифты (`relativeTo: .body`) + multiline, `lineLimit(1)`/fixed-size убраны; supporting observation — scaled `.caption2`; статус-rail резервирует высоту из рендеримого контента (`liveRailHeight(contentSizeCategory:)`, UIFontMetrics-зеркалирование рендера); CTA — `@ScaledMetric` clamp, stacked ≥44pt hit target; pause title-band без `lineLimit(2)`+`minimumScaleFactor`, band в ScrollView — CTA первый ребёнок (доступен без скролла). Anti-регрессионные тесты: монотонный рост rail XS→AX5 EN/RU, anti-underestimation floor на AX5. Focused 77 / 0 failures (serial, обход Xcode 27.0). Осознанное ограничение: HUD-хром (timecode/tally/lens) остаётся компактным fixed — его функции доступны через named accessibility actions; визуальное принятие XS…AX5/XXXL — UI-013/014. Receipt: `receipts/2026-09-22-ui-007-dynamic-type.md`. |
+| UI-008 | `PARTIAL` | P0 | UI-001 | Own accessibility labels/actions/focus | VoiceOver order, labels, hints, live region cadence, target overlay alternative. | **2026-09-22:** аудит зон A/B/C/G: labels/hints/Skip-Repeat как accessibilityActions — PASS; два реальных gap исправлены: (1) live region cadence — авто-announcement новой подсказки ровно один раз через dedupe-гейт `CameraCoachHintAnnouncementGate` (только при активном VoiceOver, ручной repeat сохранён); (2) target overlay → словами: `regionWords(for:locale:)` вербальная 3×3-позиция RU/EN без координат в `.accessibilityValue` + вербальная альтернатива скрытого pause-маркера; 7 новых ключей `set.a11y.region.*` (en+ru). 62 tests / 0 failures + 56 смежных. **Остатки:** физический VoiceOver-journey без зрения (главный, DEV-002/UI-013); порядок фокуса live-surface (ZStack-реструктуризация — отдельный bounded элемент, визуальный риск); зоны D/E/F/H построчно не аудированы. Receipt: `receipts/2026-09-22-ui-008-accessibility.md`. |
+| UI-009 | `PARTIAL` | P0 | GOV-003, UI-001 | Own rotation/iPad layout | Реализовать/проверить выбранный iPad contract и landscape, либо убрать iPad capability. | **2026-09-22:** iPad capability подтверждена на двух supported iPad-симуляторах (iOS 27.0 и 26.5) реальной геометрией из логов приложения — не portrait-like false pass: portrait 834×1210 ↔ landscape 1210×834 с физическим resize окна; `CameraCoachLaunchUITests` 5/5 (включая Scene library landscape реальным пользовательским путём и rotation survival); контракт-тесты 18/18 на обоих симуляторах (universal, 4 ориентации, resizable windows, minOS 17.0). DEBUG-логирование геометрии добавлено в shell (Release не затронут); продуктовый rotation-код менять не потребовалось. **Находка:** строка `UIRequiresFullScreen = YES` в `ipad-platform-contract-v1.md` устарела — владелец 2026-09-16 перевёл продукт на native resizable windows (diploma.md, commit `d4815f3`); по §0 код под устаревшую строку НЕ подгонялся; сверка docs (`ipad-platform-contract-v1.md`, `windowing-policy-v1.md`, `ui-states-matrix-v1.md:13`, claim CL-CA-049) — за владельцем. **Остатки:** физический iPad — DEV-011; PortraitUpsideDown отдельно не крутился. Receipt: `receipts/2026-09-22-ui-009-ipad-rotation.md`. |
+| UI-010 | `TODO` | P0 | BE-012 | Own Scene error surfaces | 401, timeout, quota, offline, cancellation, retry, fallback и deletion errors не скрываются. | Each backend fixture shows actionable, localized state and returns safely. |
+| UI-011 | `DONE` | P1 | UI-001 | Own Library empty/error/recovery | Упростить Library empty state, recording finalization recovery и missing asset presentation. | **2026-09-22:** G3 pre-load blank → детерминированный skeleton (`SETLibraryLoadingState`, a11y + ключи RU/EN); G6 dead CTA устранён: RENAME открывал `EmptyView` без подтверждения — добавлена рабочая `SETLibraryRenamePanel` (confirm/cancel/duplicate notice, fixture routes `library.rename-*`); исправлен реальный баг модели: `confirmRename()` был no-op в состоянии `.renameDuplicate`; продуктовое решение — минимальная рабочая презентация вместо скрытия проверенной функции. G9: отсутствующий/нерегулярный/нулевой файл → детерминированный discard → честный metadata-placeholder. 7 новых тестов; focused 28 / 0 failures (serial, обход Xcode 27.0). Остатки: UI-snapshot lane для rename; interrupted finalization на записи — DEV-008/010. Receipt: `receipts/2026-09-22-ui-011-library-states.md`. |
+| UI-012 | `PARTIAL` | P0 | UI-003…UI-011 | Own localization audit | Проверить все новые RU/EN keys, pluralization, truncation и source/bundle equality. | **2026-09-23 (превью-аудит; полная строка остаётся blocked — UI-003/004/005 на CAM-012):** ключи, добавленные слайсами 2026-09-22 (ровно 9: 7×`set.a11y.region.*`, `set.library.loading`, `set.library.rename.confirm`) — все критерии PASS (en+ru непусты; truncation безопасен — region только в VoiceOver value-канал; pluralization N/A; без technical copy). Добавлен регрессионный тест в `CameraCoachLocalizationAddresseeTests` (16/0) — ранее 2 library-ключа не были покрыты и фолбэк вывел бы raw-ключ в UI. Зафиксировано за полной строкой: каталоговый валидатор (~698 ключей) отсутствует; pre-existing `set.library.count` («СЦЕН: %d» неверно для 1–4) и `set.generator.beat.status` без plural-вариаций. Receipt: `receipts/2026-09-23-ui-012-preaudit-new-keys.md`. |
+| UI-013 | `TODO` | P0 | UI-012 | Own screenshot evidence only | Снять финальную device/language/orientation/state matrix после feature freeze. | Screenshots bound to candidate binary/HEAD and visually reviewed once. |
+| UI-014 | `TODO` | P0 | UI-013 | Own UI acceptance receipt | Провести anti-AI-slop review: hierarchy, density, consistency, motion, native behavior, no debug/research copy. | Findings either fixed or explicit release blockers; review не превращён в бесконечный redesign. |
+
+---
+
+## 13. BE — Scene backend и production service
+
+Backend source находится рядом: `/Users/unterlantas/Documents/XCode/setos-backend`. Это отдельный локальный package без Git; не считать это production deployment.
+
+| ID | Статус | P | Depends | Read / Own | Действие | Check / Done when |
+|---|---|---:|---|---|---|---|
+| BE-001 | `BLOCKED_OWNER` | P0 | GOV-002 | Own decision note | Выбрать host, domain, region, provider model и месячный spend cap. | Значения записаны без секретов; privacy/cost tasks разблокированы. |
+| BE-002 | `TODO` | P0 | BE-001 | Own backend runtime config | Сделать production env template и secret list; defaults fail closed. | Missing secret/URL/provider → readyz false; secret не попадает в log/receipt. |
+| BE-003 | `TODO` | P0 | BE-002 | Own deployment files | Развернуть service за TLS/reverse proxy на выбранном host из existing templates. | Public health endpoint и authenticated internal path; no direct debug port exposure. |
+| BE-004 | `TODO` | P0 | BE-003 | Own App Attest server state | Настроить production App ID/team/environment, enrollment, assertion verification, replay defense и key rotation. | Simulator/dev bypass отсутствует в Release; replay/invalid assertion rejected. |
+| BE-005 | `TODO` | P0 | BE-004 | Own app token provider/config | Привязать iOS candidate к production base URL/App Attest без hardcoded secret. | Valid device request succeeds; missing/invalid config gives explicit UI error. |
+| BE-006 | `TODO` | P0 | BE-001 | Own provider adapter/eval | Выбрать provider model на fixed Scene prompts: validity, latency, cost, safety, RU/EN. | Evaluation report и model/version pinned; fallback criteria explicit. |
+| BE-007 | `TODO` | P0 | BE-006 | Own prompt/schema validator | Зафиксировать production prompt/schema and strict response validation; no free-form unsafe plan reaches app. | Malformed/oversized/unknown action rejected or repaired boundedly. |
+| BE-008 | `TODO` | P0 | BE-006 | Own quotas/spend controls | Настроить per-install/IP quotas, concurrency, timeout, retry budget и hard monthly cap. | Load/abuse fixtures cannot bypass cap; user gets localized quota state. |
+| BE-009 | `TODO` | P0 | BE-003 | Own retention/deletion config | Зафиксировать stored fields, TTL и deletion semantics; security/replay/quota retention раскрыть честно. | Integration test proves user data deletion; retained security state documented. |
+| BE-010 | `TODO` | P0 | BE-003 | Own logs/metrics | Добавить redacted request IDs, latency/error/cost metrics and alerts; no image/prompt retention beyond policy. | Synthetic incident traceable end-to-end; secret/PII scan passes. |
+| BE-011 | `TODO` | P0 | BE-006…BE-010 | Own backend qualification receipt | Запустить existing seven-gate qualification against deployed service. | readyz true and receipt binds host/config/model/schema hashes. |
+| BE-012 | `TODO` | P0 | BE-005, BE-011 | Own app integration fixture/evidence | Проверить app 401, invalid assertion, timeout, cancellation, retry, quota, malformed response, offline. | Each state maps to typed error and recoverable UI; no hang/silent fallback. |
+| BE-013 | `TODO` | P0 | BE-012 | Own end-to-end receipt | На signed physical app: prompt→job→clarification→plan→2D/AR→cancel/delete. | Receipt binds app build, server deploy, request IDs and screenshots/video. |
+| BE-014 | `TODO` | P1 | BE-011 | Own load report | Bounded load/soak at expected beta concurrency; verify queue, timeout and cost. | SLOs and spend cap hold; no unbounded worker/memory growth. |
+| BE-015 | `TODO` | P0 | BE-011 | Own backup/restore/key rotation runbook | Проверить restart, state migration, backup/restore where applicable, rotation and rollback. | Operator can recover without deleting security state or accepting replay. |
+| BE-016 | `TODO` | P0 | BE-011…BE-015 | Own `OPERATIONS.md` update | Свести exact deploy/rollback/incident/deletion/support commands. | Fresh operator follows runbook without undocumented local machine state. |
+
+---
+
+## 14. DEV — physical camera, Scene/AR, recording и Library
+
+| ID | Статус | P | Depends | Read / Own | Действие | Check / Done when |
+|---|---|---:|---|---|---|---|
+| DEV-001 | `BLOCKED_OWNER` | P0 | GOV-001 | Own signing evidence | Выбрать App Attest-capable Apple team/profile и предоставить unlocked iPhone; Personal Team недостаточна. | Intended app installs/launches with correct entitlements; receipt preserved. |
+| DEV-002 | `TODO` | P0 | DEV-001 | Own physical permission receipt | Проверить camera/mic/speech/photos first ask, deny, restricted, Settings retry. | State machine matches UI; no repeated prompt loop. |
+| DEV-003 | `TODO` | P0 | DEV-001, CAM-022 | Own camera journey receipt | Пройти live coach on-device: target select/track, advice, action, verification, pause/resume, capture. | No crash/stale target; advice evidence recorded, not manually asserted. |
+| DEV-004 | `TODO` | P0 | DEV-003 | Own lens/torch/focus path | Проверить actual lens/torch/focus/exposure state and app readback; убрать fail-open legacy paths. | UI never claims unsupported state; switch preserves/invalidates advice correctly. |
+| DEV-005 | `TODO` | P0 | DEV-003, ML-016 | Own thermal/memory receipt | 20–30 min Camera Coach soak with recording transitions, background/foreground and thermal pressure. | No runaway memory, frozen preview, invalid advice cadence or lost finalization. |
+| DEV-006 | `TODO` | P0 | GOV-002, BE-013 | Own Scene physical receipt | Проверить Scene input/clarification/result on signed device under good/slow/offline network. | All transitions recoverable; no debug credentials or localhost dependency. |
+| DEV-007 | `TODO` | P0 | DEV-006 | Own AR owners/evidence | Найти root cause blank AR A/B/A, затем проверить tracking, relocalization, interruption and unsupported device. | Blank render fixed at shared owner; physical AR evidence passes or feature gates honestly. |
+| DEV-008 | `TODO` | P0 | DEV-001 | Own recording controller/service | Проверить photo/video capture, audio sync, orientation, interruption, low storage and finalize recovery. | Saved media playable/correct; interrupted finalization is recoverable. |
+| DEV-009 | `TODO` | P0 | DEV-008 | Own Photos export | Проверить add-only authorization, export, denial, duplicate/retry and returned asset identity. | No false success; exported asset opens and matches recorded artifact. |
+| DEV-010 | `TODO` | P0 | DEV-008 | Own Library persistence | Relaunch/migration/missing-file/corrupt-metadata handling. | No crash/data-loss claim; user can remove broken record or recover artifact. |
+| DEV-011 | `TODO` | P0 | GOV-003 | Own iPad physical receipt | Если iPad в scope: camera, Scene, AR, rotation, keyboard and multitasking smoke. | Device-family acceptance complete; otherwise capability removed via explicit task. |
+| DEV-012 | `TODO` | P0 | DEV-002…DEV-011 | Own device matrix receipt | Свести exact device/OS/build/results and unresolved hardware gaps. | Every supported capability has real-device evidence or a release blocker. |
+
+---
+
+## 15. SEC — privacy, provenance, security и legal-tech evidence
+
+| ID | Статус | P | Depends | Read / Own | Действие | Check / Done when |
+|---|---|---:|---|---|---|---|
+| SEC-001 | `TODO` | P0 | GOV-001, BE-001 | Own `data-flows.md` | Обновить фактические app/backend data flows: images, prompts, device attest, logs, metrics, deletion, local ML. | Каждое collected/transmitted/stored поле имеет purpose, endpoint, retention, deletion. |
+| SEC-002 | `TODO` | P0 | SEC-001 | Own privacy manifest validation only if APIs changed | Повторить Required Reason API/SDK manifest audit на final source. | Source and built bundle manifests equal; unknown SDK manifest blocks. |
+| SEC-003 | `TODO` | P0 | SEC-001, BE-009 | Own `AppPrivacyAnswers.json` | Обновить App Privacy answers по фактическому provider/region/retention. | Каждый ответ имеет code/config evidence; unknown не заменён догадкой. |
+| SEC-004 | `BLOCKED_OWNER` | P0 | SEC-001 | Own hosted content inputs | Владелец предоставляет legal/operator/contact/Support URL/domain decisions. | Не публиковать выдуманный адрес/оператора. |
+| SEC-005 | `TODO` | P0 | SEC-003, SEC-004 | Own privacy/support page | Опубликовать RU/EN policy/support и проверить in-app links before camera permission. | HTTPS URL доступен; text совпадает с production behavior. |
+| SEC-006 | `BLOCKED_OWNER` | P0 | GOV-001 | Own provenance rows/evidence | Закрыть четыре PENDING components: DETR, Llama framework, NIMA, resource asset catalog через verified provenance/replacement/owner admission. | Bundle validator показывает 0 PENDING; notice alone не считается model/data admission. |
+| SEC-007 | `TODO` | P0 | ML-014, SEC-006 | Own new model provenance row | Привязать production Camera model к exact code/data/weights/license/model card hashes. | Release-admissible row and negative changed-byte control pass. |
+| SEC-008 | `TODO` | P0 | BE-004…BE-010 | Own threat-model note | Проверить App Attest bypass, replay, quota abuse, prompt/schema injection, SSRF/path traversal, secret/log leakage. | Каждый realistic threat имеет enforced control and focused check. |
+| SEC-009 | `TODO` | P1 | SEC-008 | Own dependency inventory | Обновить direct/transitive SDK/license/privacy inventory from actual build. | Нет неизвестного binary/framework; version/source/license recorded. |
+| SEC-010 | `TODO` | P0 | BE-002, ML-015 | Own secret scan receipt | Проверить tracked files, built app and receipts на API keys/tokens/local paths requiring removal. | No live secrets in repo/bundle/log; discovered key rotated by owner. |
+| SEC-011 | `TODO` | P0 | BE-009, DEV-010 | Own deletion E2E receipt | Проверить installation deletion from app through deployed backend and local app cleanup. | User-visible completion reflects real result; retained security state disclosed. |
+| SEC-012 | `TODO` | P0 | SEC-001…SEC-011 | Own final privacy/provenance receipt | Свести final source+bundle validation, data flows and owner decisions. | Technical gate pass; legal assertions explicitly remain owner responsibility. |
+| SEC-013 | `TODO` | P1 | SEC-012 | Own review notes privacy section | Написать review explanation local Camera vs remote Scene and permission timing. | Reviewer can reproduce without exposing test secrets. |
+| SEC-014 | `TODO` | P0 | SEC-012 | Own tracker gate status | Обновить release gates JSON from fresh evidence; не редактировать historical receipts. | `release_ready` остаётся false до всех gates; current artifact fields accurate. |
+
+---
+
+## 16. REL — tests, CI, archive и App Store package
+
+| ID | Статус | P | Depends | Read / Own | Действие | Check / Done when |
+|---|---|---:|---|---|---|---|
+| REL-001 | `DONE` | P0 | GOV-001 | Own test inventory receipt | Классифицировать test targets/schemes и failures по release relevance, применяя §7: runtime/safety/model contract и acceptance checks обязательны; historical heuristic perceptual assertions — diagnostic до оценки интегрированной модели. Для каждого переноса указать assertion, причину и replacement ML eval; неизвестный failure не снимать с release gate. | **2026-09-22:** `docs/implementation/test-command-matrix-v1.md`: канонические lane'ы M0–M7 — blocking (M0 smoke 133: safety gate, verifier, planner, CAM-009 runtime/safety селекторы, privacy-скрипт; M1–M5 по зонам; M-UI 54 blocking) / diagnostic (3 perceptual метода CAM-009 + NIMA-staging → ML-006/010, POST-007) / device-gated (4 capture + iPad diagnostic с заменами DEV-002…004/011, не false-pass). Инварианты: zero-test run = failure; неизвестный failure остаётся release-gated; serial-режим для A-семьи; единственный `-skip-testing` — legacy `CameraCoachLaunchUITests` (CC-005 false-green, не safety). Все 48 genuine CAM-001 классифицированы. Grep-консистентность: 49/49 тест-классов, 39/39 масок, 18/18 методов существуют; 196 unit-классов, 2 299+62 методов. Факты: CAM-008 skip-gate для C-семьи (168/179/190.jpg) в дереве отсутствует — методы hard-throw, решение за владельцем (§19 п.7); 1 из 48 named failures невосстановим из логов — покрыт unknown-failure правилом. Receipt: `receipts/2026-09-22-rel-001-test-inventory.md`. |
+| REL-002 | `TODO` | P0 | CAM-022, UI-012, DEV-012 | Own affected tests/source only | Закрыть все release-relevant unit/UI regressions; update existing oracle только после product decision. | Targeted batches pass on candidate HEAD. |
+| REL-003 | `PARTIAL` | P1 | REL-001 | Own CI config | Добавить минимальный required check: source validation, privacy/provenance, focused unit/UI build. | **2026-09-22:** `scripts/required_check.sh` (4 шага: python-валидаторы контрактов; Pods-prebuild обход Xcode 27.0; M0 smoke lane — 13 масок, ровно 133 теста, «zero-test = failure» тройной проверкой; privacy manifest source+bundle) + `.github/workflows/required-check.yml` (retention 14 дней, без секретов). Локальный прогон зелёный: rc=0, 83 c, 133/0, privacy PASS. **Остаток (Done-when):** clean CI runner воспроизводимость НЕ верифицирована — push/включение Actions и контрольный прогон за владельцем (файлы untracked до решения). Число 133 pinned: изменение состава M0 даст честный FAIL до синхронизации с матрицей. Receipt: `receipts/2026-09-22-rel-003-required-check.md`. |
+| REL-004 | `TODO` | P0 | ML-015, SEC-012, REL-002 | Own candidate manifest | Заморозить release candidate HEAD, build inputs, model/backend config, version/build. | Manifest hashes all inputs; dirty/untracked build input blocks archive. |
+| REL-005 | `TODO` | P0 | REL-004 | Own archive receipt | Создать fresh clean unsigned/signed-as-available archive existing tool. | Native build 0; source unchanged; current HEAD/fingerprint; no stale artifact reuse. |
+| REL-006 | `TODO` | P0 | REL-005 | Own bundle validation receipt | Проверить bundle size, resources, privacy manifests, localization, forbidden research assets, provenance. | Validator 0, 0 PENDING, negative controls pass. |
+| REL-007 | `BLOCKED_OWNER` | P0 | DEV-001, REL-006 | Own signing/export receipt | Получить distribution certificate/profile and export signed IPA. | Correct team/entitlements/App Attest/environment; validation passes. |
+| REL-008 | `TODO` | P0 | UI-013, SEC-005 | Own metadata draft | Финализировать RU/EN name, subtitle, description, keywords, URLs, age/content answers. | JSON has no placeholder/owner_decision except ASC-only fields. |
+| REL-009 | `TODO` | P0 | UI-013, GOV-003 | Own screenshot set | Подготовить required device-size screenshots from final binary; no debug overlays or misleading features. | Complete size/language set and source evidence. |
+| REL-010 | `TODO` | P0 | BE-013, DEV-012, REL-006 | Own review notes/demo instructions | Финализировать review notes: permissions, Camera local, Scene remote, App Attest, demo path, no IAP. | Reviewer can reach every submitted feature; no localhost/test-only dependency. |
+| REL-011 | `TODO` | P0 | REL-007…REL-010, BETA-007 | Own final gate receipt | Пересчитать A–L acceptance and `AppStoreSubmissionGates.json`. | Все technical gates satisfied; owner-only ASC actions listed separately. |
+| REL-012 | `BLOCKED_OWNER` | P0 | REL-011 | No repo mutation | Владелец выполняет App Store Connect record, privacy answers, upload, TestFlight/submission. | Вне автоматических полномочий; сохранить returned ASC errors for new task. |
+| REL-013 | `BLOCKED_EXTERNAL` | P0 | REL-012 | Own response-only fix task if needed | Обработать только конкретный ASC validation/review issue без расширения scope. | Rebuilt candidate and evidence address exact issue; resubmission by owner. |
+
+---
+
+## 17. BETA — human acceptance и release decision
+
+| ID | Статус | P | Depends | Read / Own | Действие | Check / Done when |
+|---|---|---:|---|---|---|---|
+| BETA-001 | `TODO` | P0 | DEV-012, REL-006 | Own beta plan | Определить 8–15 testers, device/experience mix, scripted core journeys and consent/data policy. | Plan covers Camera good/bad/no-advice, Scene, capture/export and failures. |
+| BETA-002 | `BLOCKED_OWNER` | P0 | BETA-001, REL-007 | External tester access | Владелец распространяет signed beta/TestFlight build. | Exact build/version and tester cohort recorded. |
+| BETA-003 | `TODO` | P0 | BETA-002 | Own anonymized feedback ledger | Собрать usefulness, wrong advice, confusion, crashes, latency and abandonment; не сохранять media без consent. | Each issue has build/device/scenario/severity/repro/evidence. |
+| BETA-004 | `TODO` | P0 | BETA-003 | Own triage only | Классифицировать P0 wrong/safety, P1 broken journey, P2 polish; создать отдельные bounded tasks. | No giant «fix beta» task; each defect maps to owner/check. |
+| BETA-005 | `TODO` | P0 | BETA-004 | Own affected code per defect | Закрыть P0/P1 beta defects и повторить exact scenario. | Regression evidence on fixed build; unrelated polish deferred. |
+| BETA-006 | `TODO` | P0 | BETA-005 | Own second beta receipt | Повторный bounded beta на release candidate. | Нет open P0/P1; acceptance metrics meet `PRODUCTION_ACCEPTANCE.md`. |
+| BETA-007 | `TODO` | P0 | BETA-006 | Own release decision record | Провести go/no-go по product quality, reliability, privacy, backend cost and support readiness. | Explicit GO or NO-GO with unmet task IDs; no optimistic conditional GO. |
+| BETA-008 | `TODO` | P1 | BETA-007 | Own post-release plan | Подготовить monitoring/support/rollback and first patch triggers without adding pre-release scope. | Named owner and thresholds for crash/backend/cost/advice regressions. |
+
+---
+
+## 18. Deferred backlog — не блокирует 1.0
+
+| ID | Статус | Возможное назначение | Условие возврата |
+|---|---|---|---|
+| POST-001 | `DEFERRED` | Cloud VLM Deep Review изображения по явному consent. | После стабильного local core, privacy/cost design и отдельного product decision. |
+| POST-002 | `DEFERRED` | Jev как text/state decision reranker или annotation QA. | Только после API stability, typed schema eval и доказанного выигрыша; Jev не видит pixels и не заменяет vision model. |
+| POST-003 | `DEFERRED` | Subscription/credits/StoreKit/account. | После instrumented beta и утверждённой монетизации. |
+| POST-004 | `DEFERRED` | Автоматический best-take ranking больших серий. | После CAM-020 evidence и product demand. |
+| POST-005 | `DEFERRED` | Cloud sync/history/social sharing. | После privacy/account architecture decision. |
+| POST-006 | `DEFERRED` | Новые decorative UI concepts. | Только если beta выявит конкретную usability проблему. |
+| POST-007 | `DEFERRED` | Расширение ручной визуальной классификации: новые low-key/cinematic/object-insert семьи, replay-specific KEEP overrides, подбор heuristic confidence и порогов под отдельные изображения. Исключено из обязательной реализации CAM-009/010. | Только если ML-006/010/017 или beta докажут конкретный production-пробел, который нельзя закрыть данными, моделью или консервативным abstention. Нужны named failure, ограниченный scope и независимые positive/negative controls; не возвращать весь исторический oracle как цель. |
+
+---
+
+## 19. Очередь действий владельца
+
+Это не задачи, которые агент имеет право угадывать или выполнять сам.
+
+1. ~~**GOV-002:** оставить ли Scene Mode в 1.0.~~ — Решено 2026-09-20: остаётся, разработка на паузе (см. GOV-002).
+2. ~~**GOV-003:** поддерживать ли iPad в 1.0.~~ — Решено 2026-09-20: iPhone+iPad (см. GOV-003).
+3. **DATA-010/011/013:** обеспечить human reviewers и ручное подтверждение разметки.
+4. **BE-001:** выбрать/оплатить host, domain, provider, region и spend cap.
+5. **DEV-001/REL-007:** дать App Attest-capable Apple team, profiles, certificates и unlocked devices.
+6. **SEC-004/006:** подтвердить operator/contact/legal facts и provenance decisions/replacements.
+7. **Reference assets (новое, 2026-09-20):** восстановить аутентифицированные бенчмарк-изображения `168.jpg`, `179.jpg`, `190.jpg` (нужны для 3 presentation-тестов; отсутствуют в Debug-паке, legacy-payload и во всём `local-data/SETOS`). Либо подтвердить вывод этих кейсов из acceptance. REL-001 подтвердил 2026-09-22: методы hard-throw, skip-gate в дереве отсутствует — решение обязательное.
+8. **Storage cleanup (частично исполнено 2026-09-23, +19 GiB):** по разрешению владельца («удаляй», Bonus_Exchange не трогать) выполнен пункт 1 плана: полная content-верификация (98.59% байт-дубликаты), манифесты попыток сохранены в `local-data/SETOS/verification/attempts-metadata-20260923.tar.gz` (14 MB, sha `84baeb30…`), тела v1+attempt1…5 удалены (13.31 GB logical); beta DeviceSupport 24A5430a удалён (6.3 GB, регенерируемый). Не тронуто: Bonus_Exchange (запрет), тестовый симулятор 1F680A42, `bedroom1_shelf_sim_800.zip` 5.5 GB (не дубликат, отдельное решение), GGUF 1.0 GB, v2 package (нужен для ML-004), `.git` rewrite. Остатки плана: п.3 zip / п.4 GGUF / п.5 v2 после ML-004 / п.6 git rewrite. Receipt: `receipts/2026-09-23-storage-cleanup-executed.md`.
+9. **BETA-002:** распределить beta build людям.
+10. **REL-012:** выполнить App Store Connect actions только после technical GO.
+11. **SceneControl copy drift (новое, 2026-09-22, CAM-002):** `testSceneControlRuntimeEN/RU` красны в изоляции — тесты ждут copy, а shipped keys `set.camera.corrective.change_angle`/`set.trace.action.change_angle` несут «Move with the phone…». Решить: stale oracle (обновить тесты) или намеренная смена копии (зафиксировать product decision). Release-gated до решения.
+12. **CI включение (новое, 2026-09-22, REL-003):** `scripts/required_check.sh` + `.github/workflows/required-check.yml` готовы и локально зелёные; закоммитить файлы, включить Actions, сделать контрольный прогон, приложить к receipt.
+13. **iPad-contract docs сверка (новое, 2026-09-22, UI-009):** строка `UIRequiresFullScreen = YES` в `ipad-platform-contract-v1.md` устарела (владелец 2026-09-16 перевёл на resizable windows, commit `d4815f3`); сверить также `windowing-policy-v1.md`, `ui-states-matrix-v1.md:13`, claim CL-CA-049.
+14. **DATA-015 источники (новое, 2026-09-23):** одобрить acquisition-кандидатов в `docs/implementation/acquisition/acquisition-manifests-v1.json` (4 gap'а, 145 позиций; A3/B3 Open Images — под blocker'ом) → тогда загрузка отдельным слайсом в local-data.
+15. **Xcode 27.0 drift (новое, 2026-09-22):** тулчейн обновился против GOV-001/CAM-001/009 evidence (workspace lane падает на Pods pins; обход задокументирован). Решить: принять новый тулчейн как новый baseline (перепрогон CAM-001) или откатить окружение.
+16. **ZDR/provider (новое, 2026-09-22, DATA-006):** pinned Command Code модель отвергает ZDR (`cmd_zdr_no_providers`); выбор provider/model с ZDR — решение владельца.
+
+---
+
+## 20. Индекс исходных документов
+
+### Продукт и acceptance
+
+- `docs/app-store-product-plan.md`
+- `docs/implementation/PRODUCTION_ACCEPTANCE.md`
+- `docs/implementation/backend-decision-v1.md`
+- `docs/implementation/release/AppStoreSubmissionGates.json`
+
+### Текущая/историческая execution evidence
+
+- Старые `STATUS.md`, `BACKLOG.md`, `EXECUTION_STATE.md`, Master Plan v2, release runbook и handover/prompt packets удалены 2026-09-20 как конкурирующие execution authorities; их текущие задачи и решения перенесены в этот файл.
+- Неперенесённые технические результаты сохранены в специализированных `docs/aegis/work/**/evidence-*`, `docs/implementation/audits/**`, release/provenance receipts и backend `local-data/SETOS/`.
+
+### Camera Coach contract, defects and model
+
+- `docs/cameraanalysis/03-domain-contracts.md`
+- `docs/cameraanalysis/34-case-traceability-map.md`
+- `docs/cameraanalysis/36-frame-defect-coverage-audit.md`
+- `ml/camera_coach/INTEGRATION.md`
+- `docs/aegis/plans/2026-09-15-camera-visual-prefetch-review.md`
+
+### Release/privacy/provenance
+
+- `docs/implementation/release/`
+- `docs/implementation/provenance/`
+- `docs/implementation/audits/`
+
+### Backend/local data
+
+- `../setos-backend/README.md`
+- `../setos-backend/OPERATIONS.md`
+- `../setos-backend/deployment/README.md`
+- `../setos-backend/deployment/HOST_DEPLOYMENT.md`
+- `../setos-backend/LOCAL_DATA.md`
+
+### Thesis
+
+- `diploma.md` — chronological research/development history.
+- `docs/thesis/03_evidence_map.md` и `04_claim_registry.md` — обновлять после принятых code/benchmark changes.
+- `docs/thesis/litreview*` не изменять без явной просьбы.
+
+---
+
+## 21. Журнал обновлений этого трекера
+
+| Дата | Изменение | Evidence |
+|---|---|---|
+| 2026-09-20 | Создан единый canonical tracker; старые status/backlog/master/handover/runbook authorities удалены; fresh GOV-001 inventory принят; release остаётся NOT READY. | `docs/implementation/receipts/2026-09-20-gov-001-fresh-inventory.md`, source inventory и anti-entropy review. |
+| 2026-09-20 | Приняты GOV-002/GOV-003 (owner decisions: Scene остаётся на паузе, iPhone+iPad), GOV-004 (acceptance A–L map), GOV-005 (evidence index). Блокеры: DATA-010/011/013, BE-001, DEV-001, SEC-004/006, BETA-002, REL-007/012. | `receipts/2026-09-20-gov-004-acceptance-task-map.md`, `docs/implementation/evidence-index.md`. |
+| 2026-09-20 | Приняты CAM-001 (полный suite 2 358; 48 persistent genuine / 12 order-dependent / fixture gaps) и DATA-003 (инвентаризация 225 families, 253 490 файлов, 52.3 ГБ; silver receipts несут research_only/release_admissible=false). | `receipts/2026-09-20-cam-001-camera-test-baseline.md`, `receipts/2026-09-20-data-003-local-data-inventory.md`. |
+| 2026-09-20 | Открыта **GOV-007** (P1, ближайшая исполнимая): полная карта занятого проектом пространства + поиск byte-level дубликатов датасетов (`colab_package*` vs `research/*` vs `verification/*`); без удаления — план архивации на owner decision (§19 п.8). | Предварительные объёмы из DATA-003: attempts ≈ 12.5 ГБ, v1 package ≈ 0.8 ГБ, зеркало verification ≈ до 12 ГБ. |
+| 2026-09-22 | Owner reprioritization: следующий шаг DATA-001/002; CAM-009 сужен до bounded verification текущего diff, CAM-010 перенесён на model integration; новая ручная perceptual логика — POST-007. ML-010 выбирает варианты на validation; ML-011 переиспользует verifier до решения об отдельной модели; still export не ждёт temporal scorer. | Прямая просьба владельца пересмотреть tracker с учётом модели. Изменение плана, не техническая приёмка: код, receipts, acceptance thresholds, human/device/release blockers не закрыты этой записью. |
+| 2026-09-22 | Принят DATA-003 по свежему canonical local-data walk: 46 meaningful families, 149,849 regular files, 39,467,986,588 bytes, 76 symlinks; nothing deleted; historical aliases/rights/label limitations and stale references preserved explicitly. | `receipts/2026-09-22-data-003-local-data-inventory.md`; candidate HEAD `f8b6afd5de714c5c1c6e80c16c3c2a1bcdeb43ee`. |
+| 2026-09-22 | Принят GOV-007: полная карта пространства (repo 4.9 GB / local-data 37 GB / Xcode-кэши ≈ 33 GB) + SHA-256 дубликат-аудит (95 206 файлов, 21.09 GB; 12 066 кросс-семейных групп; reclaim attempts+v1 13.197 GB). Проектные данные не удалялись; агентский /tmp-скретч 32 MB очищен с явного разрешения владельца. План архивации — §19 п.8. | `receipts/2026-09-22-gov-007-storage-audit.md`; HEAD `f8b6afd`. |
+| 2026-09-22 | Принята DATA-004: coverage matrix v1 — 10 групп §4 с silver-raw/silver/human-gold/target/gap и 9 размерностей против Gate C1/C3/K и квот shot-list. Зафиксировано: human-gold = 0 везде; movable/occlusion/формат — 0 источников; перед DATA-008 нужен аудит распределения silver по issue-heads. | `docs/implementation/data-coverage-matrix-v1.md`; HEAD `f8b6afd`. |
+| 2026-09-22 | DATA-005 bounded slice принят → `PARTIAL`: release-label adapter с fail-closed элиcitациями и round-trip до contract-valid; остаток — GUI-поля элиcitаций (вместе с DATA-008). | `receipts/2026-09-22-data-005-annotation-release-label.md`; HEAD `f8b6afd`. |
+| 2026-09-22 | Рой-волна 1 принята: CAM-003 `DONE` (typed calibration artifact, fail-closed loading, 20/0 focused; Xcode 27.0 drift зафиксирован), ML-002 `DONE` (7 production heads, check PASS, найден action-layout drift серебряного checkpoint'а), ML-003 `DONE` (masked losses, missing label ≠ zero target, 74 tests passed), UI-001 `DONE` (91 state, 44 с fixture, gaps честно записаны), REL-001 `DONE` (command matrix M0–M7 blocking/diagnostic/device-gated, 49/49 классов). | Receipts `2026-09-22-cam-003-…`, `2026-09-22-ml-002-…`, `2026-09-22-ml-003-…`, `2026-09-22-ui-001-…`, `2026-09-22-rel-001-…`; HEAD `f8b6afd`. |
+| 2026-09-22 | Рой-волна 2 принята: DATA-006 `DONE` (wire-schema гейт закрыл реальный drift, redaction, bounded retries; 19/0; ZDR-решение за владельцем), DATA-007 `DONE` (существующий identity-guard верифицирован + 2 негатива; 900/450 сохранены; пакет-свидетель 2026-09-17 отсутствует на диске — stale-ссылка записана), DATA-005 → `DONE` (GUI-элиcitации + config builder, 13/0, headless-смоук), UI-002 `DONE` (35/35 value-identical токены, без новых), UI-007 `DONE` (Dynamic Type anti-clipping, 77/0, anti-регрессия XS→AX5), UI-011 `DONE` (dead-CTA устранён, rename-баг модели исправлен, 28/0), UI-006 `PARTIAL` (43/0, физика — DEV-002), UI-008 `PARTIAL` (cadence + region-словами, 62/0; физический VoiceOver — остаток), UI-009 `PARTIAL` (iPad landscape реальной геометрией на 2 симуляторах; stale-строка контракта — на сверку владельцу), REL-003 `PARTIAL` (required-check 133/0 локально; включение CI — владелец). Сквозной факт: Xcode 27.0 drift требует owner-сверки против CAM-001/009 evidence. | Receipts `2026-09-22-{data-006,data-007,data-005-gui,ui-002,ui-007,ui-011,ui-006,ui-008,ui-009,rel-003}-…`; HEAD `f8b6afd`. |
+| 2026-09-23 | Сквозная required-check на объединённом дереве всех слайсов — PASSED (133/0 serial + production-heads/release-label контракты + privacy manifest). Приняты: DATA-015 `PARTIAL` (acquisition-манифесты под 4 named gap'а, 120/120 проверок, 0 байт скачано — ждёт одобрения кандидатов владельцем), UI-012 `PARTIAL` (превью-аудит 9 новых ключей PASS + регрессионный тест 16/0; полная строка остаётся blocked). CAM-002 бисекция — в работе. | Receipts `2026-09-23-data-015-…`, `2026-09-23-ui-012-…`; вывод required-check в журнале сессии. |
+| 2026-09-23 | CAM-002 бисекция принята → `PARTIAL`: blanket «order-artifact» опровергнут (22 serial-прогона; 9 методов чисты, 1 — DETR-warmup contention-класс, 2 SceneControl EN/RU красны в изоляции — drift copy против shipped keys, release-gated на решение владельца, 1 env-gated iPad); M1 209/0. GOV-006 → `DONE` (дисциплина канонического трекера доказана журналом). DATA-008 pilot-очередь (strata по 10 группам §4) — в подготовке. | `receipts/2026-09-22-cam-002-interference-bisection.md`, §21; HEAD `f8b6afd`. |
+| 2026-09-23 | DATA-008 → `PARTIAL` (подготовка): pilot-очередь 100 кадров готова (10 групп × 10, 20 стилевых, 0 пересечений с прошлыми очередями, 100/100 hash-verified, `pilot-20260923-strata-v1/queue.jsonl` sha `cbb55e63…`); разметка — за владельцем, инструмент и правила экспорта готовы. Агенто-исполнимая очередь трекера исчерпана: все оставшиеся TODO сидят за шлюзами §19 (human labels / backend host / подпись-устройства / подписанный билд / решения по диску-CI-ZDR-iPad-docs). | `receipts/2026-09-23-data-008-pilot-queue-prep.md`; HEAD `f8b6afd`. |
+| 2026-09-23 | Свежий полный M5-бейзлайн на объединённом дереве: 2 264/2 325 зелёных; serial-сверка → 40 genuine (0 неизвестных, 0 G); категория A закрыта (9/1/2/1); diff против 2026-09-20: G ×2 починены слайсами, B 32→30, D NIMA-payload отсутствует (10 честных skip). §3.3 переписан на новый бейзлайн. diploma.md дополнен записью о роевой волне. | `receipts/2026-09-23-m5-full-suite-baseline-refresh.md`; HEAD `f8b6afd`. |
+| 2026-09-23 | **Storage cleanup исполнен по разрешению владельца: +19 GiB** (61→80 GiB свободно; local-data 37→25 GB). Удалены тела v1+attempt1…5 (13.31 GB, 98.59% content-верифицированных дубликатов; манифесты в архиве `attempts-metadata-20260923.tar.gz`, sha `84baeb30…`) и beta DeviceSupport (6.3 GB). Bonus_Exchange не тронут (запрет владельца). | `receipts/2026-09-23-storage-cleanup-executed.md`. |
+| 2026-09-23 | ML-004 → `PARTIAL` (bounded prep): Colab-бандл готов (сборщик с хешами, fail-closed preflight с human-gold gate — final_fit блокируется без разметки, ноутбук-шаблон, манифест 11 810+636 кадров со сверкой sha); тестовая сборка и preflight PASS. Анализ качества датасета v1 записан (только анализ, ничего не менялось): ~14.5k файлов <700px (aadb 256px медиана, eva 640, lasiesta 352) — мусор для разметки; корневые проблемы и автоматизируемый план улучшения — `data-quality-analysis-v1.md`. Быстрый инструмент разметки (annotate_fast) — в разработке. | `receipts/2026-09-23-ml-004-colab-bundle-prep.md`, `docs/implementation/data-quality-analysis-v1.md`. |
+| 2026-09-23 | Принят `annotate_fast.py` — основной инструмент разметки по решению владельца (старый GUI перегружен): keyboard-first визард, числа (severity/confidence) машина выводит из бакетов, слайдеров/delta-вопросов нет, «НЕ ПОНИМАЮ ЗАМЫСЕЛ» — первоклассный путь, защиты (dwell<1.5c, санити issue↔action, блок issues+good, скрытые QC-сиды 6 шт из аналитических silver-пар с --report-qc, RU-раскладка, append-only, session resume); 36 тестов + headless смоуки на реальной очереди (106 items). Честные границы: v1-словарь кодирует 8/26 — технические heads идут в fast_details и блокируют release-экспорт (расширение v1 — решение владельца); captured_at у видео-кадров отсутствует → экспорт пилотных записей REJECTED by design (время есть не у всех источников). DATA-008: пилот размечается новым инструментом. | `receipts/2026-09-23-annotate-fast-tool.md`; seeds sha `5a0c221e…`. |
+| 2026-09-24 | Очередь v2 (разнообразие): после первой сессии владельца scenetrans-рендеры сокращены 30→6, +24 реальных фото и 4 пары fivek до/после; `queue-v2-diverse.jsonl` 100 строк, 100/100 hash-verified. Кнопка **[A] «контрактом не выразить»** в fast-инструменте: флаг + заметка → gap-отчёт `--report-gaps`; без проблем сохраняется как честный abstain (unsupported_case), с проблемами едет в обычный поток. Триггер — кейс владельца «хочется симметрии»: главы «симметрия/баланс» нет в 15 heads (есть в CC-C05) — кандидат №1 на контракт v2 после пилота. 40 тестов + 83 смежных passed. | `receipts/2026-09-23-pilot-queue-v2-diverse.md`, `receipts/2026-09-23-annotate-fast-tool.md` (дополнение 09-24). |
+| 2026-09-24 | По второй сессии владельца (потеря текста на Esc, двойной запрос заметки, «хочу наговаривать»): текст больше не теряется никогда (буфер кадра), одна заметка на кадр с предзаполнением; новый **`annotate_talk.py` — режим болтовни** (кадр + одно поле, Ctrl+Enter, диктовка, append-only talk-notes v1); **цикл подтверждения** `annotate_fast --prefill` (агент/модель структурирует talk-заметки → владелец подтверждает Enter'ами, провененс prefill_source в detail). 74 тестов passed. Gap-кандидаты v2 пополнены: step_back не мапится на «фон спорит» (кейс «художник с мольбертом»). | `receipts/2026-09-23-annotate-fast-tool.md` (дополнение 09-24/2). |
+| 2026-09-27 | **DATA-008 data path: дубль `pilot23-composition-07` в queue v2 устранён без потери записей.** Root cause кодом: dict-resolve record_id (last wins) показывал обе позиции одним кадром (commons), scenetrans `…pair_0186__B` не был размечен. Human-записи байт-в-байт сохранены (2 прохода = commons), ID остаётся за размеченным кадром, неразмеченный scenetrans → `pilot23-composition-11` (`record_id_history`, `.orig`-бэкапы, очередь `3519f675…`→`dd47f199…`), кадр возвращён в конец обхода сессии. Корневая причина закрыта guard'ом в `annotate_fast` (fail-closed 1:1 record_id↔кадр + привязка к `image_sha256`, `--check-identity`, REJECTED на экспорте); 80/0; смешивание v1-очереди с хранилищем v2 блокируется. Строка DATA-008 остаётся `PARTIAL` — разметка пилота за владельцем. | `receipts/2026-09-27-data-008-queue-v2-identity-repair.md`; `identity-repair-20260927/migration-manifest.json`. |
+
+Формат следующей записи: дата, принятые task IDs, новый candidate HEAD/artifact hash, новые blockers. Не вставлять raw logs.
