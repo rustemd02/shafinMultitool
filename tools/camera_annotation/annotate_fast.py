@@ -1066,6 +1066,12 @@ class FrameFlow:
             if self.verdict_key == "3" and self.style_intentional and not self.note.strip():
                 self.messages = ["заметка обязательна (intentional mood)"]
                 return
+            if self.verdict_key == "1":
+                # keep + заметка ([W] на confirm_keep) остаётся keep'ом: раньше
+                # Enter здесь уходил в _finish() и писал verdict=needs_fix без
+                # единой проблемы — good-кадр с заметкой портил запись.
+                self._finish_keep(beauty="beautiful")
+                return
             self._finish()
 
     # -------------------------------------------------------------- finishing

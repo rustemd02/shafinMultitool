@@ -217,6 +217,29 @@ def test_flow_good_is_two_keypresses(tmp_path):
     assert validate_label(label) == []
 
 
+def test_flow_keep_with_note_stays_keep(tmp_path):
+    """[W] на confirm_keep (заметка к good-кадру) — это keep, а не needs_fix.
+
+    Регрессия: Enter на шаге заметки при вердикте 1 раньше уходил в _finish()
+    и писал detail.verdict=needs_fix без единой проблемы (v1-записи не было).
+    """
+    record = make_record(tmp_path)
+    flow = af.FrameFlow(record, annotator_id="tester")
+    flow.key("1")
+    flow.key("W")
+    assert flow.step == af.STEP_NOTE
+    flow.set_note("намеренный минимализм — оставить как есть")
+    flow.enter()
+    label, detail = flow.outcome.label, flow.outcome.detail
+    assert detail["verdict"] == "good"
+    assert label is not None
+    assert label["beauty"] == "beautiful"
+    assert label["improvement_needed"] is False
+    assert label["actions"] == [KEEP_ACTION]
+    assert label["notes"] == "намеренный минимализм — оставить как есть"
+    assert validate_label(label) == []
+
+
 def test_flow_technical_only_heads_have_no_v1_label_but_full_detail(tmp_path):
     """7 технических heads есть только в release-контракте: v1-словарь их не знает.
 
