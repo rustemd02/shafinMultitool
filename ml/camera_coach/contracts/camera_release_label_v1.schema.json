@@ -1,0 +1,716 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://set-os.local/ml/camera_coach/contracts/camera-release-label-v1.schema.json",
+  "title": "SET OS Camera Coach release label v1",
+  "description": "Closed human-review label contract for release-capable Camera Coach evidence. Null and not_observed are explicit uncertainty; they are never negative labels.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "record_id",
+    "source",
+    "provenance",
+    "verdict",
+    "issues",
+    "action",
+    "target",
+    "risk",
+    "abstention",
+    "intent",
+    "before_after"
+  ],
+  "properties": {
+    "schema_id": {"const": "camera-release-label-v1"},
+    "schema_version": {"const": "1.0.0"},
+    "record_id": {"$ref": "#/$defs/recordID"},
+    "source": {"$ref": "#/$defs/source"},
+    "provenance": {"$ref": "#/$defs/provenance"},
+    "verdict": {
+      "type": ["string", "null"],
+      "enum": ["good", "mixed", "needs_fix", null],
+      "description": "FrameVerdict raw values. Null is allowed only when abstention.status=abstain."
+    },
+    "issues": {
+      "type": "array",
+      "minItems": 15,
+      "maxItems": 15,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/issue"}
+    },
+    "action": {
+      "type": ["object", "null"],
+      "oneOf": [
+        {"$ref": "#/$defs/action"},
+        {"type": "null"}
+      ]
+    },
+    "target": {
+      "type": ["object", "null"],
+      "oneOf": [
+        {"$ref": "#/$defs/target"},
+        {"type": "null"}
+      ]
+    },
+    "risk": {"$ref": "#/$defs/risk"},
+    "abstention": {"$ref": "#/$defs/abstention"},
+    "intent": {"$ref": "#/$defs/intent"},
+    "before_after": {
+      "oneOf": [
+        {"$ref": "#/$defs/notObservedOutcome"},
+        {"$ref": "#/$defs/comparableOutcome"},
+        {"$ref": "#/$defs/incomparableOutcome"}
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "abstention": {
+            "properties": {"status": {"const": "abstain"}}
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "verdict": {"const": null},
+          "action": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "abstention": {
+            "properties": {"status": {"const": "none"}}
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "verdict": {"type": "string", "enum": ["good", "mixed", "needs_fix"]}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "needs_fix"}}},
+      "then": {"properties": {"action": {"type": "object"}}}
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "good"}}},
+      "then": {
+        "properties": {
+          "action": {
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "object",
+                "properties": {"action_id": {"const": "keep_current_setup"}},
+                "required": ["action_id"]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "type": "object",
+            "properties": {"action_id": {"const": "keep_current_setup"}},
+            "required": ["action_id"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "verdict": {"const": "good"},
+          "action": {
+            "properties": {
+              "issue_ids": {"maxItems": 0},
+              "magnitude": {
+                "properties": {"status": {"const": "not_observed"}},
+                "required": ["status"]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "type": "object",
+            "properties": {
+              "action_id": {
+                "enum": [
+                  "shift_frame_left", "shift_frame_right", "shift_frame_up", "shift_frame_down",
+                  "step_back", "step_closer", "lower_camera", "raise_camera", "change_camera_angle",
+                  "level_horizon", "rotate_subject_toward_light", "move_subject_left", "move_subject_right",
+                  "move_subject_away_from_background", "move_object_left", "move_object_right",
+                  "move_object_forward", "move_object_back", "remove_distracting_object",
+                  "reposition_prop_for_balance", "add_front_fill_light", "add_background_light",
+                  "remove_background_hotspot", "simplify_background", "wait_for_background_clearance",
+                  "stabilize_camera", "refocus_subject", "reduce_exposure", "increase_exposure",
+                  "avoid_occlusion", "clean_lens", "reduce_iso_noise"
+                ]
+              }
+            },
+            "required": ["action_id"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "action": {
+            "properties": {"issue_ids": {"minItems": 1}}
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "type": "object",
+            "properties": {
+              "action_id": {
+                "enum": [
+                  "shift_frame_left", "shift_frame_right", "shift_frame_up", "shift_frame_down",
+                  "step_back", "step_closer", "lower_camera", "raise_camera", "change_camera_angle",
+                  "level_horizon", "rotate_subject_toward_light", "move_subject_left", "move_subject_right",
+                  "move_subject_away_from_background", "move_object_left", "move_object_right",
+                  "move_object_forward", "move_object_back", "remove_distracting_object",
+                  "reposition_prop_for_balance", "add_front_fill_light", "add_background_light",
+                  "remove_background_hotspot", "simplify_background", "wait_for_background_clearance",
+                  "refocus_subject", "avoid_occlusion"
+                ]
+              }
+            },
+            "required": ["action_id"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "target": {"$ref": "#/$defs/resolvedTarget"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "type": "object",
+            "properties": {
+              "action_id": {
+                "enum": [
+                  "rotate_subject_toward_light", "move_subject_left", "move_subject_right",
+                  "move_subject_away_from_background", "move_object_left", "move_object_right",
+                  "move_object_forward", "move_object_back", "remove_distracting_object",
+                  "reposition_prop_for_balance"
+                ]
+              }
+            },
+            "required": ["action_id"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "target": {
+            "allOf": [
+              {"$ref": "#/$defs/resolvedTarget"},
+              {
+                "properties": {
+                  "movability": {"$ref": "#/$defs/allowedMovability"}
+                },
+                "required": ["movability"]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "recordID": {
+      "type": "string",
+      "pattern": "^cam-release-[a-z0-9][a-z0-9._-]*$"
+    },
+    "stableID": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "entityID": {
+      "$ref": "#/$defs/stableID"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_family_id", "frame_id", "content_sha256", "captured_at"],
+      "properties": {
+        "source_family_id": {"$ref": "#/$defs/stableID"},
+        "frame_id": {"$ref": "#/$defs/stableID"},
+        "content_sha256": {"$ref": "#/$defs/sha256"},
+        "captured_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "origin", "review_status", "annotator_id", "proposal_id", "review_ids",
+        "adjudicator_id", "human_gold", "release_admissible"
+      ],
+      "properties": {
+        "origin": {"enum": ["model_proposal", "human_review", "human_adjudication"]},
+        "review_status": {"enum": ["proposal", "reviewed", "adjudicated"]},
+        "annotator_id": {"$ref": "#/$defs/stableID"},
+        "proposal_id": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+        "review_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/stableID"}
+        },
+        "adjudicator_id": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+        "human_gold": {"type": "boolean"},
+        "release_admissible": {"type": "boolean"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"origin": {"const": "model_proposal"}}},
+          "then": {
+            "required": ["proposal_id"],
+            "properties": {
+              "review_status": {"const": "proposal"},
+              "proposal_id": {"type": "string", "minLength": 1},
+              "human_gold": {"const": false},
+              "release_admissible": {"const": false}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"origin": {"const": "human_review"}}},
+          "then": {
+            "required": ["review_ids"],
+            "properties": {
+              "review_status": {"const": "reviewed"},
+              "review_ids": {"minItems": 1},
+              "human_gold": {"const": false},
+              "release_admissible": {"const": false}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"origin": {"const": "human_adjudication"}}},
+          "then": {
+            "required": ["review_ids", "adjudicator_id"],
+            "properties": {
+              "review_status": {"const": "adjudicated"},
+              "review_ids": {"minItems": 2},
+              "adjudicator_id": {"type": "string", "minLength": 1},
+              "human_gold": {"const": true},
+              "release_admissible": {"const": true}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"human_gold": {"const": true}}},
+          "then": {
+            "properties": {
+              "origin": {"const": "human_adjudication"},
+              "review_status": {"const": "adjudicated"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"release_admissible": {"const": true}}},
+          "then": {
+            "properties": {
+              "origin": {"const": "human_adjudication"},
+              "human_gold": {"const": true}
+            }
+          }
+        }
+      ]
+    },
+    "region": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": {"type": "number", "minimum": 0, "maximum": 1},
+        "y": {"type": "number", "minimum": 0, "maximum": 1},
+        "width": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "height": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+      },
+      "description": "CameraAnalysisV3Region-compatible normalized rectangle in the record frameReference context. Arithmetic containment (x+width<=1 and y+height<=1) is enforced by the release-label validator."
+    },
+    "issueID": {
+      "enum": [
+        "subject_too_close_to_edge", "subject_not_prominent_enough", "background_competes_with_subject",
+        "insufficient_look_space", "backlight_hides_subject", "scene_has_no_clear_focus",
+        "frame_visually_overloaded", "horizon_distracts",
+        "motion_blur", "defocus", "overexposure", "underexposure", "noise", "occlusion", "lens_smudge"
+      ]
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issue_id", "status", "severity", "confidence", "region", "evidence_refs"],
+      "properties": {
+        "issue_id": {"$ref": "#/$defs/issueID"},
+        "status": {"enum": ["present", "absent", "not_observed"]},
+        "severity": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "region": {
+          "type": ["object", "null"],
+          "oneOf": [{"$ref": "#/$defs/region"}, {"type": "null"}]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/stableID"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "present"}}},
+          "then": {
+            "properties": {
+              "severity": {"type": "number"},
+              "confidence": {"type": "number"},
+              "evidence_refs": {"minItems": 1}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"enum": ["absent", "not_observed"]}}},
+          "then": {
+            "properties": {
+              "severity": {"const": null},
+              "confidence": {"const": null},
+              "region": {"const": null},
+              "evidence_refs": {"maxItems": 0}
+            }
+          }
+        }
+      ]
+    },
+    "actionID": {
+      "enum": [
+        "shift_frame_left", "shift_frame_right", "shift_frame_up", "shift_frame_down",
+        "step_back", "step_closer", "lower_camera", "raise_camera", "change_camera_angle",
+        "level_horizon", "rotate_subject_toward_light", "move_subject_left", "move_subject_right",
+        "move_subject_away_from_background", "move_object_left", "move_object_right",
+        "move_object_forward", "move_object_back", "remove_distracting_object",
+        "reposition_prop_for_balance", "add_front_fill_light", "add_background_light",
+        "remove_background_hotspot", "simplify_background", "wait_for_background_clearance",
+        "keep_current_setup", "stabilize_camera", "refocus_subject", "reduce_exposure",
+        "increase_exposure", "avoid_occlusion", "clean_lens", "reduce_iso_noise"
+      ]
+    },
+    "magnitude": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "axis", "value", "unit"],
+      "properties": {
+        "status": {"enum": ["observed", "not_observed"]},
+        "axis": {
+          "type": ["string", "null"],
+          "enum": ["delta_x", "delta_y", "scale_delta", "light_delta", "horizon_delta", null]
+        },
+        "value": {"type": ["number", "null"], "minimum": -1, "maximum": 1},
+        "unit": {"type": ["string", "null"], "enum": ["normalized_delta", null]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "observed"}}},
+          "then": {
+            "properties": {
+              "axis": {"type": "string"},
+              "value": {"type": "number"},
+              "unit": {"const": "normalized_delta"}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "not_observed"}}},
+          "then": {
+            "properties": {
+              "axis": {"const": null},
+              "value": {"const": null},
+              "unit": {"const": null}
+            }
+          }
+        }
+      ]
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action_id", "issue_ids", "magnitude"],
+      "properties": {
+        "action_id": {"$ref": "#/$defs/actionID"},
+        "issue_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/issueID"}
+        },
+        "magnitude": {"$ref": "#/$defs/magnitude"}
+      }
+    },
+    "movability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "permission"],
+      "properties": {
+        "status": {"enum": ["movable", "immovable", "not_applicable", "unknown"]},
+        "permission": {"enum": ["allowed", "denied", "unknown"]}
+      }
+    },
+    "allowedMovability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "permission"],
+      "properties": {
+        "status": {"const": "movable"},
+        "permission": {"const": "allowed"}
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_ref", "identity_status", "kind", "role", "region", "movability"],
+      "properties": {
+        "entity_ref": {"$ref": "#/$defs/entityID"},
+        "identity_status": {"enum": ["resolved", "ambiguous", "unknown", "lost"]},
+        "kind": {"enum": ["person", "object", "group", "light"]},
+        "role": {"enum": ["target", "protected", "context"]},
+        "region": {
+          "type": ["object", "null"],
+          "oneOf": [{"$ref": "#/$defs/region"}, {"type": "null"}]
+        },
+        "movability": {"$ref": "#/$defs/movability"}
+      }
+    },
+    "resolvedTarget": {
+      "allOf": [
+        {"$ref": "#/$defs/target"},
+        {
+          "type": "object",
+          "properties": {
+            "identity_status": {"const": "resolved"},
+            "role": {"const": "target"},
+            "region": {"$ref": "#/$defs/region"}
+          }
+        }
+      ]
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "probability"],
+      "properties": {
+        "status": {"enum": ["observed", "not_observed"]},
+        "probability": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "observed"}}},
+          "then": {"properties": {"probability": {"type": "number"}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "not_observed"}}},
+          "then": {"properties": {"probability": {"const": null}}}
+        }
+      ]
+    },
+    "abstention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reasons"],
+      "properties": {
+        "status": {"enum": ["none", "abstain"]},
+        "reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "ambiguous_subject", "unsupported_case", "unqualified", "missing_evidence",
+              "conflicting_evidence", "protected_intent", "infeasible", "stale", "identity_lost",
+              "scope_changed", "context_changed", "intent_changed", "target_missing", "metric_unavailable"
+            ]
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "none"}}},
+          "then": {"properties": {"reasons": {"maxItems": 0}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "abstain"}}},
+          "then": {"properties": {"reasons": {"minItems": 1}}}
+        }
+      ]
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selection", "subject_refs", "styles", "intent_revision"],
+      "properties": {
+        "selection": {"enum": ["unknown", "automatic", "user", "group"]},
+        "subject_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/entityID"}
+        },
+        "styles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "natural", "silhouette", "low_key", "symmetry", "negative_space",
+              "dutch_angle", "intentional_motion_blur", "handheld"
+            ]
+          }
+        },
+        "intent_revision": {"type": "integer", "minimum": 0}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"selection": {"const": "unknown"}}},
+          "then": {"properties": {"subject_refs": {"maxItems": 0}}}
+        },
+        {
+          "if": {"properties": {"selection": {"const": "group"}}},
+          "then": {"properties": {"subject_refs": {"minItems": 2}}}
+        }
+      ]
+    },
+    "outcomeMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric_id", "delta", "deadband", "comparability", "target_identity_match",
+        "goal_satisfied", "objective_predicate"
+      ],
+      "properties": {
+        "metric_id": {
+          "enum": [
+            "placement", "scale", "depth", "horizon", "exposure", "separation",
+            "subject_luma", "background_luma", "hotspot", "focus", "stability"
+          ]
+        },
+        "delta": {"type": "number"},
+        "deadband": {"type": "number", "minimum": 0},
+        "comparability": {"const": "same_capture"},
+        "target_identity_match": {"const": true},
+        "goal_satisfied": {"type": ["boolean", "null"]},
+        "objective_predicate": {"type": ["string", "null"]}
+      }
+    },
+    "notObservedOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "outcome", "same_target", "target_ref", "before_frame_id", "after_frame_id", "metric"],
+      "properties": {
+        "status": {"const": "not_observed"},
+        "outcome": {"const": null},
+        "same_target": {"const": false},
+        "target_ref": {"type": "null"},
+        "before_frame_id": {"type": "null"},
+        "after_frame_id": {"type": "null"},
+        "metric": {"type": "null"}
+      }
+    },
+    "comparableOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "outcome", "same_target", "target_ref", "before_frame_id", "after_frame_id", "metric"],
+      "properties": {
+        "status": {"const": "comparable"},
+        "outcome": {"enum": ["fixed", "improved", "unchanged", "worse"]},
+        "same_target": {"const": true},
+        "target_ref": {"$ref": "#/$defs/entityID"},
+        "before_frame_id": {"$ref": "#/$defs/stableID"},
+        "after_frame_id": {"$ref": "#/$defs/stableID"},
+        "metric": {"$ref": "#/$defs/outcomeMetric"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"outcome": {"const": "fixed"}}},
+          "then": {
+            "properties": {
+              "metric": {
+                "properties": {
+                  "goal_satisfied": {"const": true},
+                  "objective_predicate": {"type": "string", "minLength": 1}
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "incomparableOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "outcome", "same_target", "target_ref", "before_frame_id", "after_frame_id", "reason"],
+      "properties": {
+        "status": {"const": "incomparable"},
+        "outcome": {"const": "incomparable"},
+        "same_target": {"type": "boolean"},
+        "target_ref": {
+          "anyOf": [{"$ref": "#/$defs/entityID"}, {"type": "null"}]
+        },
+        "before_frame_id": {
+          "anyOf": [{"$ref": "#/$defs/stableID"}, {"type": "null"}]
+        },
+        "after_frame_id": {
+          "anyOf": [{"$ref": "#/$defs/stableID"}, {"type": "null"}]
+        },
+        "reason": {
+          "enum": [
+            "not_ready_for_verification", "unsupported_action", "frame_identity_missing", "evidence_missing",
+            "evidence_stale", "subject_identity_mismatch", "scene_mismatch", "geometry_mismatch",
+            "metric_unavailable", "target_missing", "context_changed", "intent_changed",
+            "protected_evidence_missing"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "enum": [
+                  "frame_identity_missing", "subject_identity_mismatch", "scene_mismatch",
+                  "geometry_mismatch", "target_missing"
+                ]
+              }
+            },
+            "required": ["reason"]
+          },
+          "then": {
+            "properties": {
+              "same_target": {"const": false}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,219 @@
+{
+  "fixture_id": "camera-release-label-v1-negative-cases",
+  "schema_id": "camera-release-label-v1",
+  "base_record": "camera_release_label_v1.valid.json",
+  "cases": [
+    {
+      "name": "abstain_cannot_keep_verdict_or_action",
+      "patch": {
+        "verdict": "good",
+        "action": null,
+        "abstention": {"status": "abstain", "reasons": ["missing_evidence"]}
+      },
+      "expected_rejection": "abstention.status=abstain requires verdict=null and action=null"
+    },
+    {
+      "name": "model_proposal_cannot_self_promote_to_gold",
+      "patch": {
+        "provenance": {
+          "origin": "model_proposal",
+          "review_status": "proposal",
+          "annotator_id": "model-run-001",
+          "proposal_id": "proposal-object-001",
+          "review_ids": [],
+          "adjudicator_id": null,
+          "human_gold": true,
+          "release_admissible": true
+        }
+      },
+      "expected_rejection": "model_proposal fixes human_gold=false and release_admissible=false"
+    },
+    {
+      "name": "corrective_action_requires_grounded_target",
+      "patch": {"target": null},
+      "expected_rejection": "move_object_right requires resolved target identity and region"
+    },
+    {
+      "name": "physical_move_requires_movability_and_permission",
+      "patch": {
+        "target": {
+          "entity_ref": "lampA",
+          "identity_status": "resolved",
+          "kind": "object",
+          "role": "target",
+          "region": {
+            "x": 0.62,
+            "y": 0.22,
+            "width": 0.18,
+            "height": 0.32
+          },
+          "movability": {"status": "unknown", "permission": "unknown"}
+        }
+      },
+      "expected_rejection": "physical movement cannot proceed on unknown movability or permission"
+    },
+    {
+      "name": "improved_requires_comparable_same_target_evidence",
+      "patch": {
+        "before_after": {
+          "status": "comparable",
+          "outcome": "improved",
+          "same_target": false,
+          "target_ref": "lampA",
+          "before_frame_id": "frame-before-001",
+          "after_frame_id": "frame-after-001",
+          "metric": {
+            "metric_id": "placement",
+            "delta": 0.2,
+            "deadband": 0.03,
+            "comparability": "same_capture",
+            "target_identity_match": false,
+            "goal_satisfied": null,
+            "objective_predicate": null
+          }
+        }
+      },
+      "expected_rejection": "comparable outcome requires same_target=true and target_identity_match=true"
+    },
+    {
+      "name": "region_coordinates_must_be_in_unit_square",
+      "patch": {
+        "target": {
+          "entity_ref": "lampA",
+          "identity_status": "resolved",
+          "kind": "object",
+          "role": "target",
+          "region": {
+            "x": 1.1,
+            "y": 0.22,
+            "width": 0.18,
+            "height": 0.32
+          },
+          "movability": {"status": "movable", "permission": "allowed"}
+        }
+      },
+      "expected_rejection": "region x must be within [0,1]"
+    },
+    {
+      "name": "needs_fix_cannot_omit_action",
+      "patch": {"action": null},
+      "expected_rejection": "verdict=needs_fix requires an action object"
+    },
+    {
+      "name": "corrective_action_requires_issue_reference",
+      "patch": {
+        "action": {
+          "action_id": "move_object_right",
+          "issue_ids": [],
+          "magnitude": {
+            "status": "observed",
+            "axis": "delta_x",
+            "value": 0.25,
+            "unit": "normalized_delta"
+          }
+        }
+      },
+      "expected_rejection": "non-KEEP corrective actions require at least one issue ID"
+    },
+    {
+      "name": "region_overflows_unit_square_with_individually_valid_coordinates",
+      "operations": [
+        {"path": ["target", "region", "x"], "value": 0.9},
+        {"path": ["target", "region", "width"], "value": 0.3}
+      ],
+      "expected_rejection": "x and width are individually valid but x+width exceeds one"
+    },
+    {
+      "name": "action_references_absent_issue",
+      "patch": {
+        "action": {
+          "action_id": "move_object_right",
+          "issue_ids": ["horizon_distracts"],
+          "magnitude": {
+            "status": "observed",
+            "axis": "delta_x",
+            "value": 0.25,
+            "unit": "normalized_delta"
+          }
+        }
+      },
+      "expected_rejection": "action issue reference must point to a present issue, not absent"
+    },
+    {
+      "name": "duplicate_issue_id",
+      "operations": [
+        {"path": ["issues", 1, "issue_id"], "value": "background_competes_with_subject"}
+      ],
+      "expected_rejection": "each release issue head must occur exactly once"
+    },
+    {
+      "name": "before_after_target_mismatch",
+      "operations": [
+        {"path": ["before_after", "target_ref"], "value": "lampB"}
+      ],
+      "expected_rejection": "comparable target_ref must match root target.entity_ref"
+    },
+    {
+      "name": "same_before_after_frame_ids",
+      "operations": [
+        {"path": ["before_after", "after_frame_id"], "value": "frame-before-001"}
+      ],
+      "expected_rejection": "before and after frame IDs must differ"
+    },
+    {
+      "name": "fixed_without_goal_satisfied_or_objective_predicate",
+      "operations": [
+        {"path": ["before_after", "outcome"], "value": "fixed"},
+        {"path": ["before_after", "metric", "goal_satisfied"], "value": false},
+        {"path": ["before_after", "metric", "objective_predicate"], "value": null}
+      ],
+      "expected_rejection": "fixed requires goal_satisfied=true and an objective predicate"
+    },
+    {
+      "name": "incomparable_identity_reason_cannot_claim_same_target",
+      "patch": {
+        "before_after": {
+          "status": "incomparable",
+          "outcome": "incomparable",
+          "same_target": true,
+          "target_ref": "lampA",
+          "before_frame_id": "frame-before-001",
+          "after_frame_id": "frame-after-001",
+          "reason": "subject_identity_mismatch"
+        }
+      },
+      "expected_rejection": "identity mismatch reasons require same_target=false"
+    },
+    {
+      "name": "incomparable_target_missing_cannot_claim_same_target",
+      "patch": {
+        "before_after": {
+          "status": "incomparable",
+          "outcome": "incomparable",
+          "same_target": true,
+          "target_ref": "lampA",
+          "before_frame_id": "frame-before-001",
+          "after_frame_id": "frame-after-001",
+          "reason": "target_missing"
+        }
+      },
+      "expected_rejection": "target_missing cannot establish same-target continuity"
+    },
+    {
+      "name": "incomparable_metric_unavailable_same_target_is_allowed",
+      "patch": {
+        "before_after": {
+          "status": "incomparable",
+          "outcome": "incomparable",
+          "same_target": true,
+          "target_ref": "lampA",
+          "before_frame_id": "frame-before-001",
+          "after_frame_id": "frame-after-001",
+          "reason": "metric_unavailable"
+        }
+      },
+      "expected_result": "accept",
+      "expected_acceptance": "same-target identity may remain true when only the metric is unavailable"
+    }
+  ]
+}

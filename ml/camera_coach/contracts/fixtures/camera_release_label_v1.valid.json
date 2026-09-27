@@ -1,0 +1,206 @@
+{
+  "schema_id": "camera-release-label-v1",
+  "schema_version": "1.0.0",
+  "record_id": "cam-release-object-001",
+  "source": {
+    "source_family_id": "pilot-family-001",
+    "frame_id": "frame-before-001",
+    "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "captured_at": "2026-09-22T10:00:00Z"
+  },
+  "provenance": {
+    "origin": "human_adjudication",
+    "review_status": "adjudicated",
+    "annotator_id": "reviewer-primary",
+    "proposal_id": "proposal-object-001",
+    "review_ids": ["review-object-001", "review-object-002"],
+    "adjudicator_id": "adjudicator-001",
+    "human_gold": true,
+    "release_admissible": true
+  },
+  "verdict": "needs_fix",
+  "issues": [
+    {
+      "issue_id": "subject_too_close_to_edge",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "subject_not_prominent_enough",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "background_competes_with_subject",
+      "status": "present",
+      "severity": 0.72,
+      "confidence": 0.94,
+      "region": {
+        "x": 0.62,
+        "y": 0.22,
+        "width": 0.18,
+        "height": 0.32
+      },
+      "evidence_refs": ["evidence-background-001"]
+    },
+    {
+      "issue_id": "insufficient_look_space",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "backlight_hides_subject",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "scene_has_no_clear_focus",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "frame_visually_overloaded",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "horizon_distracts",
+      "status": "absent",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "motion_blur",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "defocus",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "overexposure",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "underexposure",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "noise",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "occlusion",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    },
+    {
+      "issue_id": "lens_smudge",
+      "status": "not_observed",
+      "severity": null,
+      "confidence": null,
+      "region": null,
+      "evidence_refs": []
+    }
+  ],
+  "action": {
+    "action_id": "move_object_right",
+    "issue_ids": ["background_competes_with_subject"],
+    "magnitude": {
+      "status": "observed",
+      "axis": "delta_x",
+      "value": 0.25,
+      "unit": "normalized_delta"
+    }
+  },
+  "target": {
+    "entity_ref": "lampA",
+    "identity_status": "resolved",
+    "kind": "object",
+    "role": "target",
+    "region": {
+      "x": 0.62,
+      "y": 0.22,
+      "width": 0.18,
+      "height": 0.32
+    },
+    "movability": {
+      "status": "movable",
+      "permission": "allowed"
+    }
+  },
+  "risk": {
+    "status": "observed",
+    "probability": 0.18
+  },
+  "abstention": {
+    "status": "none",
+    "reasons": []
+  },
+  "intent": {
+    "selection": "user",
+    "subject_refs": ["lampA"],
+    "styles": ["natural"],
+    "intent_revision": 3
+  },
+  "before_after": {
+    "status": "comparable",
+    "outcome": "improved",
+    "same_target": true,
+    "target_ref": "lampA",
+    "before_frame_id": "frame-before-001",
+    "after_frame_id": "frame-after-001",
+    "metric": {
+      "metric_id": "placement",
+      "delta": 0.2,
+      "deadband": 0.03,
+      "comparability": "same_capture",
+      "target_identity_match": true,
+      "goal_satisfied": null,
+      "objective_predicate": null
+    }
+  }
+}
