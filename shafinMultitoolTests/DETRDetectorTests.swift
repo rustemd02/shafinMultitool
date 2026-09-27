@@ -168,6 +168,29 @@ final class DETRDetectorTests: XCTestCase {
         XCTAssertEqual(executions, 5, "Each logical attempt executes exactly once")
     }
 
+    func testWarmUpIsIdempotentAndDetectionAfterwardsCompletes() async throws {
+        // CAM-002: warm-up платит холодный старт (graph/ANE + первый inference)
+        // до кадровых окон; повтор идемпотентен, queued detect выполняется после.
+        let detector = try DETRDetector()
+        detector.warmUp(waitUntilDone: true)
+        detector.warmUp(waitUntilDone: true)
+        var bufferOut: CVPixelBuffer?
+        XCTAssertEqual(CVPixelBufferCreate(kCFAllocatorDefault, 64, 64, kCVPixelFormatType_32BGRA,
+                                           nil, &bufferOut), kCVReturnSuccess)
+        let buffer = try XCTUnwrap(bufferOut)
+        let result: DETRDetectionResult = await withCheckedContinuation { continuation in
+            detector.detect(pixelBuffer: buffer, orientation: .up) { continuation.resume(returning: $0) }
+        }
+        switch result {
+        case .success:
+            break
+        case .failure(let failure):
+            XCTAssertTrue([DETRDetectionFailure.inferenceFailed, .missingOutput, .invalidOutput]
+                .contains(failure),
+                "warm-up must not degrade detection into model-unavailable: \(failure)")
+        }
+    }
+
     private func makeArray(shape: [Int],
                            strides: [Int]? = nil,
                            values: [(x: Int, y: Int)]) throws -> MLMultiArray {

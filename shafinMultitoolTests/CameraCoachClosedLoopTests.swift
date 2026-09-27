@@ -62,17 +62,47 @@ final class CameraCoachClosedLoopTests: XCTestCase {
 
         await viewModel.startAndWait()
 
-        let baseline = makeFrame(pipeline: pipeline, id: "closed-loop-neural-0", x: 0.80, seconds: 1)
+        let baseline = makeFrame(
+            pipeline: pipeline,
+            id: "closed-loop-neural-0",
+            x: 0.80,
+            seconds: 1,
+            lumaValues: Self.supportedCaptureLuma
+        )
         let baselineFrames = [
             baseline,
-            makeFrame(pipeline: pipeline, id: "closed-loop-baseline-1", x: 0.80, seconds: 1.04),
-            makeFrame(pipeline: pipeline, id: "closed-loop-baseline-2", x: 0.80, seconds: 1.08),
+            makeFrame(
+                pipeline: pipeline,
+                id: "closed-loop-baseline-1",
+                x: 0.80,
+                seconds: 1.04,
+                lumaValues: Self.supportedCaptureLuma
+            ),
+            makeFrame(
+                pipeline: pipeline,
+                id: "closed-loop-baseline-2",
+                x: 0.80,
+                seconds: 1.08,
+                lumaValues: Self.supportedCaptureLuma
+            ),
             // The live presentation owns a three-frame spatial confirmation
             // before a marker becomes visible. Keep two warm-up samples ahead
             // of the three samples consumed by AdviceStabilizer so the
             // episode baseline can only start from an actually visible hint.
-            makeFrame(pipeline: pipeline, id: "closed-loop-baseline-3", x: 0.80, seconds: 1.12),
-            makeFrame(pipeline: pipeline, id: "closed-loop-baseline-4", x: 0.80, seconds: 1.16)
+            makeFrame(
+                pipeline: pipeline,
+                id: "closed-loop-baseline-3",
+                x: 0.80,
+                seconds: 1.12,
+                lumaValues: Self.supportedCaptureLuma
+            ),
+            makeFrame(
+                pipeline: pipeline,
+                id: "closed-loop-baseline-4",
+                x: 0.80,
+                seconds: 1.16,
+                lumaValues: Self.supportedCaptureLuma
+            )
         ]
         let semantics = SceneSemanticsAnalyzer().analyze(snapshot: baseline.snapshot)
         XCTAssertEqual(semantics.primarySubject.kind, .face)
@@ -250,7 +280,8 @@ final class CameraCoachClosedLoopTests: XCTestCase {
                 pipeline: pipeline,
                 id: "closed-loop-same-track-refresh",
                 x: 0.79,
-                seconds: 1.20
+                seconds: 1.20,
+                lumaValues: Self.supportedCaptureLuma
             )
             let refreshedSemantics = SceneSemanticsAnalyzer().analyze(snapshot: refreshedFrame.snapshot)
             let refreshedDeterministicCritique = CameraMeasuredPixelCritiqueFixture.analyze(
@@ -315,7 +346,13 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             ("closed-loop-stable-1", 0.72, 1.32, CoachingEpisodePhase.collectingStableAfterFrames),
             ("closed-loop-stable-2", 0.72, 1.36, CoachingEpisodePhase.readyForVerification)
         ] {
-            let frame = makeFrame(pipeline: pipeline, id: id, x: x, seconds: seconds)
+            let frame = makeFrame(
+                pipeline: pipeline,
+                id: id,
+                x: x,
+                seconds: seconds,
+                lumaValues: Self.supportedCaptureLuma
+            )
             let frameSemantics = SceneSemanticsAnalyzer().analyze(snapshot: frame.snapshot)
             let frameCritique = CameraMeasuredPixelCritiqueFixture.analyze(
                 snapshot: frame.snapshot,
@@ -450,7 +487,8 @@ final class CameraCoachClosedLoopTests: XCTestCase {
                 pipeline: pipeline,
                 id: "closed-loop-next-\(index)",
                 x: 0.80,
-                seconds: 1.40 + Double(index) * 0.04
+                seconds: 1.40 + Double(index) * 0.04,
+                lumaValues: Self.supportedCaptureLuma
             )
             let semantics = SceneSemanticsAnalyzer().analyze(snapshot: frame.snapshot)
             let critique = CameraMeasuredPixelCritiqueFixture.analyze(snapshot: frame.snapshot, semantics: semantics)
@@ -2293,6 +2331,10 @@ final class CameraCoachClosedLoopTests: XCTestCase {
             demoLiveCoachEnabled: false,
             visionResultProviderForTesting: visionResult
         )
+        // CAM-002: pay the DETR cold-start cost before any frame window starts;
+        // otherwise the first inference can shed high-priority frames and starve
+        // the fixture's timing windows (observed ~5% under load).
+        pipeline.warmUpHeavyModels(waitUntilDone: true)
         let viewModel = CameraViewModel(cameraManager: manager, analysisPipeline: pipeline)
         return CapturePathHarness(manager: manager, pipeline: pipeline, viewModel: viewModel)
     }

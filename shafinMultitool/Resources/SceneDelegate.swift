@@ -51,6 +51,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                         thermal.nextBudget().heavyModelsEnabled
                     }
                 )
+                // CAM-002: same pre-frame warm-up as the production route.
+                analysisPipeline.warmUpHeavyModels(waitUntilDone: false)
                 let permissions = CameraCoachUITestingPermissionClient(
                     snapshot: uiTestingConfiguration.cameraSnapshot,
                     recheckSnapshot: uiTestingConfiguration.cameraRecheckSnapshot,

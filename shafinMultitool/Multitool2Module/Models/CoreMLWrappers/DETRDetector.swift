@@ -34,6 +34,9 @@ final class DETRDetector {
     private let log = OSLog(subsystem: "com.multitool2.detr", category: "DETRDetector")
     private static let extractionLog = OSLog(subsystem: "com.multitool2.detr", category: "DETRDetector")
     private var detectionCount = 0
+    /// Guarded by `queue`: one warm-up attempt per instance is enough to pay the
+    /// cold-start cost before frame timing depends on it.
+    private var warmUpCompleted = false
 
     // COCO labels для DETR модели
     private static let labels: [String] = [
@@ -81,6 +84,71 @@ final class DETRDetector {
         if CameraLog.modelLifecycle {
             os_log("✅ DETR: Model loaded successfully",
                    log: OSLog(subsystem: "com.multitool2.detr", category: "Init"), type: .debug)
+        }
+    }
+
+    /// Pays the heavy cold-start cost (Core ML graph/ANE scheduling + first
+    /// inference) before live frames need the detector.
+    ///
+    /// CAM-002 root cause (2026-09-27): the first real inference occasionally
+    /// took 1676–2192 ms against 607–656 ms in steady state, and the production
+    /// high-priority path shed frames during that window, starving timing
+    /// sensitive analysis windows. Warming once per instance at setup — when no
+    /// frame timing depends on it — moves that cost out of the live path.
+    ///
+    /// - `waitUntilDone: false` (production route setup): returns immediately;
+    ///   the warm-up runs on the detector queue before any queued `detect` work.
+    /// - `waitUntilDone: true` (shared test harness): blocks the caller (bounded)
+    ///   until the warm-up attempt finishes, so frame windows are deterministic.
+    ///
+    /// Idempotent and single-flight on the detector queue.
+    func warmUp(waitUntilDone: Bool) {
+        let done = waitUntilDone ? DispatchSemaphore(value: 0) : nil
+        queue.async { [self] in
+            defer { done?.signal() }
+            guard !self.warmUpCompleted else { return }
+            let startTime = CACurrentMediaTime()
+            let warmed = self.performWarmUpInference()
+            self.warmUpCompleted = warmed
+            if CameraLog.modelLifecycle {
+                os_log("DETR warm-up %{public}@ in %.0fms", log: self.log, type: .debug,
+                       warmed ? "completed" : "failed",
+                       (CACurrentMediaTime() - startTime) * 1000)
+            }
+        }
+        if let done {
+            _ = done.wait(timeout: .now() + 30)
+        }
+    }
+
+    /// One throwaway inference on a tiny synthetic buffer; results are discarded.
+    private func performWarmUpInference() -> Bool {
+        let attributes: [CFString: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+        ]
+        var pixelBufferOut: CVPixelBuffer?
+        guard CVPixelBufferCreate(kCFAllocatorDefault, 64, 64, kCVPixelFormatType_32BGRA,
+                                  attributes as CFDictionary, &pixelBufferOut) == kCVReturnSuccess,
+              let pixelBuffer = pixelBufferOut else {
+            os_log("DETR warm-up could not create a synthetic buffer", log: self.log, type: .error)
+            return false
+        }
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        if let base = CVPixelBufferGetBaseAddress(pixelBuffer) {
+            memset(base, 0, CVPixelBufferGetDataSize(pixelBuffer))
+        }
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+        let request = VNCoreMLRequest(model: self.model)
+        request.imageCropAndScaleOption = .scaleFill
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+        do {
+            try handler.perform([request])
+            return true
+        } catch {
+            os_log("DETR warm-up inference failed: %{public}@", log: self.log, type: .error,
+                   String(describing: error))
+            return false
         }
     }
 

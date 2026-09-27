@@ -70,6 +70,9 @@ struct ContentView: View {
                 thermal.nextBudget().heavyModelsEnabled
             }
         )
+        // CAM-002: warm the heavy DETR path while permissions/intro run, so the
+        // first live analysis window never pays the cold inference cost.
+        pipeline.warmUpHeavyModels(waitUntilDone: false)
         let permissions = PermissionCoordinator(client: SystemPermissionClient())
         return CameraCoachDependencies(
             cameraManager: cameraManager,
