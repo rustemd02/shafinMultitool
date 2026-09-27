@@ -184,13 +184,46 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
 
     /// Copy currently exposed to the user or VoiceOver, kept useful for
     /// focused tests without exposing pipeline metadata in the UI contract.
+    /// UI-004: пустые/пробельные строки не считаются copy — иначе «повторить»
+    /// и VoiceOver получали бы пустую строку вместо отсутствия действия.
     var visibleCopy: [String] {
         [observation, supportingObservation, actionInstruction, explanation]
             .compactMap { $0 }
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
     var accessibilityLabel: String {
         visibleCopy.joined(separator: ". ")
+    }
+
+    /// UI-008 target-overlay alternative: the drawn region (arrow, underline,
+    /// outline) is hidden from VoiceOver, so the "where" reaches the value
+    /// channel as words. `nil` exactly when no target region is shown, so the
+    /// surface never claims a position without spatial evidence.
+    var targetRegionAccessibilityValue: String? {
+        targetRegion.map { Self.regionWords(for: $0, locale: .current) }
+    }
+
+    /// Verbal 3x3 position of a normalized region. Presentation-only and
+    /// deterministic: the centre of the region selects one vertical and one
+    /// horizontal band, and the localized pair is joined after the target
+    /// prefix. No pixel coordinates are ever exposed to the user.
+    static func regionWords(for region: NormalizedRect, locale: Locale) -> String {
+        guard !region.isDegenerate else { return "" }
+        let centreX = region.x + region.width / 2
+        let centreY = region.y + region.height / 2
+        let vertical: SETCopyKey = centreY < 1.0 / 3.0
+            ? .accessibilityRegionTop
+            : centreY < 2.0 / 3.0 ? .accessibilityRegionMiddle : .accessibilityRegionBottom
+        let horizontal: SETCopyKey = centreX < 1.0 / 3.0
+            ? .accessibilityRegionLeft
+            : centreX < 2.0 / 3.0 ? .accessibilityRegionCentre : .accessibilityRegionRight
+        return SETCopyKey.accessibilityRegionTarget.localizedString(locale: locale)
+            + ": "
+            + [
+                vertical.localizedString(locale: locale),
+                horizontal.localizedString(locale: locale)
+            ].joined(separator: ", ")
     }
 
     /// Whether the owner actually compared the before/after frames. `comparable`
@@ -932,6 +965,22 @@ struct CameraOverlayUXPresentation: Equatable, Sendable {
         mode == .eco ? SETCopyKey.cameraEco.localizedString(locale: locale) : nil
     }
 
+}
+
+/// UI-008 live-region cadence. The coaching loop announces one accepted copy
+/// per changed hint text and never re-queues the same copy. Rapid frame-local
+/// identity churn with unchanged copy therefore stays silent, while a genuinely
+/// new instruction is spoken exactly once; the existing named "repeat" action
+/// remains the explicit re-announce path and bypasses this gate.
+struct CameraCoachHintAnnouncementGate: Equatable, Sendable {
+    private(set) var lastAnnouncedCopy: String?
+
+    mutating func shouldAnnounce(copy: String) -> Bool {
+        let copy = copy.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !copy.isEmpty, copy != lastAnnouncedCopy else { return false }
+        lastAnnouncedCopy = copy
+        return true
+    }
 }
 
 /// Uses the existing pure edge-placement primitive for the command band. The

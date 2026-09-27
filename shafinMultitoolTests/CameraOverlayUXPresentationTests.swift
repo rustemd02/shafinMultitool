@@ -13,6 +13,68 @@ final class CameraOverlayUXPresentationTests: XCTestCase {
         XCTAssertFalse(presentation.isFallback)
     }
 
+    // MARK: - UI-004: Skip/Repeat только когда действие действительно есть
+
+    private func makePlainPresentation(
+        state: CameraOverlayUXPresentation.State,
+        observation: String = "Кадр держится.",
+        actionInstruction: String? = nil,
+        episodeToken: CoachingEpisodeToken? = nil,
+        analysisStatus: CameraOverlayAnalysisStatus = .healthy
+    ) -> CameraOverlayUXPresentation {
+        CameraOverlayUXPresentation(
+            state: state,
+            baseState: state,
+            observation: observation,
+            actionInstruction: actionInstruction,
+            explanation: nil,
+            supportingObservation: nil,
+            showsWhy: false,
+            isFallback: false,
+            liveHintID: nil,
+            episodeToken: episodeToken,
+            targetRegion: nil,
+            overlayHint: nil,
+            eventID: nil,
+            effectivePerformanceMode: .nominal,
+            analysisStatus: analysisStatus
+        )
+    }
+
+    func testSkipAndPauseControlsExistOnlyWhenAnEpisodeActionCanContinue() {
+        let token = CoachingEpisodeToken(
+            rawValue: UUID(uuidString: "44444444-4444-4444-4444-444444444444")!,
+            generation: 1
+        )
+        let actionable = makePlainPresentation(state: .verificationImproved, episodeToken: token)
+        XCTAssertTrue(actionable.canContinueEpisode)
+        XCTAssertTrue(actionable.availableCycleControls.contains(.skipHint))
+        XCTAssertTrue(actionable.availableCycleControls.contains(.pauseHints))
+
+        let seeking = makePlainPresentation(state: .liveSeeking)
+        XCTAssertFalse(seeking.canContinueEpisode)
+        XCTAssertFalse(seeking.availableCycleControls.contains(.skipHint),
+                       "без действия skip не предлагается вообще, а не как недоступная кнопка")
+        XCTAssertFalse(seeking.availableCycleControls.contains(.pauseHints))
+
+        let limited = makePlainPresentation(state: .verificationImproved,
+                                            episodeToken: token,
+                                            analysisStatus: .limited)
+        XCTAssertFalse(limited.canContinueEpisode)
+        XCTAssertFalse(limited.availableCycleControls.contains(.skipHint),
+                       "ограниченный анализ не обещает продолжение эпизода")
+    }
+
+    func testRepeatControlRequiresNonEmptyVisibleCopy() {
+        let withCopy = makePlainPresentation(state: .stableTip, observation: "Сигнал.")
+        XCTAssertTrue(withCopy.availableCycleControls.contains(.repeatHint))
+
+        let blank = makePlainPresentation(state: .starting, observation: "   ")
+        XCTAssertTrue(blank.visibleCopy.isEmpty, "пробелы — не copy")
+        XCTAssertFalse(blank.availableCycleControls.contains(.repeatHint),
+                       "повторять нечего — действие отсутствует")
+    }
+
     func testEverySupportedActionMapsToOnePhysicalInstruction() {
         let locale = Locale(identifier: "en")
         for actionType in ActionTypeV1.allCases {
