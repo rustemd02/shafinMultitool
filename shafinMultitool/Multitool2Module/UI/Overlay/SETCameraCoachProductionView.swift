@@ -1968,6 +1968,11 @@ private struct SETCameraCommandBand: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(CameraOverlayAccessibilityID.surface)
+        // UI-008 focus order: the one primary instruction is what VoiceOver
+        // should reach before the HUD chrome (timecode/tally) that is declared
+        // earlier in the ZStack. Sort priority reorders accessibility focus
+        // without touching layout, so no visual risk.
+        .accessibilitySortPriority(100)
     }
 
     @ViewBuilder

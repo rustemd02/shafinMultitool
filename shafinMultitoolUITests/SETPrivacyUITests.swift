@@ -82,7 +82,11 @@ final class SETPrivacyUITests: XCTestCase {
             let targetAbove = license.exists && license.frame.minY < viewport.minY
             let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: targetAbove ? 0.35 : 0.75))
             let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: targetAbove ? 0.75 : 0.35))
-            start.press(forDuration: 0.05, thenDragTo: end)
+            // Controlled scroll (slow + hold) instead of a flick: under the
+            // loaded M-UI lane the flick-style drag exhausted its reveal budget
+            // before the row's full hit area entered the viewport (2026-09-27,
+            // SETPrivacyUITests:88). Same assertions, deterministic gestures.
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
         }
         assertTarget(license, in: app)
         XCTAssertTrue(scroll.frame.intersection(app.windows.firstMatch.frame).contains(license.frame))
