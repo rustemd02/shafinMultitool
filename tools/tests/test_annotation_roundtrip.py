@@ -46,7 +46,9 @@ def test_queue_hashes_still_match_the_files_on_disk():
     """A stale image_sha256 would poison every label recorded from that frame."""
     mismatches = []
     for record in _sample():
-        path = Path(record["image_path"])
+        # BASE-007 relocation: исторические пути очереди разрешаются каноническим
+        # маппингом (AGENTS.md / LOCAL_DATA.md); хеш-bound файлы не переписываются.
+        path = labels.local_media_path(record["image_path"])
         assert path.exists(), f"{record['record_id']}: image missing at {path}"
         actual = hashlib.sha256(path.read_bytes()).hexdigest()
         if actual != record["image_sha256"]:
