@@ -82,6 +82,40 @@ enum SETHapticEvent: Equatable, Sendable {
     case rigid
     case selection
     case soft
+    case error
+}
+
+/// UI-005: feedback for the four product moments — target acquired, advice
+/// changed, verified improvement, error. One-shot per event ID through the
+/// shared motion ledger, so recomposition never replays a haptic, and no
+/// animation is owned here (transitions stay in `SETComponents` where the
+/// Reduce Motion guards live).
+@MainActor
+final class SETCameraFeedbackController {
+    let eventLedger: SETMotionEventLedger
+    private let haptic: SETHapticPerforming
+
+    init(eventLedger: SETMotionEventLedger, haptic: SETHapticPerforming) {
+        self.eventLedger = eventLedger
+        self.haptic = haptic
+    }
+
+    convenience init(eventLedger: SETMotionEventLedger) {
+        self.init(eventLedger: eventLedger, haptic: SETHapticFeedback())
+    }
+
+    func targetAcquired(eventID: String) { fire(.selection, namespace: "target", eventID: eventID) }
+    func adviceChanged(eventID: String) { fire(.soft, namespace: "advice", eventID: eventID) }
+    func verifiedImproved(eventID: String) { fire(.rigid, namespace: "verified", eventID: eventID) }
+    func failed(eventID: String) { fire(.error, namespace: "failed", eventID: eventID) }
+
+    private func fire(_ event: SETHapticEvent, namespace: String, eventID: String) {
+        // The RAW event id must be non-empty: the namespaced ledger key would
+        // otherwise turn an anonymous trigger into a valid one ("failed.").
+        guard !eventID.isEmpty,
+              eventLedger.consume(eventID: "feedback.\(namespace).\(eventID)") else { return }
+        haptic.perform(event)
+    }
 }
 
 @MainActor
@@ -124,6 +158,8 @@ final class SETHapticFeedback: SETHapticPerforming {
             UISelectionFeedbackGenerator().selectionChanged()
         case .soft:
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        case .error:
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
     }
 }

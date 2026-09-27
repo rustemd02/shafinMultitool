@@ -273,6 +273,11 @@ final class CameraViewModel: ObservableObject {
     /// route rotation. Production marker views never own this ledger.
     let motionEventLedger = SETMotionEventLedger()
     let pauseCutMarkController: SETPauseCutMarkController
+    /// UI-005: one-shot haptic feedback for the four product moments (target
+    /// acquired, advice changed, verified improvement, error). Motion stays in
+    /// the Reduce-Motion-guarded presentation components; this owner only
+    /// decides WHEN feedback is earned, through the shared event ledger.
+    let feedbackController: SETCameraFeedbackController
     /// Camera Coach owns the episode lifetime; presentation views only observe
     /// this projection and cannot restart an episode during recomposition.
     private var coachingEpisodeCoordinator = CoachingEpisodeCoordinator()
@@ -316,6 +321,7 @@ final class CameraViewModel: ObservableObject {
          analysisPipeline: AnalysisPipeline,
          lensSwitchOperation: (@Sendable (CameraLens) async -> CameraLensSwitchResult)? = nil,
          lensSelectionHaptic: SETHapticPerforming? = nil,
+         feedbackHaptic: SETHapticPerforming? = nil,
          performanceStore: CameraRuntimePerformanceStore = .shared,
          recordingCoordinator: CameraCoachRecordingCoordinator? = nil,
          recordingCoordinatorFactory: (@MainActor () throws -> CameraCoachRecordingCoordinator)? = nil,
@@ -326,6 +332,8 @@ final class CameraViewModel: ObservableObject {
         self.recordingCoordinator = recordingCoordinator
         self.recordingCoordinatorFactory = recordingCoordinatorFactory
         self.pauseCutMarkController = SETPauseCutMarkController(eventLedger: motionEventLedger)
+        self.feedbackController = SETCameraFeedbackController(eventLedger: motionEventLedger,
+                                                              haptic: feedbackHaptic ?? SETHapticFeedback())
         self.lensSelectionHaptic = lensSelectionHaptic ?? SETHapticFeedback()
         self.effectivePerformance = performanceStore.currentSnapshot
         self.analysisStatus = performanceStore.currentSnapshot.isLimited ? .limited : .healthy
@@ -890,6 +898,12 @@ final class CameraViewModel: ObservableObject {
         guard coachingEpisodeState.phase == .readyForVerification,
               coachingEpisodeState.token == result.token else { return false }
         verificationResult = result
+        if case .comparable(let outcome) = result.decision,
+           outcome == .improved || outcome == .fixed {
+            // UI-005: the verified improvement is the one moment worth a
+            // confirmation haptic; unchanged/worse/incomparable stay silent.
+            feedbackController.verifiedImproved(eventID: result.afterFrameID)
+        }
         if case .incomparable = result.decision {
             // Incomparable is a terminal result for this episode, not a route
             // boundary. Hide frame-local markers while retaining the token so
@@ -1064,6 +1078,8 @@ final class CameraViewModel: ObservableObject {
         }
         analysisFailure = failure
         analysisStatus = .failed
+        // UI-005: an explicit analysis failure is the error feedback moment.
+        feedbackController.failed(eventID: "analysis.\(generation.map(String.init) ?? UUID().uuidString)")
         plannerDecision = nil
         verificationResult = nil
         clearLiveAdviceForAnalysisBoundary()
@@ -1599,6 +1615,11 @@ final class CameraViewModel: ObservableObject {
             // main-actor turn.
             verificationResult = nil
             automaticallyVerifiedEpisodeToken = nil
+            if let token = nextState.token {
+                // UI-005: a new episode token means the target is acquired and
+                // locked — one selection haptic per episode generation.
+                feedbackController.targetAcquired(eventID: "episode.\(token.generation)")
+            }
         }
 
         if previousPhase != .readyForVerification,
@@ -1677,6 +1698,8 @@ final class CameraViewModel: ObservableObject {
             plannerDecision = nil
             return
         }
+        // UI-005: a new advice event gets one soft haptic (one-shot per hint id).
+        feedbackController.adviceChanged(eventID: hint.id)
         plannerDecision = hint.actionType == .leaveFrameAsIs ? .keep : .correct
     }
 

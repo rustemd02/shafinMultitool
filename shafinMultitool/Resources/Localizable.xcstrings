@@ -6316,13 +6316,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "SCENES: %d"
+            "value": "SCENES IN LIBRARY: %d"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "СЦЕН: %d"
+            "value": "СЦЕН В БИБЛИОТЕКЕ: %d"
           }
         }
       }
