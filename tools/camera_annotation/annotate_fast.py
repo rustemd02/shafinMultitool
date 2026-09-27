@@ -1334,6 +1334,124 @@ def qc_entry(detail: dict, label: dict, expected: dict) -> dict:
     }
 
 
+def _latest_by_record(rows: list[dict]) -> dict[str, dict]:
+    """Одна запись на кадр: повторная запись того же record_id — ревизия решения."""
+    latest: dict[str, dict] = {}
+    for row in rows:
+        rid = str(row.get("record_id") or "").strip()
+        if rid:
+            latest[rid] = row
+    return latest
+
+
+def cohen_kappa(pairs: list[tuple[str, str]]) -> float | None:
+    """Cohen's kappa по парам категорий; None, если сравнение не определено."""
+    if len(pairs) < 2:
+        return None
+    categories = sorted({c for pair in pairs for c in pair})
+    if len(categories) < 2:
+        return None  # нет вариативности — kappa не определена
+    n = len(pairs)
+    observed = sum(1 for a, b in pairs if a == b) / n
+    expected = sum((sum(1 for a, _ in pairs if a == c) / n)
+                   * (sum(1 for _, b in pairs if b == c) / n) for c in categories)
+    if expected >= 1.0:
+        return None
+    return (observed - expected) / (1 - expected)
+
+
+def filter_only_ids(queue: list[dict], seeds: list[dict],
+                    only_ids: set[str]) -> tuple[list[dict], list[dict], list[str]]:
+    """Обход только выбранных записей (calibration subset, DATA-009).
+
+    Возвращает (queue, seeds, missing): отсутствующие id — честный отказ, а не
+    тихий пропуск — subset обязан быть полностью представлен в очереди.
+    """
+    known = {str(r.get("record_id") or "") for r in queue} | {str(s.get("record_id") or "") for s in seeds}
+    missing = sorted(only_ids - known)
+    return ([r for r in queue if str(r.get("record_id") or "") in only_ids],
+            [s for s in seeds if str(s.get("record_id") or "") in only_ids],
+            missing)
+
+
+def reviewer_agreement_report(*, labels_a: list[dict], details_a: list[dict],
+                              labels_b: list[dict], details_b: list[dict],
+                              name_a: str = "reviewer-1", name_b: str = "reviewer-2") -> str:
+    """Согласие двух независимых проходов — механика согласия, не качество и не gold.
+
+    Правила независимости (как в pilot_agreement_report.py): assisted-запись не
+    является независимым ратером; один ратер — одна запись на кадр (повторная
+    запись — ревизия, в расчёт идёт последняя); оба прохода должны быть blind.
+    """
+    assisted = sum(1 for r in [*labels_a, *labels_b] if r.get("assisted"))
+    lab_a = _latest_by_record([r for r in labels_a if not r.get("assisted")])
+    lab_b = _latest_by_record([r for r in labels_b if not r.get("assisted")])
+    det_a = _latest_by_record(details_a)
+    det_b = _latest_by_record(details_b)
+    common = sorted(set(lab_a) & set(lab_b))
+    lines = [
+        f"Согласие двух проходов: {name_a} vs {name_b} (blind, механика — не качество/gold)",
+        f"  записей: {name_a} {len(lab_a)}, {name_b} {len(lab_b)}, общих {len(common)}"
+        + (f"; assisted исключены: {assisted}" if assisted else ""),
+    ]
+    if not common:
+        lines.append("  общих записей нет — согласие не измеряется")
+        return "\n".join(lines)
+
+    verdict_pairs: list[tuple[str, str]] = []
+    action_pairs: list[tuple[object, object]] = []
+    jaccards: list[float] = []
+    issue_exact = 0
+    no_detail = 0
+    mismatches: list[tuple[str, str, str]] = []
+    for rid in common:
+        a, b = det_a.get(rid, {}), det_b.get(rid, {})
+        if not a or not b:
+            no_detail += 1
+        va = str(a.get("verdict_key") or a.get("verdict") or "?")
+        vb = str(b.get("verdict_key") or b.get("verdict") or "?")
+        verdict_pairs.append((va, vb))
+        if va != vb:
+            mismatches.append((rid, va, vb))
+        aa = a.get("action") if a.get("action") != KEEP_ACTION else None
+        ab = b.get("action") if b.get("action") != KEEP_ACTION else None
+        if aa or ab:
+            action_pairs.append((aa, ab))
+        issues_a = set(a.get("selected_issues") or lab_a[rid].get("issues") or [])
+        issues_b = set(b.get("selected_issues") or lab_b[rid].get("issues") or [])
+        if issues_a == issues_b:
+            issue_exact += 1
+        union = issues_a | issues_b
+        if union:
+            jaccards.append(len(issues_a & issues_b) / len(union))
+
+    n = len(common)
+    verdict_ok = sum(1 for a, b in verdict_pairs if a == b)
+    kappa = cohen_kappa(verdict_pairs)
+    lines.append(f"  verdict:  {verdict_ok}/{n} совпали = {verdict_ok / n:.0%}"
+                 + (f", Cohen kappa {kappa:.2f}" if kappa is not None
+                    else ", kappa не определена (нет вариативности)"))
+    if action_pairs:
+        action_ok = sum(1 for a, b in action_pairs if a == b)
+        lines.append(f"  action:   {action_ok}/{len(action_pairs)} совпали "
+                     "(кадры, где хоть один выбрал действие)")
+    if jaccards:
+        lines.append(f"  issues:   {issue_exact}/{n} множества совпали, "
+                     f"средний Jaccard {sum(jaccards) / len(jaccards):.2f}")
+    if no_detail:
+        lines.append(f"  внимание: у {no_detail} пар(ы) нет detail хотя бы с одной стороны — "
+                     "вердикт по ним неопределён (? в паре)")
+    if mismatches:
+        lines.append("  расхождения вердикта:")
+        for rid, va, vb in mismatches[:20]:
+            lines.append(f"    {rid}: {name_a} {va} vs {name_b} {vb}")
+        if len(mismatches) > 20:
+            lines.append(f"    … и ещё {len(mismatches) - 20}")
+    lines.append("  правила: повторная запись одного ратера = ревизия (берётся последняя); "
+                 "assisted не считается; оба прохода — blind, без показа чужих ответов.")
+    return "\n".join(lines)
+
+
 def gaps_report(detail_rows: list[dict]) -> str:
     """Gap-отчёт: записи «контрактом не выразить» — вход на доработку контракта v2."""
     gaps = [r for r in detail_rows if r.get("contract_gap")]
@@ -1608,6 +1726,16 @@ def run_gui(args: argparse.Namespace) -> int:
         for problem in identity:
             print(f"  - {problem}", file=sys.stderr)
         return 2
+    if getattr(args, "only_ids", None):
+        wanted = {line.strip() for line in Path(args.only_ids).read_text(encoding="utf-8").splitlines()
+                  if line.strip() and not line.strip().startswith("#")}
+        queue, seeds, missing = filter_only_ids(queue, seeds, wanted)
+        if missing:
+            print(f"ОТКАЗ: --only-ids: нет в очереди/сидах: {', '.join(missing)}", file=sys.stderr)
+            return 2
+        if not queue:
+            print("ОТКАЗ: --only-ids: выборка пуста", file=sys.stderr)
+            return 2
     prefill_by_id = {}
     if getattr(args, "prefill", None):
         for row in load_jsonl(Path(args.prefill)):
@@ -2018,11 +2146,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prefill", type=Path,
                         help="предзаполнение неподтверждённых кадров (jsonl: record_id/label/detail/source), "
                              "например разбор talk-заметок агентом — аннотатор только подтверждает")
+    parser.add_argument("--only-ids", type=Path,
+                        help="пройти только записи из файла (record_id по строке на строку; "
+                             "# — комментарий); например calibration-subset-v1")
     parser.add_argument("--report-qc", action="store_true", help="напечатать отчёт согласия по сидам и выйти")
     parser.add_argument("--report-gaps", action="store_true",
                         help="напечатать gap-отчёт «контрактом не выразить» и выйти")
     parser.add_argument("--check-identity", action="store_true",
                         help="проверить 1:1 record_id↔кадр и привязку записей хранилища и выйти")
+    parser.add_argument("--report-agreement", type=Path, metavar="SECOND_STORE",
+                        help="согласие двух независимых проходов (второй store: fast_labels.r2.jsonl) и выйти")
+    parser.add_argument("--second-details", type=Path,
+                        help="detail-файл второго прохода (по умолчанию: имя SECOND_STORE с labels→details)")
     parser.add_argument("--export-out", type=Path, metavar="DIR",
                         help="экспортировать сохранённые записи в release-label (без GUI)")
     args = parser.parse_args(argv)
@@ -2053,6 +2188,21 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  - {problem}")
             return 2
         print("IDENTITY OK: record_id ↔ кадр 1:1, записи привязаны к своим кадрам")
+        return 0
+
+    if args.report_agreement:
+        queue_dir = args.queue.parent if args.queue else Path.cwd()
+        first_labels = load_labels(args.store or (queue_dir / "fast_labels.jsonl"))
+        first_details = load_jsonl(args.details or (queue_dir / "fast_details.jsonl"))
+        second_labels = load_labels(args.report_agreement)
+        second_name = args.report_agreement.name.replace("labels", "details")
+        second_details_path = args.second_details or (args.report_agreement.parent / second_name)
+        second_details = load_jsonl(second_details_path)
+        name_a = "/".join(sorted({str(r.get("annotator_id") or "?") for r in first_labels})) or "reviewer-1"
+        name_b = "/".join(sorted({str(r.get("annotator_id") or "?") for r in second_labels})) or "reviewer-2"
+        print(reviewer_agreement_report(labels_a=first_labels, details_a=first_details,
+                                        labels_b=second_labels, details_b=second_details,
+                                        name_a=name_a, name_b=name_b))
         return 0
 
     if args.export_out:

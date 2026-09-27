@@ -901,3 +901,79 @@ def test_pilot_queue_v2_identity_repaired_on_disk():
     v1 = af.load_jsonl(PILOT_DIR / "queue.jsonl")
     mixed = af.queue_identity_problems(queue=v1, seeds=seeds, labels=labels, details=details)
     assert any("привязана к другому кадру" in p for p in mixed)
+
+
+# --------------------------------------- согласие двух проходов (DATA-009 prep)
+def test_filter_only_ids_keeps_requested_and_reports_missing():
+    queue = [{"record_id": "a"}, {"record_id": "b"}]
+    seeds = [{"record_id": "qc-1"}]
+    kept_queue, kept_seeds, missing = af.filter_only_ids(queue, seeds, {"a", "qc-1", "zz"})
+    assert [r["record_id"] for r in kept_queue] == ["a"]
+    assert [s["record_id"] for s in kept_seeds] == ["qc-1"]
+    assert missing == ["zz"]  # отсутствующий id — честный отказ, не тихий пропуск
+
+
+def test_cohen_kappa_requires_variability():
+    assert af.cohen_kappa([("1", "1"), ("2", "2")]) == 1.0
+    assert af.cohen_kappa([("1", "2"), ("2", "1")]) == -1.0
+    assert af.cohen_kappa([("1", "1"), ("1", "1")]) is None  # нет вариативности
+    assert af.cohen_kappa([("1", "1")]) is None
+
+
+def test_reviewer_agreement_report_counts_revisions_and_assisted():
+    labels_a = [
+        {"record_id": "r1", "assisted": False, "issues": ["horizon_distracts"], "annotator_id": "a"},
+        {"record_id": "r1", "assisted": False, "issues": ["horizon_distracts"], "annotator_id": "a"},
+        {"record_id": "r2", "assisted": False, "issues": [], "annotator_id": "a"},
+        {"record_id": "r3", "assisted": True, "issues": [], "annotator_id": "a"},
+    ]
+    details_a = [
+        {"record_id": "r1", "verdict_key": "3", "action": "level_horizon",
+         "selected_issues": ["horizon_distracts"]},
+        {"record_id": "r2", "verdict_key": "1", "action": "keep_current_setup",
+         "selected_issues": []},
+    ]
+    labels_b = [
+        {"record_id": "r1", "assisted": False, "issues": ["horizon_distracts"], "annotator_id": "b"},
+        {"record_id": "r2", "assisted": False, "issues": ["noise"], "annotator_id": "b"},
+        {"record_id": "r4", "assisted": False, "issues": [], "annotator_id": "b"},
+    ]
+    details_b = [
+        {"record_id": "r1", "verdict_key": "3", "action": "level_horizon",
+         "selected_issues": ["horizon_distracts"]},
+        {"record_id": "r2", "verdict_key": "2", "action": None, "selected_issues": ["noise"]},
+        {"record_id": "r4", "verdict_key": "1", "action": "keep_current_setup",
+         "selected_issues": []},
+    ]
+    text = af.reviewer_agreement_report(labels_a=labels_a, details_a=details_a,
+                                        labels_b=labels_b, details_b=details_b,
+                                        name_a="a", name_b="b")
+    assert "записей: a 2, b 3, общих 2; assisted исключены: 1" in text
+    assert "verdict:  1/2 совпали = 50%, Cohen kappa 0.33" in text
+    assert "action:   1/1 совпали" in text
+    assert "issues:   1/2 множества совпали, средний Jaccard 0.50" in text
+    assert "r2: a 1 vs b 2" in text  # расхождение вердикта перечислено
+    # ревизия r1 (2 записи одного ратера) не превратилась в пару «сам с собой»
+    assert "общих 2" in text
+
+
+def test_report_agreement_cli_reads_second_store(tmp_path, capsys):
+    first_labels = tmp_path / "fast_labels.jsonl"
+    first_details = tmp_path / "fast_details.jsonl"
+    second_labels = tmp_path / "fast_labels.r2.jsonl"
+    second_details = tmp_path / "fast_details.r2.jsonl"
+    first_labels.write_text(json.dumps({"record_id": "r1", "assisted": False, "issues": [],
+                                        "annotator_id": "rustem"}) + "\n", encoding="utf-8")
+    first_details.write_text(json.dumps({"record_id": "r1", "verdict_key": "1",
+                                         "action": "keep_current_setup"}) + "\n", encoding="utf-8")
+    second_labels.write_text(json.dumps({"record_id": "r1", "assisted": False, "issues": [],
+                                         "annotator_id": "r2"}) + "\n", encoding="utf-8")
+    second_details.write_text(json.dumps({"record_id": "r1", "verdict_key": "2",
+                                          "action": None}) + "\n", encoding="utf-8")
+    code = af.main(["--store", str(first_labels), "--details", str(first_details),
+                    "--report-agreement", str(second_labels)])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "rustem vs r2" in out
+    assert "общих 1" in out
+    assert "r1: rustem 1 vs r2 2" in out
