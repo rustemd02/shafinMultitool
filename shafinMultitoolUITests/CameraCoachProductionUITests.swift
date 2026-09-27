@@ -1007,9 +1007,17 @@ final class CameraCoachProductionUITests: XCTestCase {
 
     private func assertPauseReviewTextAndActionReachable(in app: XCUIApplication, locale: String) {
         let review = app.scrollViews["camera_coach_review_scroll"]
+        // Product decision (owner-delegated 2026-09-27, CAM-002 copy-drift §19 п.11):
+        // stale oracle, not a presentation regression. The pre-5c15f3a2 literal
+        // ("Попробуй другую точку съёмки…" / "Try another camera position…") exists
+        // only in this test; commit 5c15f3a2 ("fix(camera): name the phone in the
+        // change-angle copy") deliberately renamed set.camera.corrective.change_angle
+        // and set.trace.action.change_angle so both locales name the phone (the
+        // CameraCoachLocalizationAddresseeTests addressee gate), matching the
+        // planner's own wording. The oracle therefore follows the shipped copy.
         let expectedText = locale == "ru"
-            ? "Попробуй другую точку съёмки, сохраняя главный объект в кадре"
-            : "Try another camera position while keeping the main subject in frame"
+            ? "Сместись с телефоном к другой точке съёмки, сохраняя главный объект в кадре"
+            : "Move with the phone to another camera position while keeping the main subject in frame"
         // The alternatives section repeats the advice. Inspect the primary
         // occurrence in reading order, not a different copy farther below.
         let advice = review.staticTexts.matching(NSPredicate(format: "label == %@", expectedText)).firstMatch
