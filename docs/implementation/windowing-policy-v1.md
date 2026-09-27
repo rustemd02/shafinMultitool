@@ -28,6 +28,14 @@ state instead of degraded capture:
 - AR readiness requires a real frame with detected planes (M6-005).
 
 A dedicated localized "expand window / go full-screen" recovery string is
-not shipped: with `UIRequiresFullScreen = YES` the app cannot be shrunk
-below fullscreen on iPad, so the state is unreachable in 1.0. If
-multitasking is ever claimed, the recovery string becomes mandatory.
+not shipped. ~~with `UIRequiresFullScreen = YES` the app cannot be shrunk
+below fullscreen on iPad, so the state is unreachable in 1.0.~~ **Сверка
+2026-09-27 (owner-delegated, §19 п.13):** посылка устарела — с commit `d4815f3`
+продукт идёт с `INFOPLIST_KEY_UIRequiresFullScreen = NO` (native resizable
+windows, контрактный тест требует `false`), поэтому окно МОЖНО уменьшить.
+Product-решение: строка расширения окна не требуется для 1.0 — честность
+держит минимальное окно камеры/AR (320pt контракт `ipad-platform-contract-v1.md`:
+ниже — unavailable-состояние вместо деградированной съёмки), а рост окна —
+явное действие пользователя. Факт для записи: точка enforcement 320pt-правила
+в коде не найдена (см. receipt UI-009 2026-09-27) — живая проверка на iPad
+в мультитаскинге входит в DEV-011.

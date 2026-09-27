@@ -14,9 +14,15 @@ Status: **locked contract (v1).**
 - All four interface orientations declared
   (`UIInterfaceOrientationPortrait/PortraitUpsideDown/LandscapeLeft/LandscapeRight`);
   no iPad-specific orientation restriction exists.
-- `UIRequiresFullScreen = YES`: the app does not claim multitasking
-  windowing support it has not earned; Split View / Slide Over are out of
-  scope for 1.0 and must not be assumed by layout code.
+- ~~`UIRequiresFullScreen = YES`~~ → **исправлено 2026-09-27 (owner-delegated
+  сверка, §19 п.13):** владелец перевёл продукт на native resizable windows
+  2026-09-16 (commit `d4815f3`); в `project.pbxproj` во всех четырёх конфигурациях
+  стоит `INFOPLIST_KEY_UIRequiresFullScreen = NO`, и контрактный тест
+  `iPadPlatformContractTests.testWindowingDoesNotUseScaledFullScreenCompatibilityMode`
+  требует `UIRequiresFullScreen == false` («master plan §3.8 requires resizable
+  iPad layouts with native control sizes»). Split View / Slide Over больше не
+  исключены самим фактом конфигурации; мультитаскинг-поведение проверяется
+  только физически (DEV-011) и не заявляется здесь.
 
 ## Feature parity
 

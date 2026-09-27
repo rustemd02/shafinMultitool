@@ -96,6 +96,22 @@ final class CameraCoachLaunchUITests: XCTestCase {
         XCTAssertTrue(element(withIdentifier: "commercial-shell-open-scenes").isHittable)
     }
 
+    func testCameraCoachSurfaceSurvivesPortraitUpsideDownRotation() {
+        // UI-009: the iPad contract declares all four orientations; the
+        // upside-down one had never been exercised live (2026-09-22 remainder).
+        launchApp(orientation: .portrait)
+        assertCameraCoachRoot()
+
+        let pauseControl = element(withIdentifier: "camera_coach_pause")
+        XCUIDevice.shared.orientation = .portraitUpsideDown
+        XCTAssertTrue(pauseControl.waitForExistence(timeout: launchTimeout))
+        XCTAssertTrue(pauseControl.isHittable)
+        XCTAssertTrue(element(withIdentifier: "commercial-shell-open-scenes").isHittable)
+
+        XCUIDevice.shared.orientation = .portrait
+        XCTAssertTrue(pauseControl.waitForExistence(timeout: launchTimeout))
+    }
+
     func testProControlsRemainReachableInPortraitAndLandscapeSceneReturnWithoutCaptureDevice() {
         for (orientation, language, captureName) in [
             (UIDeviceOrientation.portrait, "ru", "pro-controls-ru-portrait"),
