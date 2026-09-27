@@ -136,6 +136,20 @@ Release недопустим, если какой-либо переход мол
 | Physical devices | `BLOCKED_OWNER` | App Attest-capable team/profile и устройства. |
 | Metadata/screenshots | `PARTIAL` | Финальные flows, URLs, title/subtitle. |
 
+**Уточнение статуса гейтов 2026-09-27 (owner-delegated прогон):** гейты §3.4 —
+агрегаты acceptance-слоя и остаются `PARTIAL` честно, пока не выполнены
+физика/внешние аккаунты: «Продуктовая сборка» — полезность candidate + backend +
+физическая приёмка (DEV-002…012/BE/ML-цепочки); «Permissions» — физический
+denial/retry/restricted (DEV-002; симуляторная часть закрыта UI-006);
+«Privacy Policy» — hosted URL + фактические provider/retention/deletion
+(хостинг/юридические факты — не выдумываются агентом);
+«App Privacy answers» — production backend + ввод в ASC (внешний аккаунт);
+«CI/archive/validate» — required check закрыт REL-003 (локально + clean-checkout),
+остались fresh archive и signed export (сертификаты/подпись — DEV-001/REL-007);
+«Metadata/screenshots» — финальные flows/UI-013, URLs (хостинг), title/subtitle.
+Ни один гейт не переводится в `DONE` без соответствующего acceptance evidence —
+это правило §5 и §0.
+
 ---
 
 ## 4. Покрытие Camera Coach, которое требуется к релизу
@@ -561,5 +575,6 @@ Backend source находится рядом: `/Users/unterlantas/Documents/XCod
 | 2026-09-27 | DATA-015 → `DONE` (owner-delegated): кандидаты одобрены (§19 п.14), закупка 4 coverage gaps **145/145** (~102 MB) в local-data с per-item license gate и sha256-верификацией; A3/B3/C2 — одобренные запасные источники. | `receipts/2026-09-27-data-015-acquisition-executed.md`; HEAD `8b36e578`. |
 | 2026-09-27 | DATA-008/DATA-009 → `BLOCKED_EXTERNAL` (честный блокер, не выдумка): канал изображений инструмента чтения отдаёт stale-образ (6 проб в ресипте) — кадры без просмотра не маркируются, записей не добавлено. Подготовка полная: обход 106 позиций (осталось 99, финал — `pilot23-composition-11`), драйвер реплея готов, 17 подписанных листов, дефект «keep+заметка» закрыт. ML-004 → `DONE` (пересборка `3f5d554a…`, гейты exit 0/exit 3 перепроверены; Drive/Colab — внешний доступ). | `receipts/2026-09-27-data-008-data-009-annotation-blocked-tooling.md`, `receipts/2026-09-27-ml-004-bundle-rebuild-gate-recheck.md`; HEAD `a507118a`. |
 | 2026-09-27 | REL-003 → `DONE` (owner-delegated): CI-файлы закоммичены, required check PASSED локально и **из чистого checkout** (133/0; clean-runner проверка поймала и закрыла 2 реальные дыры воспроизводимости — ML-контракты и SETMetrics API); §19 п.15 — Xcode 27.0 принят как baseline. Остаток: hosted Actions-прогон после push (внешний аккаунт). | `receipts/2026-09-27-rel-003-ci-clean-checkout.md`; HEAD `a507118a`. |
+| 2026-09-27 | Уточнение §3.4: гейты остаются `PARTIAL` честно (физика/внешние аккаунты — точный список в примечании к таблице гейтов); ни один гейт не переведён в `DONE` без acceptance evidence. Итог прогона: все TASK-строки вне `PARTIAL` (DONE / BLOCKED_*), остались только агрегатные гейты §3.4 и строки TODO/BLOCKED_OWNER цепочек DEV/BE/BETA. | примечание §3.4; ресипты 2026-09-27. |
 
 Формат следующей записи: дата, принятые task IDs, новый candidate HEAD/artifact hash, новые blockers. Не вставлять raw logs.
