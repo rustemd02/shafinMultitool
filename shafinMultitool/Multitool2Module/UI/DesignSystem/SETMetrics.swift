@@ -72,19 +72,29 @@ struct SETCameraCoachRailContent: Equatable, Sendable {
     let explanation: String?
     let whyLabel: String?
     let continueLabel: String?
+    /// Status-style surfaces render one secondary line under the observation.
+    /// It wraps fully at every Dynamic Type size — it is never line-limited.
+    let supportingObservation: String?
+    /// Status-style surfaces stack their single primary action below the copy
+    /// instead of inlining it right of the observation.
+    let stackedActionLabel: String?
 
     init(
         observation: String,
         actionInstruction: String? = nil,
         explanation: String? = nil,
         whyLabel: String? = nil,
-        continueLabel: String? = nil
+        continueLabel: String? = nil,
+        supportingObservation: String? = nil,
+        stackedActionLabel: String? = nil
     ) {
         self.observation = observation
         self.actionInstruction = actionInstruction
         self.explanation = explanation
         self.whyLabel = whyLabel
         self.continueLabel = continueLabel
+        self.supportingObservation = supportingObservation
+        self.stackedActionLabel = stackedActionLabel
     }
 }
 
@@ -148,7 +158,8 @@ enum SETCameraCoachMetric {
         canvasSize: CGSize,
         isAccessibilityType: Bool,
         isExpanded: Bool,
-        content: SETCameraCoachRailContent? = nil
+        content: SETCameraCoachRailContent? = nil,
+        contentSizeCategory: UIContentSizeCategory? = nil
     ) -> CGFloat {
         let isLandscape = canvasSize.width > canvasSize.height
         let stableHeight: CGFloat = if isLandscape {
@@ -169,7 +180,8 @@ enum SETCameraCoachMetric {
             measuredLiveRailHeight(
                 content: content,
                 canvasSize: canvasSize,
-                isAccessibilityType: isAccessibilityType
+                isAccessibilityType: isAccessibilityType,
+                contentSizeCategory: contentSizeCategory
             )
         )
     }
@@ -184,24 +196,77 @@ enum SETCameraCoachMetric {
         return min(liveRailMaximumWidth, canvasSize.width * fraction)
     }
 
+    /// Scaled type used by the measurement. It mirrors the render contract
+    /// exactly: custom SET faces scale through `UIFontMetrics` relative to the
+    /// same SwiftUI text styles the views pass to `SETTypography.scaledFont`,
+    /// so the reserved rail height can never lag the rendered Dynamic Type.
+    static func scaledUIFont(
+        role: SETFontRole,
+        size: CGFloat,
+        relativeTo style: UIFont.TextStyle,
+        compatibleWith category: UIContentSizeCategory?
+    ) -> UIFont {
+        let base = SETTypography.uiFont(role, size: size)
+        let metrics = UIFontMetrics(forTextStyle: style)
+        guard let category else { return metrics.scaledFont(for: base) }
+        let traits = UITraitCollection(preferredContentSizeCategory: category)
+        return metrics.scaledFont(for: base, compatibleWith: traits)
+    }
+
+    /// The command/action label scales like `SETCommandLabel`: relative to
+    /// `.headline`, clamped to the shared bounded `[command, commandMaximum]`
+    /// range, and rendered bold.
+    static func clampedScaledCommandUIFont(
+        compatibleWith category: UIContentSizeCategory?
+    ) -> UIFont {
+        let scaled = scaledUIFont(
+            role: .display,
+            size: SETTypographySize.command,
+            relativeTo: .headline,
+            compatibleWith: category
+        )
+        let clampedSize = min(
+            max(scaled.pointSize, SETTypographySize.command),
+            SETTypographySize.commandMaximum
+        )
+        return weightedFont(
+            SETTypography.uiFont(.display, size: clampedSize),
+            traits: .traitBold
+        )
+    }
+
     private static func measuredLiveRailHeight(
         content: SETCameraCoachRailContent,
         canvasSize: CGSize,
-        isAccessibilityType: Bool
+        isAccessibilityType: Bool,
+        contentSizeCategory: UIContentSizeCategory?
     ) -> CGFloat {
         let railWidth = liveRailWidth(
             canvasSize: canvasSize,
             isAccessibilityType: isAccessibilityType
         )
         let innerWidth = max(1, railWidth - commandHorizontalInset * 2)
-        let bodyFont = SETTypography.uiFont(.hudMono, size: SETTypographySize.body)
-        let commandFont = weightedFont(
-            SETTypography.uiFont(.display, size: SETTypographySize.command),
+        let bodyFont = scaledUIFont(
+            role: .hudMono,
+            size: SETTypographySize.body,
+            relativeTo: .body,
+            compatibleWith: contentSizeCategory
+        )
+        let commandFont = clampedScaledCommandUIFont(compatibleWith: contentSizeCategory)
+        let labelFont = weightedFont(
+            scaledUIFont(
+                role: .hudMono,
+                size: SETTypographySize.label,
+                relativeTo: .caption2,
+                compatibleWith: contentSizeCategory
+            ),
             traits: .traitBold
         )
-        let labelFont = weightedFont(
-            SETTypography.uiFont(.hudMono, size: SETTypographySize.label),
-            traits: .traitBold
+        let supportingFont = scaledUIFont(
+            role: .hudMono,
+            size: SETTypographySize.label,
+            relativeTo: .caption2,
+            compatibleWith: contentSizeCategory
         )
 
         let controlWidths = [content.whyLabel, content.continueLabel]
@@ -226,10 +291,26 @@ enum SETCameraCoachMetric {
             maximumLines: 2
         )
 
-        let commandStackHeight = observationHeight
+        var commandStackHeight = observationHeight
             + (actionHeight > 0 ? SETSpacing.x1 + actionHeight : 0)
-        let controlsHeight = controlWidths.isEmpty ? 0 : SETComponentMetric.minimumHitTarget
-        let commandContentHeight = max(commandStackHeight, controlsHeight)
+        // Status surfaces stack a fully wrapping supporting line and one
+        // primary action below the observation; the render VStack separates
+        // them with the standard spacing and gives the action a 44pt target.
+        let supportingHeight = measuredTextHeight(
+            content.supportingObservation,
+            font: supportingFont,
+            width: innerWidth
+        )
+        if supportingHeight > 0 {
+            commandStackHeight += SETSpacing.x2 + supportingHeight
+        }
+        let stackedActionHeight = content.stackedActionLabel.flatMap {
+            measuredTextHeight($0, font: commandFont, width: innerWidth)
+        }.map { SETSpacing.x2 + max(SETComponentMetric.minimumHitTarget, $0) } ?? 0
+        let controlsHeight = controlWidths.isEmpty
+            ? 0
+            : max(SETComponentMetric.minimumHitTarget, labelFont.lineHeight)
+        let commandContentHeight = max(commandStackHeight, controlsHeight) + stackedActionHeight
 
         var totalHeight = commandContentHeight + commandVerticalInset * 2
         let explanationHeight = measuredTextHeight(
