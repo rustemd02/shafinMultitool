@@ -1,0 +1,439 @@
+{
+  "manifest_id": "acquisition-manifests-v1",
+  "schema_version": "data015.acquisition-prep.v1",
+  "task": "DATA-015",
+  "created": "2026-09-23",
+  "candidate_head": "f8b6afd5de714c5c1c6e80c16c3c2a1bcdeb43ee",
+  "branch": "store",
+  "slice_kind": "bounded_prep_slice",
+  "status": "approved_and_acquired_20260927",
+  "bytes_downloaded": 145,
+  "bytes_reserved_on_disk": 0,
+  "purpose": "Prepared acquisition manifests for the 4 named coverage gaps from docs/implementation/data-coverage-matrix-v1.md. Candidate sources, legal fields and verification method only; the owner approves a subset with one decision, then a separate slice performs any download. No bytes are downloaded, reserved or written to any dataset directory by this artifact.",
+  "download_destination_when_approved": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/Datasets/camera-coach/research/<source_family>/ (per AGENTS.md; never inside this iOS repository or Xcode bundles)",
+  "policy": {
+    "allowed_license_classes": [
+      "CC0",
+      "public_domain",
+      "CC-BY-* (attribution per item, receipt required)",
+      "CC-BY-SA-* (share-alike accepted for silver-raw research families; per item, receipt required)",
+      "no_known_copyright_restrictions (Flickr Commons program; per-photo rights statement required)"
+    ],
+    "forbidden_source_classes": [
+      "AVA-like MOS / aesthetic-score corpora added for volume (tracker DATA-015 prohibition; docs/cameraanalysis/17-ava-usage-policy-and-pretraining-design.md allows AVA only as isolated Stage-1 pretraining prior, never as release-admissible supervision)",
+      "social-media scraping (Instagram/TikTok/X/Reddit and similar)",
+      "Pexels/Unsplash-style licenses without explicit dataset-redistribution terms",
+      "any source whose per-item license cannot be confirmed and receipted at download"
+    ],
+    "label_tier_at_ingest": "silver/unlabeled · human_gold=false · release_admissible=false for every family in this manifest; human promotion only via DATA-008..DATA-011 annotation path",
+    "synthetic_separation": "Gate C1 (docs/implementation/PRODUCTION_ACCEPTANCE.md): organic and synthetic/adversarial cases remain separate buckets (pass_rate >= 0.80 organic vs >= 0.65 synthetic). None of the families below may be merged into an organic bucket alongside synthetic paired-corruptions content.",
+    "captured_at_rule": "per camera_release_label_v1.schema.json source.captured_at is required and per DATA-005 precedent a missing capture timestamp is never fabricated; items without trustworthy EXIF capture time are excluded at intake or recorded with an explicit exclusion note",
+    "cross_manifest_dedup": "every accepted item carries content_sha256 plus a stable upstream source_record_key; SHA-256 and source_record_key are checked against existing research/ families (aadb, ava, commons, cinematic, webresearch, open-images-lamp-pilot) to prevent duplicate intake across manifests"
+  },
+  "rights_field_contract": {
+    "per_source_family_required_fields": [
+      "source (canonical name and upstream URL)",
+      "author_or_upstream (who holds copyright / who publishes)",
+      "license_class (family-level expectation; per-item confirmation still mandatory)",
+      "attribution_requirements (what the receipt must record per item)",
+      "hash_method_at_download",
+      "rights_tier_expected (R1..R6 vocabulary of receipts/2026-09-22-data-003-local-data-inventory.md)",
+      "label_tier_at_ingest",
+      "per_item_license_gate (boolean; true means items without confirmed license metadata are rejected, mirroring the existing commons candidates/accepted-rights precedent)"
+    ],
+    "per_item_required_fields_at_download": [
+      "source_family_id (stable ID, schema camera_release_label_v1 source_family_id)",
+      "frame_id",
+      "source_record_key (stable upstream identifier)",
+      "content_sha256 (per-file SHA-256)",
+      "captured_at (real EXIF only; else item excluded)",
+      "license (exact per-item license string from upstream metadata)",
+      "author (per-item attribution)",
+      "source_url (per-item)",
+      "rights_receipt (per-item rights/accepted-rights receipt row)",
+      "human_gold=false, release_admissible=false until DATA-010/011 annotation and adjudication"
+    ],
+    "family_identity_fields_at_download": [
+      "metadata_sha256 (deterministic aggregate over sorted canonical relative path + logical size + per-file digest of declared content hashes, as defined in receipts/2026-09-22-data-003-local-data-inventory.md)",
+      "counts (regular files), logical bytes, M/D/C/L counts per DATA-003 table vocabulary"
+    ]
+  },
+  "gaps": [
+    {
+      "gap_id": "GAP-A-occlusion",
+      "coverage_matrix_named_gap": "Группа §4 «Фон/окклюзия (clutter/merger/photobomb)»: occlusion-семейство почти пусто — приоритет DATA-015 (row 4 of data-coverage-matrix-v1.md §2)",
+      "current_state_from_matrix": "silver raw: commons_real_video_sequence 575; webresearch; edge-controls 418 — no dedicated occlusion family",
+      "named_issue_heads": [
+        "occlusion",
+        "background_competes_with_subject",
+        "frame_visually_overloaded"
+      ],
+      "target_locked_stills_plan": 40,
+      "proposed_candidate_volume": {
+        "min": 200,
+        "max": 300,
+        "unit": "candidate stills before human screening",
+        "note": "headroom for the 40-still locked plan; acceptance after DATA-008 pilot screening"
+      },
+      "closes_named_gap_criterion": "At least one accepted source family yields >= 40 usable stills where a human annotator can mark occlusion / background-competition issues per camera_release_label_v1 (severity >= 3 levels), each with complete per-item rights receipt; family is kept out of synthetic buckets.",
+      "candidates": [
+        {
+          "candidate_id": "A1-commons-photobomb-occlusion",
+          "source": "Wikimedia Commons (API search/category harvest)",
+          "source_url": "https://commons.wikimedia.org/w/api.php",
+          "author_or_upstream": "per-file uploaders (Wikimedia contributors)",
+          "license_class": "per-file CC0 / CC-BY / CC-BY-SA / PD (mixed; confirmed per item via extmetadata LicenseShortName/Artist)",
+          "attribution_requirements": "per item: author string, license string, source URL, revision id recorded into the rights receipt (repo precedent: research/commons candidates/accepted-rights receipts)",
+          "expected_volume": {
+            "min": 120,
+            "max": 180,
+            "unit": "candidate stills"
+          },
+          "acquisition_method": "Commons API generator=search / categorymembers for photobombing, occluded view, cluttered-background search terms; prop=imageinfo&iiprop=size|extmetadata; client-side screening of candidates before any download; only accepted-rights items are downloaded",
+          "hash_method_at_download": "per-file SHA-256 at ingest into manifest.jsonl image_sha256; family metadata_sha256 aggregate per DATA-003 definition",
+          "rights_tier_expected": "R2",
+          "label_tier_at_ingest": "silver/unlabeled · human_gold=false",
+          "per_item_license_gate": true,
+          "notes": "Matches the existing research/commons intake pattern; no new legal mechanism is introduced.",
+          "status": "prepared_not_downloaded"
+        },
+        {
+          "candidate_id": "A2-flickr-commons-foreground-blockers",
+          "source": "Flickr Commons program ('The Commons', no known copyright restrictions) via Flickr API",
+          "source_url": "https://www.flickr.com/commons",
+          "author_or_upstream": "participating cultural institutions (per-photo rights statement)",
+          "license_class": "no_known_copyright_restrictions or explicit CC per photo; confirmed per item via API license field + institution rights statement",
+          "attribution_requirements": "per item: institution name, photo id, URL, rights statement text recorded in rights receipt",
+          "expected_volume": {
+            "min": 40,
+            "max": 80,
+            "unit": "candidate stills"
+          },
+          "acquisition_method": "Flickr API search restricted to Commons-partner accounts; per-photo license field captured before download; client-side candidate screening",
+          "hash_method_at_download": "per-file SHA-256 at ingest; family metadata_sha256 aggregate per DATA-003 definition",
+          "rights_tier_expected": "R1/R2",
+          "label_tier_at_ingest": "silver/unlabeled · human_gold=false",
+          "per_item_license_gate": true,
+          "notes": "Historic photography yields many foreground-blocker and crowded-scene shots; vintage film grain noted as a domain-shift factor for later human screening.",
+          "status": "prepared_not_downloaded"
+        },
+        {
+          "candidate_id": "A3-open-images-occlusion-flags",
+          "source": "Open Images (Google) subset selected by existing occlusion/annotation signals",
+          "source_url": "https://storage.googleapis.com/openimages",
+          "author_or_upstream": "Google (hosted); original photographers (per-image CC attribution list)",
+          "license_class": "images per-image CC BY 2.0 with published attribution list; annotation terms published by Google and re-verified at download before any annotation use",
+          "attribution_requirements": "per item: ImageID -> photographer attribution from the official attribution CSV; annotation license note recorded separately",
+          "expected_volume": {
+            "min": 40,
+            "max": 60,
+            "unit": "candidate stills"
+          },
+          "acquisition_method": "use published annotations to shortlist images whose annotated person/object boxes overlap (candidate occlusion); download shortlist only; box metadata stored as silver proposal hints, never as labels",
+          "hash_method_at_download": "per-file SHA-256 at ingest; family metadata_sha256 aggregate per DATA-003 definition",
+          "rights_tier_expected": "R1",
+          "label_tier_at_ingest": "silver/unlabeled · human_gold=false",
+          "per_item_license_gate": true,
+          "precondition_owner_decision": "the research/photography family records 'OpenImages intake blocked' (DATA-003 receipt); this candidate stays blocked until the owner explicitly clears that earlier intake blocker",
+          "notes": "Box overlap is a search hint only; occlusion verdicts are human-made in DATA-008..011. AVA policy not implicated (no aesthetic MOS involved).",
+          "status": "prepared_not_downloaded"
+        }
+      ]
+    },
+    {
+      "gap_id": "GAP-B-groups-as-hero",
+      "coverage_matrix_named_gap": "Группа §4 «Главный объект»: группы-как-герой (CC-I02) и unknown-target — нет ни одного источника: добор в DATA-015 (row 2 of data-coverage-matrix-v1.md §2)",
+      "current_state_from_matrix": "0 sources for group-as-primary-target; CC-I02 ('Группа является главным объектом') is not_implemented with no corpus support",
+      "named_issue_heads": [
+        "subject_not_prominent_enough",
+        "background_competes_with_subject"
+      ],
+      "capability_case": "CC-I02 (docs/cameraanalysis/34-case-traceability-map.md): group is the main object; personCount exists, group-level planning does not",
+      "target_locked_stills_plan": 40,
+      "proposed_candidate_volume": {
+        "min": 150,
+        "max": 220,
+        "unit": "candidate stills before human screening",
+        "note": "headroom for the 40-still locked plan; screening must mark group-vs-individual target intent"
+      },
+      "closes_named_gap_criterion": "At least one accepted source family yields >= 40 usable stills where 3+ people form the intended primary target (annotator can label group-level target identity and group-level issues per camera_release_label_v1), each with complete per-item rights receipt.",
+      "candidates": [
+        {
+          "candidate_id": "B1-commons-group-photographs",
+          "source": "Wikimedia Commons (group photograph categories/search via API)",
+          "source_url": "https://commons.wikimedia.org/w/api.php",
+          "author_or_upstream": "per-file uploaders (Wikimedia contributors)",
+          "license_class": "per-file CC0 / CC-BY / CC-BY-SA / PD (mixed; confirmed per item via extmetadata)",
+          "attribution_requirements": "per item: author, license, source URL, revision id into rights receipt (same commons precedent as A1)",
+          "expected_volume": {
+            "min": 80,
+            "max": 120,
+            "unit": "candidate stills"
+          },
+          "acquisition_method": "Commons API harvest of group-photo categories and search results; iiprop=size|extmetadata; client-side screening for 3+ clearly visible people before download; accepted-rights receipts",
+          "hash_method_at_download": "per-file SHA-256 at ingest into manifest.jsonl image_sha256; family metadata_sha256 aggregate per DATA-003 definition",
+          "rights_tier_expected": "R2",
+          "label_tier_at_ingest": "silver/unlabeled · human_gold=false",
+          "per_item_license_gate": true,
+          "notes": "Group-photograph framing (rows, posed lineups) differs from casual group scenes; screening should keep both, flagging pose type for the pilot.",
+          "status": "prepared_not_downloaded"
+        },
+        {
+          "candidate_id": "B2-flickr-commons-group-portraits",
+          "source": "Flickr Commons program via Flickr API",
+          "source_url": "https://www.flickr.com/commons",
+          "author_or_upstream": "participating cultural institutions (per-photo rights statement)",
+          "license_class": "no_known_copyright_restrictions or explicit CC per photo; confirmed per item",
+          "attribution_requirements": "per item: institution, photo id, URL, rights statement into rights receipt",
+          "expected_volume": {
+            "min": 40,
+            "max": 60,
+            "unit": "candidate stills"
+          },
+          "acquisition_method": "Flickr API search across Commons-partner accounts for group portraits/crowd portraits; per-photo license field captured before download",
+          "hash_method_at_download": "per-file SHA-256 at ingest; family metadata_sha256 aggregate per DATA-003 definition",
+          "rights_tier_expected": "R1/R2",
+          "label_tier_at_ingest": "silver/unlabeled · human_gold=false",
+          "per_item_license_gate": true,
+          "notes": "Strongly complements B1 with candid institutional group shots.",
+          "status": "prepared_not_downloaded"
+        },
+        {
+          "candidate_id": "B3-open-images-multi-person",
+          "source": "Open Images (Google) person-class subset with >= 3 annotated person instances per image",
+          "source_url": "https://storage.googleapis.com/openimages",
+          "author_or_upstream": "Google (hosted); original photographers (per-image CC attribution list)",
+          "license_class": "images per-image CC BY 2.0 with published attribution list; annotation terms re-verified at download",
+          "attribution_requirements": "per item: ImageID -> photographer attribution from official attribution CSV",
+          "expected_volume": {
+            "min": 30,
+            "max": 40,
+            "unit": "candidate stills"
+          },
+          "acquisition_method": "shortlist from published person-class annotations (count >= 3 per image); download shortlist only; detection boxes stored as silver hints, never as labels",
+          "hash_method_at_download": "per-file SHA-256 at ingest; family metadata_sha256 aggregate per DATA-003 definition",
+          "rights_tier_expected": "R1",
+          "label_tier_at_ingest": "silver/unlabeled · human_gold=false",
+          "per_item_license_gate": true,
+          "precondition_owner_decision": "same Open Images intake blocker as A3; blocked until the owner clears it",
+          "notes": "Person-count is only a shortlisting signal; 'group is the hero' is a human judgement made during DATA-008..011 annotation.",
+          "status": "prepared_not_downloaded"
+        }
+      ]
+    },
+    {
+      "gap_id": "GAP-C-dirty-lens-focus-miss-organic",
+      "coverage_matrix_named_gap": "Группа §4 «Техническое качество»: dirty-lens и focus-miss как реальные фото — нет; синтетика ≠ organic (Gate C1: отдельные buckets) (row 5 of data-coverage-matrix-v1.md §2)",
+      "current_state_from_matrix": "only paired-corruptions ~5 597 synthetic degradations; organic lens_smudge/defocus photos: none",
+      "named_issue_heads": [
+        "lens_smudge",
+        "defocus",
+        "scene_has_no_clear_focus"
+      ],
+      "gate_c1_note": "synthetic paired-corruptions content stays in the synthetic/adversarial bucket (pass_rate >= 0.65); organic candidates below feed a separate organic bucket (pass_rate >= 0.80) — the two must never be merged",
+      "action_contract_note": "DATA-002: clear_lens_obstruction stays limited to occlusion/avoid_occlusion; lens_smudge and clean_lens remain separate unsupported paths — new organic examples do not by themselves enable any action",
+      "target_locked_stills_plan": 40,
+      "proposed_candidate_volume": {
+        "min": 90,
+        "max": 140,
+        "unit": "candidate stills before human screening",
+        "note": "scarcity is explicit: external organic dirty-lens photos are rare; the coverage matrix already plans residual coverage via owner shot-list shooting, which stays the primary honest source for this gap"
+      },
+      "closes_named_gap_criterion": "At least one accepted source family yields >= 20 usable organic stills a human annotator marks as lens_smudge or defocus/missed focus (>= 3 severity levels across the family), each with complete per-item rights receipt, kept in a separate organic bucket; if external sources fall short, the recorded residual goes to the already-planned owner shot-list (DATA-010/013) instead of synthetic inflation.",
+      "candidates": [
+        {
+          "candidate_id": "C1-commons-technical-defect-search",
+          "source": "Wikimedia Commons (API search across quality-issue/maintenance categories and search terms: out-of-focus photographs, blurred images, dirty lens / dust on lens, lens flare damage)",
+          "source_url": "https://commons.wikimedia.org/w/api.php",
+          "author_or_upstream": "per-file uploaders (Wikimedia contributors)",
+          "license_class": "per-file CC0 / CC-BY / CC-BY-SA / PD (mixed; confirmed per item via extmetadata)",
+          "attribution_requirements": "per item: author, license, source URL, revision id into rights receipt",
+          "expected_volume": {
+            "min": 50,
+            "max": 90,
+            "unit": "candidate stills"
+          },
+          "acquisition_method": "Commons API categorymembers + search for defect-tagged media; iiprop=size|extmetadata; client-side screening; accepted-rights receipts. Exact category enumeration happens at acquisition time and every used category is recorded in the family receipt",
+          "hash_method_at_download": "per-file SHA-256 at ingest into manifest.jsonl image_sha256; family metadata_sha256 aggregate per DATA-003 definition",
+          "rights_tier_expected": "R2",
+          "label_tier_at_ingest": "silver/unlabeled · human_gold=false",
+          "per_item_license_gate": true,
+          "notes": "Honest limitation: Commons defect categories skew artistic/motion blur; human screening must separate lens_smudge from motion_blur and defocus rather than bulk-accepting a blurry category.",
+          "status": "prepared_not_downloaded"
+        },
+        {
+          "candidate_id": "C2-coco-blurry-attribute-shortlist",
+          "source": "COCO 2017 person annotations with 'blurry' attribute (organic in-camera blur, not synthetic corruption)",
+          "source_url": "https://cocodataset.org",
+          "author_or_upstream": "COCO Consortium (annotations); Flickr photographers (images, per-image license metadata)",
+          "license_class": "annotations CC BY 4.0; images under per-image license recorded in COCO metadata (CC-licensed per image metadata; exact per-image license string confirmed at download)",
+          "attribution_requirements": "per item: Flickr photo id, per-image license string, URL from COCO metadata into rights receipt",
+          "expected_volume": {
+            "min": 30,
+            "max": 40,
+            "unit": "candidate stills"
+          },
+          "acquisition_method": "shortlist person instances flagged blurry/occluded in COCO attribute annotations; download shortlisted images only; attributes stored as silver hints, never as labels",
+          "hash_method_at_download": "per-file SHA-256 at ingest; family metadata_sha256 aggregate per DATA-003 definition",
+          "rights_tier_expected": "R1",
+          "label_tier_at_ingest": "silver/unlabeled · human_gold=false",
+          "per_item_license_gate": true,
+          "notes": "COCO 'blurry' conflates motion and focus blur; the distinction into defocus vs motion_blur issue heads is a human annotation decision, which is exactly the organic-vs-synthetic evidence Gate C1 wants. Counts toward focus-miss bucket after human review only.",
+          "status": "prepared_not_downloaded"
+        },
+        {
+          "candidate_id": "C3-residual-owner-shotlist-explicit",
+          "source": "Owner shot-list shooting (SL-01..SL-10 sessions), explicit residual bucket for organic lens_smudge",
+          "source_url": "docs/implementation/human-eval/shot-list-v1.md",
+          "author_or_upstream": "project owner (consent and rights by construction)",
+          "license_class": "not applicable (own captures; rights tier R5-equivalent internal evidence until promoted)",
+          "attribution_requirements": "per item: capture session id, device, date from EXIF",
+          "expected_volume": {
+            "min": 0,
+            "max": 60,
+            "unit": "stills",
+            "note": "residual after external candidates are screened; no acquisition action in this slice"
+          },
+          "acquisition_method": "none in this slice; recorded so the gap accounting stays honest — external sources may not fully close organic dirty-lens coverage",
+          "hash_method_at_download": "per-file SHA-256 at ingest; family metadata_sha256 aggregate per DATA-003 definition",
+          "rights_tier_expected": "R5-internal",
+          "label_tier_at_ingest": "silver/unlabeled · human_gold=false",
+          "per_item_license_gate": false,
+          "notes": "Listed for completeness of gap accounting, not as a downloaded source: this slice adds zero bytes and zero shooting sessions.",
+          "status": "prepared_not_downloaded"
+        }
+      ]
+    },
+    {
+      "gap_id": "GAP-D-formats-9x16-1x1-title-safe",
+      "coverage_matrix_named_gap": "Группа §4 «Формат/пересъёмка (9:16/16:9/1:1, title-safe, дубли)»: форматы 9:16/1:1 и title-safe — 0 при cinematic 16:9 (row 9 of data-coverage-matrix-v1.md §2)",
+      "current_state_from_matrix": "cinematic 7 073 16:9 film frames; webresearch — no 9:16 or 1:1 sources, no title-safe evaluation material",
+      "named_issue_heads": [
+        "subject_too_close_to_edge",
+        "subject_not_prominent_enough"
+      ],
+      "format_note": "format coverage supports reframing/recomposition advice and title-safe presentation checks (CAM-018/019 track the app-side rendering); external stills here provide raw format diversity, while native device 9:16/1:1 capture remains with CAM-018/019 and shot-list shooting",
+      "target_locked_stills_plan": 25,
+      "proposed_candidate_volume": {
+        "min": 100,
+        "max": 150,
+        "unit": "candidate stills before human screening",
+        "note": "split target: >= 40 tall (9:16-ish), >= 30 square (1:1), remainder flexible; aspect verified from upstream dimensions before download"
+      },
+      "closes_named_gap_criterion": "At least one accepted source family yields >= 25 usable stills with native tall (height/width >= 1.5) or square (0.9 <= h/w <= 1.1) aspect from upstream dimension metadata, on which a human can evaluate edge-pressure and title-safe framing per camera_release_label_v1, each with complete per-item rights receipt.",
+      "candidates": [
+        {
+          "candidate_id": "D1-openverse-aspect-filtered",
+          "source": "Openverse API (WordPress/Openverse) — CC/PD aggregator with aspect_ratio and license filters",
+          "source_url": "https://api.openverse.org/v1/images/",
+          "author_or_upstream": "per-result upstream creators (Flickr/Commons/museum partners), recorded per item",
+          "license_class": "license filter restricted to cc0, pdm, by, by-sa at query time; per-result license field confirmed and deep-linked to the upstream source before download",
+          "attribution_requirements": "per item: creator, license, foreign_landing_url, license_version into rights receipt",
+          "expected_volume": {
+            "min": 60,
+            "max": 90,
+            "unit": "candidate stills"
+          },
+          "acquisition_method": "Openverse API queries with aspect_ratio=tall|square and license filter; results metadata includes dimensions and license; client-side screening; only license-confirmed items downloaded from the upstream source URL",
+          "hash_method_at_download": "per-file SHA-256 at ingest into manifest.jsonl image_sha256; family metadata_sha256 aggregate per DATA-003 definition",
+          "rights_tier_expected": "R1/R2",
+          "label_tier_at_ingest": "silver/unlabeled · human_gold=false",
+          "per_item_license_gate": true,
+          "notes": "Aspect filtering happens upstream, which no other allowed source provides natively; the query and filter parameters are recorded in the family receipt for reproducibility.",
+          "status": "prepared_not_downloaded"
+        },
+        {
+          "candidate_id": "D2-commons-dimension-filtered",
+          "source": "Wikimedia Commons (API harvest filtered by image dimensions: tall portrait and square images)",
+          "source_url": "https://commons.wikimedia.org/w/api.php",
+          "author_or_upstream": "per-file uploaders (Wikimedia contributors)",
+          "license_class": "per-file CC0 / CC-BY / CC-BY-SA / PD (mixed; confirmed per item via extmetadata)",
+          "attribution_requirements": "per item: author, license, source URL, revision id into rights receipt",
+          "expected_volume": {
+            "min": 40,
+            "max": 60,
+            "unit": "candidate stills"
+          },
+          "acquisition_method": "Commons API generator=search + imageinfo size filter (client-side h/w >= 1.5 for tall; 0.9..1.1 for square); screening for edge-pressure-relevant scenes (people/objects near frame edge); accepted-rights receipts",
+          "hash_method_at_download": "per-file SHA-256 at ingest; family metadata_sha256 aggregate per DATA-003 definition",
+          "rights_tier_expected": "R2",
+          "label_tier_at_ingest": "silver/unlabeled · human_gold=false",
+          "per_item_license_gate": true,
+          "notes": "Native-exif portrait photos only; upscaled/cropped-to-tall derivatives are rejected at screening to keep format provenance honest.",
+          "status": "prepared_not_downloaded"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "method": "read-only python check over this JSON: manifest status/byte fields; each of the 4 coverage-matrix named gaps present with >= 1 candidate carrying the complete rights_field_contract.per_source_family_required_fields; per_item_license_gate true for every externally-sourced candidate; allowed/forbidden license-class scan; target counts present",
+    "result": "recorded in receipts/2026-09-23-data-015-acquisition-prep.md",
+    "checked_on": "2026-09-23"
+  },
+  "explicit_non_goals": [
+    "no download of any media in this slice (0 bytes; owner required disk economy — GOV-007 storage audit)",
+    "no AVA-like MOS corpus acquisition for volume (tracker DATA-015 prohibition)",
+    "no git commit/push and no edits outside docs/implementation/acquisition/ plus the task receipt",
+    "no silver-label fabrication: every family stays human_gold=false / release_admissible=false until the DATA-008..011 human path"
+  ],
+  "approval": {
+    "decision": "APPROVED (all named candidates)",
+    "decided_by": "agent, owner-delegated 2026-09-27",
+    "date": "2026-09-27",
+    "rationale": "Кандидаты одобрены как policy-чистые планы закупки по 4 доказанным coverage gaps. A3/B3 Open Images и C2 COCO одобрены как допустимые альтернативы, но НЕ скачивались: их загрузка требует dataset-scale аннотационных CSV/батчей и не нужна после выполнения квот policy-чистыми поисковыми источниками («не накачивать объём» — строка DATA-015). C3 (owner shot-list съёмка) остаётся планом физической съёмки. Исполненная закупка: Openverse API (агрегатор Flickr Commons/Wikimedia/прочих CC-источников) с per-item license gate: allowlist CC0/PDM/CC-BY/CC-BY-SA, обязательные creator + landing page, лицензия/автор записаны дословно из API, ничего не выдумано.",
+    "executed_in_this_slice": [
+      "A1/A2 (occlusion) через Openverse search",
+      "B1/B2 (groups-as-hero) через Openverse search",
+      "C1-класс (organic technical defects) через Openverse search",
+      "D1/D2 (tall/square aspects) через Openverse aspect_ratio filter"
+    ],
+    "approved_not_downloaded": [
+      "A3-open-images-occlusion-flags",
+      "B3-open-images-multi-person",
+      "C2-coco-blurry-attribute-shortlist"
+    ],
+    "approved_future_capture": [
+      "C3-residual-owner-shotlist-explicit"
+    ]
+  },
+  "acquisition_result": {
+    "date": "2026-09-27",
+    "harvester": "tools/dataset/acquire_openverse_gaps.py",
+    "root": "/Users/unterlantas/Documents/XCode/setos-backend/local-data/SETOS/Datasets/camera-coach/research",
+    "families": {
+      "openverse-occlusion-20260927": {
+        "gap": "GAP-A-occlusion",
+        "quota": 40,
+        "acquired": 40
+      },
+      "openverse-group-hero-20260927": {
+        "gap": "GAP-B-groups-as-hero",
+        "quota": 40,
+        "acquired": 40
+      },
+      "openverse-organic-technical-20260927": {
+        "gap": "GAP-C-dirty-lens-focus-miss-organic",
+        "quota": 40,
+        "acquired": 40
+      },
+      "openverse-format-aspects-20260927": {
+        "gap": "GAP-D-formats-9x16-1x1-title-safe",
+        "quota": 25,
+        "acquired": 25
+      }
+    },
+    "total_acquired": 145,
+    "bytes_total_approx": "102 MB",
+    "license_mix": {
+      "by": 105,
+      "by-sa": 28,
+      "pdm": 7,
+      "cc0": 5
+    },
+    "integrity": "145/145 sha256 match files on disk; rights fields (creator/license/landing/fetched_at) present per item; 0 gate skips on license",
+    "receipt": "local-data/SETOS/Datasets/camera-coach/research/acquisition-receipt-20260927.json",
+    "label_tier_at_ingest": "silver_raw (research-only; human labeling is a separate task)",
+    "known_nuance": "candidate_id в items.jsonl присвоен по source-классу из словаря кандидатов; для GAP-C записи вне словаря (flickr/прочие) получили fallback D1-openverse-aspect-filtered — фактически это organic-technical поиск (C1-класс); записи не переписывались, уточнение здесь"
+  },
+  "status_note": "0 байт было по дизайну prep-слайса 2026-09-23; 145 items / ~102 MB скачаны 2026-09-27 после одобрения"
+}
