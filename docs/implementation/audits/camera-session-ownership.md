@@ -351,8 +351,8 @@ git log -1 --oneline
 ### Required authority read set
 
 - Product authority: `docs/app-store-product-plan.md:39-47,286-340,344-370,668-676,743-756,809-819`.
-- Task/acceptance: `docs/implementation/BACKLOG.md:98-115`.
-- Execution/status boundary: `docs/implementation/STATUS.md:15-28,41-58`.
+- Current task/acceptance: Camera rows in `docs/implementation/APP_STORE_RELEASE_TRACKER.md`.
+- Current execution/status boundary: `docs/implementation/APP_STORE_RELEASE_TRACKER.md`.
 - Prior route evidence: `docs/implementation/audits/runtime-entry-routing.md:14-22,43-142,168-229,231-300,298-337`.
 - Prior permission evidence: `docs/implementation/audits/privacy-permissions-inventory.md:40-167,298-357`.
 

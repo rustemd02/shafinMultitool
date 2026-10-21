@@ -12,7 +12,7 @@ struct CameraRecordingControlsView: View {
     init(coordinator: CameraCoachRecordingCoordinator, canStart: Bool, maxAuxiliaryHeight: CGFloat = 128) {
         self.coordinator = coordinator
         self.canStart = canStart
-        self.maxAuxiliaryHeight = max(44, maxAuxiliaryHeight)
+        self.maxAuxiliaryHeight = max(SETComponentMetric.minimumHitTarget, maxAuxiliaryHeight)
     }
 
     @Environment(\.openURL) private var openURL
@@ -166,7 +166,7 @@ struct CameraRecordingControlsView: View {
                             ToolbarItem(placement: .confirmationAction) {
                                 Button { presentation = nil } label: {
                                     Text(SETCopyKey.commonClose.localizedTextKey)
-                                        .frame(minWidth: 44, minHeight: 44)
+                                        .frame(minWidth: SETComponentMetric.minimumHitTarget, minHeight: SETComponentMetric.minimumHitTarget)
                                         .contentShape(Rectangle())
                                 }
                                 .accessibilityIdentifier("camera_recording_player_close")
@@ -189,7 +189,7 @@ struct CameraRecordingControlsView: View {
                     (soundEnabled ? SETCopyKey.cameraRecordingSoundOn : .cameraRecordingSoundOff).localizedTextKey,
                     systemImage: soundEnabled ? "mic.fill" : "mic.slash.fill"
                 )
-                .frame(minWidth: 44, minHeight: 44)
+                .frame(minWidth: SETComponentMetric.minimumHitTarget, minHeight: SETComponentMetric.minimumHitTarget)
             }
             .toggleStyle(.button)
             .disabled(!canBeginTake)
@@ -245,7 +245,7 @@ struct CameraRecordingControlsView: View {
             Label(title.localizedTextKey, systemImage: image)
                 .font(SETTypography.uiBodyFont(weight: .semibold))
                 .padding(.horizontal, SETSpacing.x2)
-                .frame(minWidth: 44, minHeight: 44)
+                .frame(minWidth: SETComponentMetric.minimumHitTarget, minHeight: SETComponentMetric.minimumHitTarget)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -365,7 +365,7 @@ struct CameraRecordingUnavailableControls: View {
                       systemImage: "arrow.clockwise")
                     .font(SETTypography.uiBodyFont(weight: .semibold))
                     .padding(.horizontal, SETSpacing.x2)
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(minWidth: SETComponentMetric.minimumHitTarget, minHeight: SETComponentMetric.minimumHitTarget)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

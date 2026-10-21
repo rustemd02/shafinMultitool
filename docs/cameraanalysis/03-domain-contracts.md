@@ -600,7 +600,7 @@ Research continuation (2026-09-11): [Polza probe и ограниченный DEB
 | Эпизод и результат | `CoachingEpisodeCoordinator`, `UserMovementObserver`, `ActionVerifier` | Привязка к изменяемому предмету и защищаемой цели; action-specific сравнимость |
 | Нейросеть | `ml/camera_coach/contracts/set_composition_net_v1.json` | Остаётся отдельным числовым evidence-контрактом; tensor order не менять |
 
-Baseline: HEAD `0733df2cb83c8e3687c31251e11e5d0747052602`, `store`, с незакоммиченными research/docs предыдущих этапов. Главная release-authority — [master plan v2](../aegis/work/2026-09-03-gpt-5-6-pro-guidance/SET_OS_APP_STORE_1_0_CODEX_MASTER_PLAN_v2.md), §§3.1, 6.3, 7, 9. Исторические каталоги `03/24/25/26` не выше этой authority.
+Baseline: HEAD `0733df2cb83c8e3687c31251e11e5d0747052602`, `store`, с незакоммиченными research/docs предыдущих этапов. Главная release-authority — [канонический App Store tracker](../implementation/APP_STORE_RELEASE_TRACKER.md), а acceptance-контракт — `docs/implementation/PRODUCTION_ACCEPTANCE.md`. Исторические каталоги `03/24/25/26` не выше этой authority.
 
 ### N2. Конвенции типов и единиц
 
@@ -663,7 +663,7 @@ CameraCoachAnalysis
 
 `CameraCloudPauseContext.imagePlacementRevision` — локальная защита от устаревшего ответа, отдельная от style-clarification revision. В S1 API/provider wire новое поле, цель и пользовательская ROI не передаются; descriptive observations того же accepted frame остаются доступны, после их допуска proposal пересчитывается локально. Неверное или неизменившееся сохранение не отменяет текущий запрос. Восемь style flags и девятикомпонентный `intent_features` неизменны; неизвестный стиль не заменяется `natural`.
 
-Запрет перестановки предметов не запрещает это предпочтение кадрирования. Оно не устанавливает physical control и не создаёт episode baseline: `SubjectTracker`, `UserMovementObserver`, `CoachingEpisodeCoordinator` и `ActionVerifier` не получают новый target/результат. Для placement автоматический temporal verifier остаётся отсутствующим (`nil`), движение и достижение цели неизвестны. Подключение к обычному UI — факт исходников. Доказательства исполнения, версия артефакта и актуальные результаты native/UI qualification записываются в существующий [EXECUTION_STATE](../aegis/work/2026-09-03-gpt-5-6-pro-guidance/EXECUTION_STATE.md). Этот раздел сам по себе не утверждает PASS, новое обучение, допуск модели, физическую или человеческую проверку.
+Запрет перестановки предметов не запрещает это предпочтение кадрирования. Оно не устанавливает physical control и не создаёт episode baseline: `SubjectTracker`, `UserMovementObserver`, `CoachingEpisodeCoordinator` и `ActionVerifier` не получают новый target/результат. Для placement автоматический temporal verifier остаётся отсутствующим (`nil`), движение и достижение цели неизвестны. Подключение к обычному UI — факт исходников. Доказательства исполнения, версия артефакта и актуальные результаты native/UI qualification записываются в [канонический tracker](../implementation/APP_STORE_RELEASE_TRACKER.md). Этот раздел сам по себе не утверждает PASS, новое обучение, допуск модели, физическую или человеческую проверку.
 
 ### N4. Сущности: наблюдение отдельно от идентичности
 

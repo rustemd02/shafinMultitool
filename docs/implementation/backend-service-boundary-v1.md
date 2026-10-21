@@ -68,12 +68,12 @@ never in the app bundle.
   the version range discussed by the current [SQLite WAL-reset advisory](https://www.sqlite.org/wal.html).
   Single-host storage is a deliberate local ceiling, not an HA design.
 - Verification/review status and exact commands are recorded in the canonical
-  `EXECUTION_STATE.md` large-batch checkpoint; do not infer qualification
+  `APP_STORE_RELEASE_TRACKER.md` and bound receipts; do not infer qualification
   merely from the workspace's existence.
 
 ## App Attest certificate implementation boundary — 2026-09-11
 
-Implementation evidence: external `app_attest_certificates.py` is frozen with10/10 focused checks and26/26 existing service regression checks passing. Independent SPEC and QUALITY reviews passed within certificate-only scope. Exact hashes and protocol-source caveats: EXECUTION_STATE.md, App Attest credential-certificate package; thesis evidence `EV-SG-ATTEST-CERT-001`. The component is not wired to service admission.
+Implementation evidence: external `app_attest_certificates.py` is frozen with10/10 focused checks and26/26 existing service regression checks passing. Independent SPEC and QUALITY reviews passed within certificate-only scope. Exact hashes and protocol-source caveats: App Attest credential-certificate package receipts and the canonical tracker; thesis evidence `EV-SG-ATTEST-CERT-001`. The component is not wired to service admission.
 
 The implemented local security component is credential-certificate validation, not
 authentication admission. Its internal inputs are DER certificates, a nonce and
@@ -129,7 +129,7 @@ default purpose, without weakening trust settings. This is not a production
 receipt validator: exact signer purpose, bounded ASN.1 fields, App ID, freshness,
 key binding and operational/runtime packaging remain required. Apple field3 in
 that fixture contains a certificate, not raw SPKI. Research and exact evidence
-are recorded in EXECUTION_STATE.md under the assertion package.
+are recorded in the retained App Attest evidence package and indexed by the canonical tracker.
 
 ## Historical app-side guarantees (verified on the locked commit)
 

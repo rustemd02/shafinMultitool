@@ -1,6 +1,6 @@
 # CC-005 — Test topology and UI-test target plan
 
-Observed 2026-08-15 from base `faf3e12abd6443877c7e5072fd67c878cce68553` (`store` bootstrap commit). This is an implementation audit, not a product, signing, privacy, or architecture decision. Product behavior remains governed by `docs/app-store-product-plan.md`; execution state remains governed by `docs/implementation/STATUS.md` and `docs/implementation/BACKLOG.md`.
+Observed 2026-08-15 from base `faf3e12abd6443877c7e5072fd67c878cce68553` (`store` bootstrap commit). This is an implementation audit, not a product, signing, privacy, or architecture decision. Product behavior remains governed by `docs/app-store-product-plan.md`; current execution state remains governed by `docs/implementation/APP_STORE_RELEASE_TRACKER.md`.
 
 ## Executive result
 

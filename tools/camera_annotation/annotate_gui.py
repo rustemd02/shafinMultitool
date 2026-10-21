@@ -10,6 +10,13 @@ boxes (suggestions only — you stay the source of truth).
 Records are appended to the human-review store (see annotation_labels.py).
 Use review_pipeline.py for any research export; this UI never creates automatic gold.
 
+Release-label export (DATA-005): a separate fail-closed button converts the
+current human review into a contract-valid `camera-release-label-v1` envelope
+through release_label_adapter.py. The release-only elicitations (issue
+severity/confidence/evidence, target facts, movability) are collected in the
+"Экспорт release label" panel; a missing answer refuses the export without
+writing anything — the adapter, not the UI, is the only writer.
+
 Run:
     python3 tools/camera_annotation/annotate_gui.py \
         --queue  <queue.jsonl> \
@@ -26,16 +33,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
+import tempfile
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from annotation_labels import (  # noqa: E402
     ACTIONS,
     BEAUTY_LEVELS,
+    DATA,
     DELTAS,
     ISSUES,
     KEEP_ACTION,
@@ -48,6 +58,22 @@ from annotation_labels import (  # noqa: E402
 )
 from assist_hints import ASSIST_SOURCE, beauty_from_score, hints_for_image  # noqa: E402
 from phrase_suggestions import suggest  # noqa: E402
+from release_label_config import (  # noqa: E402
+    ABSTENTION_REASONS,
+    IDENTITY_STATUSES,
+    MOVABILITY_PERMISSIONS,
+    MOVABILITY_STATUSES,
+    TARGET_KINDS,
+    TARGET_ROLES,
+    ReleaseConfigError,
+    build_conversion_config,
+    derive_source_fields,
+    sanitize_release_record_id,
+)
+
+
+class ReleaseAdmissionError(ValueError):
+    """The current review state fails a human-admission gate (save or export)."""
 
 ISSUE_LABELS_RU = {
     "subject_too_close_to_edge": "субъект у края кадра",
@@ -210,6 +236,27 @@ class AnnotationApp:
         self.forbidden_vars: dict[str, tk.BooleanVar] = {}
         self.delta_set: dict[str, tk.BooleanVar] = {}
         self.delta_value: dict[str, tk.DoubleVar] = {}
+        # Release-label elicitations (DATA-005). They are never persisted into
+        # the v1 review store; they only feed the export conversion config.
+        self.issue_severity: dict[str, tk.StringVar] = {}
+        self.issue_confidence: dict[str, tk.StringVar] = {}
+        self.issue_evidence_ref: dict[str, tk.StringVar] = {}
+        self.source_family_id = tk.StringVar(value="")
+        self.frame_id = tk.StringVar(value="")
+        self.captured_at = tk.StringVar(value="")
+        self.target_entity_ref = tk.StringVar(value="")
+        self.target_identity_status = tk.StringVar(value="")
+        self.target_kind = tk.StringVar(value="")
+        self.target_role = tk.StringVar(value="")
+        self.target_movability_status = tk.StringVar(value="")
+        self.target_movability_permission = tk.StringVar(value="")
+        self.target_rect_from_region = tk.BooleanVar(value=False)
+        self.review_ids_text = tk.StringVar(value="")
+        self.corrective_choice = tk.StringVar(value="")
+        self.abstention_reason = tk.StringVar(value="")
+        self.release_record_caption = tk.StringVar(value="")
+        self._corrective_options: dict[str, str] = {}
+        self.corrective_combo: ttk.Combobox | None = None
         self.status = tk.StringVar(value="")
         self.progress = tk.StringVar(value="")
         self.provenance = tk.StringVar(value="")
@@ -349,10 +396,36 @@ class AnnotationApp:
 
         issues_box = ttk.LabelFrame(panel, text="Что мешает", padding=6)
         issues_box.pack(fill="x", pady=6)
+        ttk.Label(
+            issues_box,
+            text="У отмеченного issue для release-экспорта нужны severity и confidence (0..1) и evidence-ref.",
+            wraplength=390,
+        ).pack(anchor="w")
         for name in ISSUES:
             var = tk.BooleanVar(value=False)
             self.issue_vars[name] = var
-            ttk.Checkbutton(issues_box, text=ISSUE_LABELS_RU[name], variable=var).pack(anchor="w")
+            row = ttk.Frame(issues_box)
+            row.pack(fill="x")
+            ttk.Checkbutton(row, text=ISSUE_LABELS_RU[name], variable=var).pack(side="left")
+            detail = ttk.Frame(issues_box)
+            detail.pack(fill="x", padx=(18, 0))
+            severity = tk.StringVar(value="")
+            confidence = tk.StringVar(value="")
+            evidence_ref = tk.StringVar(value="")
+            self.issue_severity[name] = severity
+            self.issue_confidence[name] = confidence
+            self.issue_evidence_ref[name] = evidence_ref
+            ttk.Label(detail, text="sev").pack(side="left")
+            sev_entry = ttk.Entry(detail, textvariable=severity, width=5)
+            sev_entry.pack(side="left", padx=(2, 6))
+            ttk.Label(detail, text="conf").pack(side="left")
+            conf_entry = ttk.Entry(detail, textvariable=confidence, width=5)
+            conf_entry.pack(side="left", padx=(2, 6))
+            ttk.Label(detail, text="evidence").pack(side="left")
+            ref_entry = ttk.Entry(detail, textvariable=evidence_ref, width=13)
+            ref_entry.pack(side="left", fill="x", expand=True, padx=(2, 0))
+            for entry in (sev_entry, conf_entry, ref_entry):
+                self._bind_input_shortcuts(entry)
 
         actions_box = ttk.LabelFrame(panel, text="Что сделать (можно несколько)", padding=6)
         actions_box.pack(fill="both", expand=True)
@@ -456,6 +529,87 @@ class AnnotationApp:
             text="ROI субъекта: не уверен / пропустить",
             variable=self.roi_uncertain,
         ).pack(anchor="w", pady=(4, 0))
+
+        release_box = ttk.LabelFrame(panel, text="Экспорт release label (cam-release-label-v1)", padding=6)
+        release_box.pack(fill="x", pady=6)
+        ttk.Label(
+            release_box,
+            text="Экспорт вызывает release_label_adapter и отказывает без записи, если элиситация неполна. "
+                 "Режим экспорта: human_review, release_admissible=false.",
+            wraplength=390,
+        ).pack(anchor="w")
+        ttk.Label(release_box, textvariable=self.release_record_caption, wraplength=390).pack(anchor="w")
+
+        source_row = ttk.Frame(release_box)
+        source_row.pack(fill="x", pady=(4, 0))
+        ttk.Label(source_row, text="family").pack(side="left")
+        family_entry = ttk.Entry(source_row, textvariable=self.source_family_id, width=12)
+        family_entry.pack(side="left", padx=(2, 6))
+        ttk.Label(source_row, text="frame").pack(side="left")
+        frame_entry = ttk.Entry(source_row, textvariable=self.frame_id, width=16)
+        frame_entry.pack(side="left", padx=(2, 6))
+        for entry in (family_entry, frame_entry):
+            self._bind_input_shortcuts(entry)
+        captured_row = ttk.Frame(release_box)
+        captured_row.pack(fill="x")
+        ttk.Label(captured_row, text="captured_at YYYY-MM-DDTHH:MM:SSZ").pack(side="left")
+        captured_entry = ttk.Entry(captured_row, textvariable=self.captured_at, width=22)
+        captured_entry.pack(side="left", padx=(4, 0))
+        self._bind_input_shortcuts(captured_entry)
+
+        target_box = ttk.LabelFrame(release_box, text="Target (у контракта нет дефолтов)", padding=4)
+        target_box.pack(fill="x", pady=(4, 0))
+        entity_row = ttk.Frame(target_box)
+        entity_row.pack(fill="x")
+        ttk.Label(entity_row, text="entity_ref (латиницей, напр. lamp-1)").pack(side="left")
+        entity_entry = ttk.Entry(entity_row, textvariable=self.target_entity_ref, width=14)
+        entity_entry.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self._bind_input_shortcuts(entity_entry)
+        combo_row = ttk.Frame(target_box)
+        combo_row.pack(fill="x", pady=(2, 0))
+        for combo_label, values, var in (
+            ("identity", IDENTITY_STATUSES, self.target_identity_status),
+            ("kind", TARGET_KINDS, self.target_kind),
+            ("role", TARGET_ROLES, self.target_role),
+        ):
+            ttk.Label(combo_row, text=combo_label).pack(side="left")
+            ttk.Combobox(combo_row, values=list(values), textvariable=var, width=10,
+                         state="readonly").pack(side="left", padx=(2, 6))
+        move_row = ttk.Frame(target_box)
+        move_row.pack(fill="x")
+        ttk.Label(move_row, text="movability").pack(side="left")
+        ttk.Combobox(move_row, values=list(MOVABILITY_STATUSES), textvariable=self.target_movability_status,
+                     width=12, state="readonly").pack(side="left", padx=(2, 6))
+        ttk.Label(move_row, text="permission").pack(side="left")
+        ttk.Combobox(move_row, values=list(MOVABILITY_PERMISSIONS),
+                     textvariable=self.target_movability_permission,
+                     width=9, state="readonly").pack(side="left", padx=(2, 0))
+        ttk.Checkbutton(
+            target_box,
+            text="rect = выбранная область",
+            variable=self.target_rect_from_region,
+        ).pack(anchor="w", pady=(2, 0))
+
+        ids_row = ttk.Frame(release_box)
+        ids_row.pack(fill="x", pady=(4, 0))
+        ttk.Label(ids_row, text="review_ids (через запятую)").pack(side="left")
+        ids_entry = ttk.Entry(ids_row, textvariable=self.review_ids_text, width=20)
+        ids_entry.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self._bind_input_shortcuts(ids_entry)
+        choice_row = ttk.Frame(release_box)
+        choice_row.pack(fill="x", pady=(2, 0))
+        ttk.Label(choice_row, text="corrective").pack(side="left")
+        self.corrective_combo = ttk.Combobox(choice_row, textvariable=self.corrective_choice,
+                                             width=16, state="readonly")
+        self.corrective_combo.pack(side="left", padx=(2, 6))
+        ttk.Label(choice_row, text="abstain").pack(side="left")
+        ttk.Combobox(choice_row, values=["", *ABSTENTION_REASONS], textvariable=self.abstention_reason,
+                     width=13, state="readonly").pack(side="left", padx=(2, 0))
+        ttk.Button(
+            release_box,
+            text="Экспортировать release label",
+            command=self.export_release_label,
+        ).pack(fill="x", pady=(6, 0))
 
         ttk.Checkbutton(
             panel,
@@ -607,6 +761,25 @@ class AnnotationApp:
         for name in DELTAS:
             self.delta_set[name].set(False)
             self.delta_value[name].set(0.0)
+        for name in self.issue_severity:
+            self.issue_severity[name].set("")
+            self.issue_confidence[name].set("")
+            self.issue_evidence_ref[name].set("")
+        self.source_family_id.set("")
+        self.frame_id.set("")
+        self.captured_at.set("")
+        self.target_entity_ref.set("")
+        self.target_identity_status.set("")
+        self.target_kind.set("")
+        self.target_role.set("")
+        self.target_movability_status.set("")
+        self.target_movability_permission.set("")
+        self.target_rect_from_region.set(False)
+        self.review_ids_text.set("")
+        self.corrective_choice.set("")
+        self.abstention_reason.set("")
+        self.release_record_caption.set("")
+        self._corrective_options = {}
 
     def _restore_label(self, label: dict) -> None:
         """Restore the latest saved human label when revisiting a frame."""
@@ -767,10 +940,103 @@ class AnnotationApp:
         self.status.set(f"[{self.index + 1}/{len(self.queue)}] {self.review_mode} · {short_id}")
         self.record_caption.set(f"record_id: {record_id} · файл: {Path(record['image_path']).name}")
         self.provenance.set(provenance_caption(record))
+        # Release-export source fields: derived from the record as far as the
+        # record proves them; captured_at stays empty when unknown so the
+        # export refuses instead of fabricating a capture time.
+        derived = derive_source_fields(record)
+        self.source_family_id.set(derived["source_family_id"])
+        self.frame_id.set(derived["frame_id"])
+        self.captured_at.set(derived["captured_at"])
+        self.review_ids_text.set(record_id)
+        try:
+            release_id = sanitize_release_record_id(record_id)
+        except ReleaseConfigError as exc:
+            self.release_record_caption.set(f"release_record_id: ошибка — {exc}")
+        else:
+            self.release_record_caption.set(f"release_record_id: {release_id}")
         self._verify_source()
         self.render_image()
         self.refresh_regions()
         self._update_progress()
+
+    def _build_review_record(self, record: dict) -> dict:
+        """Run every human-admission gate and build the v1 review record.
+
+        Shared by save and release-label export so an export can never bypass
+        the ordinary review admission. Raises ReleaseAdmissionError with the
+        annotator-facing message; other errors (e.g. a bad delta value) still
+        raise ValueError.
+        """
+        unsure = self.unsure.get()
+        if unsure:
+            beauty = "unrated"
+            improvement_needed = None
+            issues: list[str] = []
+            actions: list[str] = []
+            forbidden_actions: list[str] = []
+        else:
+            if self.matrix_class.get() not in MATRIX_CLASSES:
+                raise ReleaseAdmissionError("Выбери тип сцены для решённой разметки")
+            beauty = self.beauty.get()
+            if not beauty:
+                raise ReleaseAdmissionError("Сначала выбери: красиво / пограничное / некрасиво")
+            improvement_needed = bool(self.improvement_needed.get())
+            issues = [name for name, var in self.issue_vars.items() if var.get()]
+            actions = [name for name, var in self.action_vars.items() if var.get()]
+            forbidden_actions = [name for name, var in self.forbidden_vars.items() if var.get()]
+            if not improvement_needed:
+                issues = []
+                actions = [KEEP_ACTION]
+            overlap = sorted(set(actions) & set(forbidden_actions))
+            if overlap:
+                raise ReleaseAdmissionError(
+                    f"Одно действие нельзя отметить и как можно, и как нельзя: {overlap}"
+                )
+            if improvement_needed and not actions:
+                raise ReleaseAdmissionError("Отметь, что сделать (или сними галочку «нужно улучшать»)")
+            if improvement_needed and not issues:
+                raise ReleaseAdmissionError("Отметь, что мешает кадру")
+        subject_count = sum(region.get("role") == "subject" for region in self.regions)
+        if not unsure and not self.roi_uncertain.get() and subject_count != 1:
+            raise ReleaseAdmissionError(
+                "Для решённой разметки отметь ровно одну область subject "
+                "или включи «ROI субъекта: не уверен / пропустить»."
+            )
+        regions = (
+            [region for region in self.regions if region.get("role") != "subject"]
+            if self.roi_uncertain.get() else list(self.regions)
+        )
+        path = Path(record["image_path"])
+        deltas = {
+            name: round(float(self.delta_value[name].get()), 2)
+            for name in DELTAS
+            if self.delta_set[name].get()
+        }
+        assist_source = "+".join(sorted(self.assist_sources)) if self.assist_sources else None
+        return build_label(
+            record_id=record["record_id"],
+            image_sha256=str(record["image_sha256"]),
+            annotator_id=self.annotator_id,
+            beauty=beauty,
+            improvement_needed=improvement_needed,
+            issues=issues,
+            actions=actions,
+            forbidden_actions=forbidden_actions,
+            regions=regions,
+            deltas=None if unsure else deltas or None,
+            unsure=unsure,
+            notes=self.notes.get().strip(),
+            image_path=str(path),
+            provenance=record.get("provenance"),
+            assisted=self.assisted,
+            assist_source=assist_source,
+            human_score=record.get("human_score") if self.review_mode == "assisted" else None,
+            capture_intent=(self.capture_intent.get()
+                            if self.capture_intent.get() in CAPTURE_INTENTS else None),
+            review_mode=self.review_mode,
+            teacher_proposal_id=(self.teacher_proposal_id if self.review_mode == "assisted" else None),
+            matrix_class=(self.matrix_class.get() if self.matrix_class.get() in MATRIX_CLASSES else None),
+        )
 
     def save_current(self) -> None:
         record = self.current
@@ -782,89 +1048,153 @@ class AnnotationApp:
         if not self._verify_source():
             messagebox.showerror("Не сохранено", self.source_error or "исходный кадр не прошёл проверку")
             return
-        unsure = self.unsure.get()
-        if unsure:
-            beauty = "unrated"
-            improvement_needed = None
-            issues: list[str] = []
-            actions: list[str] = []
-            forbidden_actions: list[str] = []
-        else:
-            if self.matrix_class.get() not in MATRIX_CLASSES:
-                messagebox.showwarning("Разметка", "Выбери тип сцены для решённой разметки")
-                return
-            beauty = self.beauty.get()
-            if not beauty:
-                messagebox.showwarning("Разметка", "Сначала выбери: красиво / пограничное / некрасиво")
-                return
-            improvement_needed = bool(self.improvement_needed.get())
-            issues = [name for name, var in self.issue_vars.items() if var.get()]
-            actions = [name for name, var in self.action_vars.items() if var.get()]
-            forbidden_actions = [name for name, var in self.forbidden_vars.items() if var.get()]
-            if not improvement_needed:
-                issues = []
-                actions = [KEEP_ACTION]
-            overlap = sorted(set(actions) & set(forbidden_actions))
-            if overlap:
-                messagebox.showwarning("Разметка", f"Одно действие нельзя отметить и как можно, и как нельзя: {overlap}")
-                return
-            if improvement_needed and not actions:
-                messagebox.showwarning("Разметка", "Отметь, что сделать (или сними галочку «нужно улучшать»)")
-                return
-            if improvement_needed and not issues:
-                messagebox.showwarning("Разметка", "Отметь, что мешает кадру")
-                return
-        subject_count = sum(region.get("role") == "subject" for region in self.regions)
-        if not unsure and not self.roi_uncertain.get() and subject_count != 1:
-            messagebox.showwarning(
-                "ROI субъекта",
-                "Для решённой разметки отметь ровно одну область subject "
-                "или включи «ROI субъекта: не уверен / пропустить»."
-            )
-            return
-        regions = (
-            [region for region in self.regions if region.get("role") != "subject"]
-            if self.roi_uncertain.get() else list(self.regions)
-        )
         try:
-            path = Path(record["image_path"])
-            deltas = {
-                name: round(float(self.delta_value[name].get()), 2)
-                for name in DELTAS
-                if self.delta_set[name].get()
-            }
-            assist_source = "+".join(sorted(self.assist_sources)) if self.assist_sources else None
-            label = build_label(
-                record_id=record["record_id"],
-                image_sha256=str(record["image_sha256"]),
-                annotator_id=self.annotator_id,
-                beauty=beauty,
-                improvement_needed=improvement_needed,
-                issues=issues,
-                actions=actions,
-                forbidden_actions=forbidden_actions,
-                regions=regions,
-                deltas=None if unsure else deltas or None,
-                unsure=unsure,
-                notes=self.notes.get().strip(),
-                image_path=str(path),
-                provenance=record.get("provenance"),
-                assisted=self.assisted,
-                assist_source=assist_source,
-                human_score=record.get("human_score") if self.review_mode == "assisted" else None,
-                capture_intent=(self.capture_intent.get()
-                                if self.capture_intent.get() in CAPTURE_INTENTS else None),
-                review_mode=self.review_mode,
-                teacher_proposal_id=(self.teacher_proposal_id if self.review_mode == "assisted" else None),
-                matrix_class=(self.matrix_class.get() if self.matrix_class.get() in MATRIX_CLASSES else None),
-            )
+            label = self._build_review_record(record)
             appended = append_label(self.store, label)
+        except ReleaseAdmissionError as exc:
+            messagebox.showwarning("Разметка", str(exc))
+            return
         except Exception as exc:  # noqa: BLE001 - surface any admission error to the annotator
             messagebox.showerror("Не сохранено", str(exc))
             return
         self.status.set(f"Сохранено ({appended} записей)")
         self.index += 1
         self.load_current()
+
+    # ------------------------------------------------- release-label export
+    def _refresh_corrective_options(self) -> None:
+        """Offer the currently selected corrective actions for explicit choice."""
+        corrective = [name for name, var in self.action_vars.items() if var.get() and name != KEEP_ACTION]
+        self._corrective_options = {ACTION_LABELS_RU.get(name, name): name for name in corrective}
+        if self.corrective_combo is not None:
+            self.corrective_combo["values"] = list(self._corrective_options)
+            if self.corrective_choice.get() not in self._corrective_options:
+                self.corrective_choice.set("")
+
+    def _collect_release_selections(self) -> dict:
+        """Read the release elicitations out of the widgets into plain data.
+
+        Pure-data output: all contract validation happens in
+        release_label_config.build_conversion_config, which refuses (before
+        anything is written or invoked) on a missing elicitation.
+        """
+        issue_evidence: dict[str, dict] = {}
+        for name, var in self.issue_vars.items():
+            if not var.get():
+                continue
+            issue_evidence[name] = {
+                "severity": self.issue_severity[name].get(),
+                "confidence": self.issue_confidence[name].get(),
+                "evidence_refs": [
+                    ref.strip()
+                    for ref in self.issue_evidence_ref[name].get().split(",")
+                    if ref.strip()
+                ],
+            }
+        target_rect = None
+        if self.target_rect_from_region.get():
+            if not 0 <= self.selected_region < len(self.regions):
+                raise ReleaseConfigError(
+                    "target.rect: включай «rect = выбранная область» только при выбранной области"
+                )
+            target_rect = list(self.regions[self.selected_region]["rect"])
+        review_ids = [rid.strip() for rid in self.review_ids_text.get().split(",") if rid.strip()]
+        selections: dict = {
+            "issue_evidence": issue_evidence,
+            "target": {
+                "entity_ref": self.target_entity_ref.get(),
+                "identity_status": self.target_identity_status.get(),
+                "kind": self.target_kind.get(),
+                "role": self.target_role.get(),
+                "movability_status": self.target_movability_status.get(),
+                "movability_permission": self.target_movability_permission.get(),
+                "rect": target_rect,
+            },
+            "review_ids": review_ids or None,
+            "captured_at": self.captured_at.get().strip() or None,
+            "source_family_id": self.source_family_id.get().strip() or None,
+            "frame_id": self.frame_id.get().strip() or None,
+            "abstention_reason": self.abstention_reason.get().strip() or None,
+        }
+        corrective_label = self.corrective_choice.get().strip()
+        if corrective_label and corrective_label in self._corrective_options:
+            selections["corrective_action_id"] = self._corrective_options[corrective_label]
+        return selections
+
+    def export_release_label(self) -> None:
+        """Export the current human review as camera-release-label-v1.
+
+        Fail-closed by construction: the config is built and validated before
+        anything is written; the adapter CLI is the only writer and it refuses
+        (exit 1, no output file) on any contract violation. A rejection is
+        shown to the annotator and leaves zero records behind.
+        """
+        record = self.current
+        if record is None:
+            return
+        if not self.human_confirmed.get():
+            messagebox.showwarning("Экспорт release label", "Подтверди human review перед экспортом")
+            return
+        if not self._verify_source():
+            messagebox.showerror("Экспорт отклонён", self.source_error or "исходный кадр не прошёл проверку")
+            return
+        try:
+            review = self._build_review_record(record)
+        except ReleaseAdmissionError as exc:
+            messagebox.showwarning("Экспорт release label", str(exc))
+            return
+        self._refresh_corrective_options()
+        try:
+            config = build_conversion_config(review, **self._collect_release_selections())
+        except ReleaseConfigError as exc:
+            messagebox.showerror("Экспорт отклонён — запись не создана", str(exc))
+            return
+        save_options = {
+            "title": "Куда записать release label",
+            "defaultextension": ".json",
+            "initialfile": f"{config['release_record_id']}.json",
+        }
+        if DATA.exists():
+            save_options["initialdir"] = str(DATA / "annotation" / "release-labels")
+        out_path = filedialog.asksaveasfilename(**save_options)
+        if not out_path:
+            return
+        out_file = Path(out_path)
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        adapter_path = Path(__file__).resolve().parent / "release_label_adapter.py"
+        with tempfile.TemporaryDirectory(prefix="cam-release-", dir="/tmp") as tmp:
+            tmp_dir = Path(tmp)
+            review_path = tmp_dir / "review.json"
+            config_path = tmp_dir / "config.json"
+            review_path.write_text(json.dumps(review, ensure_ascii=False), encoding="utf-8")
+            config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+            converted = subprocess.run(
+                [sys.executable, str(adapter_path), "convert",
+                 "--review", str(review_path), "--config", str(config_path), "--out", str(out_file)],
+                capture_output=True,
+                text=True,
+            )
+        if converted.returncode != 0:
+            detail = (converted.stderr or converted.stdout or "").strip() \
+                or f"код возврата {converted.returncode}"
+            messagebox.showerror("Экспорт отклонён — запись не создана", detail)
+            self.status.set("Экспорт отклонён — запись не создана")
+            return
+        validated = subprocess.run(
+            [sys.executable, str(adapter_path), "validate", "--label", str(out_file)],
+            capture_output=True,
+            text=True,
+        )
+        summary = converted.stdout.strip()
+        if validated.returncode != 0:
+            messagebox.showwarning(
+                "Экспорт: файл записан, но контракт-валидация не прошла",
+                f"{summary}\n\n{(validated.stdout or validated.stderr or '').strip()}",
+            )
+            self.status.set("Экспорт: файл записан, validate НЕ прошёл — release не заявлен")
+            return
+        messagebox.showinfo("Экспорт release label", f"{summary}\n{(validated.stdout or '').strip()}")
+        self.status.set(f"Экспорт: {config['release_record_id']} записан и валиден")
 
     def skip(self) -> None:
         self.index = min(self.index + 1, len(self.queue))

@@ -1,7 +1,7 @@
 # Camera Coach human-eval shot list v1
 
 Status: **preparation / `needs_review`**. Сама оценка — **`blocked_external`** (нужны реальные люди и admitted права).
-Дата: 2026-09-13. Источник задачи: runbook `docs/aegis/plans/2026-09-13-setos-release-execution.md`, карточка **Q02**.
+Дата: 2026-09-13. Текущий владелец задачи: DATA-013/014 в `docs/implementation/APP_STORE_RELEASE_TRACKER.md`.
 Дополняет, а не переписывает: `datasets/camera-coach/v1/capture-protocol.md`, `datasets/camera-coach/v1/annotation-guide.md`,
 `datasets/camera-coach/v1/episode-schema.json`, `docs/implementation/human-eval/attempt-record-schema.md`.
 

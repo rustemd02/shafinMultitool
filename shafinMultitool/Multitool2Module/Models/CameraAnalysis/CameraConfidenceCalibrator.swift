@@ -170,7 +170,7 @@ struct CameraCalibratedActionEvidence: Equatable, Sendable {
 }
 
 /// The calibration layer used by the advice planner.
-struct CameraConfidenceCalibrator: Sendable {
+struct CameraConfidenceCalibrator: Equatable, Sendable {
     let schema: CameraActionCalibrationSchemaV1
 
     /// No measured/approved episode calibration is bundled yet. Keep this
@@ -266,5 +266,280 @@ struct CameraConfidenceCalibrator: Sendable {
         }
         guard totalSamples > 0 else { return 0 }
         return totalError / Double(totalSamples)
+    }
+}
+
+// MARK: - CAM-003: typed production calibration artifact contract
+//
+// ML-002 H7 (`calibration_artifact`, routing CAM-003/ML-007): the production
+// calibration artifact is not a tensor head. It is a versioned, hash-bound
+// document that carries the per-head/per-action calibration curves consumed
+// by this calibrator path plus the ML-002 show/silent thresholds. This section
+// defines the contract and the fail-closed loader only; it admits nothing:
+// no production artifact ships in this build (ML-002 GAP-4, ML-007 pending),
+// so the runtime default remains `CameraConfidenceCalibrator.unavailable` and
+// every consumer keeps its `calibration_unavailable` behavior. When a future
+// admitted artifact lands (ML-015/CAM-011), it may only enter the runtime
+// through `CameraCalibrationArtifact.load`/`loadBundledResource`, which refuse
+// anything missing, tampered, schema-incompatible, or provenance-less.
+
+/// The ML-002 v1 production tensor heads a calibration artifact may cover.
+/// `scene_class_logits`, `subjectness_roi_agreement_logits` and `embedding`
+/// are outside the production set and cannot be declared here.
+enum CameraProductionCalibrationHeadV1: String, Codable, CaseIterable, Sendable {
+    case goodFrameProbability = "good_frame_probability"
+    case issueLogits = "issue_logits"
+    case actionUtilityLogits = "action_utility_logits"
+    case continuousTargetDeltas = "continuous_target_deltas"
+    case riskProbability = "risk_probability"
+    case abstentionProbability = "abstention_probability"
+}
+
+/// ML-002 H7 show/silent thresholds for one covered head: `silent` is the
+/// calibrated-confidence floor below which advice stays silent, `show` is the
+/// level required to surface advice. Both live in [0, 1] with
+/// `silent <= show`. No runtime consumer exists yet (CAM-012 owns the
+/// decision wiring); the artifact carries them so the future consumer cannot
+/// invent its own thresholds outside the admitted artifact.
+struct CameraCalibrationShowSilentThresholdsV1: Codable, Equatable, Sendable {
+    let show: Double
+    let silent: Double
+
+    var isValid: Bool {
+        [show, silent].allSatisfy(\.isFinite)
+            && (0...1).contains(show)
+            && (0...1).contains(silent)
+            && silent <= show
+    }
+}
+
+/// The typed production calibration artifact envelope. `schemaVersion` is the
+/// envelope contract version; the embedded payload keeps its own established
+/// "cal1" curve schema — this contract deliberately creates no parallel
+/// payload format and no parallel curve semantics.
+struct CameraProductionCalibrationArtifactV1: Codable, Equatable, Sendable {
+    static let contractID = "camera_calibration_artifact"
+    static let schemaVersion = "1"
+
+    let schemaVersion: String
+    let artifactVersion: Int
+    /// Non-empty, duplicate-free subset of the ML-002 production heads whose
+    /// outputs this calibration is fitted to cover.
+    let coveredHeads: [CameraProductionCalibrationHeadV1]
+    /// Hash-bound calibration payload consumed by `CameraConfidenceCalibrator`.
+    let payload: CameraActionCalibrationSchemaV1
+    /// SHA-256 (lowercase hex) over the CANONICAL payload bytes: the decoded
+    /// payload re-encoded with `JSONEncoder` `.sortedKeys`. Producers (ML-007)
+    /// and this loader must agree on exactly this rule; the hash therefore
+    /// does not depend on envelope whitespace or key order.
+    let payloadSHA256: String
+    /// Per-head show/silent thresholds keyed by covered head id.
+    let thresholds: [String: CameraCalibrationShowSilentThresholdsV1]
+
+    init(artifactVersion: Int,
+         coveredHeads: [CameraProductionCalibrationHeadV1],
+         payload: CameraActionCalibrationSchemaV1,
+         payloadSHA256: String,
+         thresholds: [String: CameraCalibrationShowSilentThresholdsV1] = [:]) {
+        self.schemaVersion = Self.schemaVersion
+        self.artifactVersion = artifactVersion
+        self.coveredHeads = coveredHeads
+        self.payload = payload
+        self.payloadSHA256 = payloadSHA256
+        self.thresholds = thresholds
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case artifactVersion
+        case coveredHeads
+        case payload
+        case payloadSHA256
+        case thresholds
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(String.self, forKey: .schemaVersion)
+        guard schemaVersion == Self.schemaVersion else {
+            throw DecodingError.dataCorruptedError(forKey: .schemaVersion, in: container,
+                                                   debugDescription: "unsupported calibration artifact schema \(schemaVersion)")
+        }
+        artifactVersion = try container.decode(Int.self, forKey: .artifactVersion)
+        coveredHeads = try container.decode([CameraProductionCalibrationHeadV1].self, forKey: .coveredHeads)
+        payload = try container.decode(CameraActionCalibrationSchemaV1.self, forKey: .payload)
+        payloadSHA256 = try container.decode(String.self, forKey: .payloadSHA256)
+        thresholds = try container.decodeIfPresent([String: CameraCalibrationShowSilentThresholdsV1].self,
+                                                   forKey: .thresholds) ?? [:]
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(artifactVersion, forKey: .artifactVersion)
+        try container.encode(coveredHeads, forKey: .coveredHeads)
+        try container.encode(payload, forKey: .payload)
+        try container.encode(payloadSHA256, forKey: .payloadSHA256)
+        try container.encode(thresholds, forKey: .thresholds)
+    }
+
+    /// Canonical bytes bound by `payloadSHA256`.
+    static func canonicalPayloadData(_ payload: CameraActionCalibrationSchemaV1) -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return (try? encoder.encode(payload)) ?? Data()
+    }
+
+    static func sha256Hex(of data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// Typed fail-closed reasons. Every one of them means "no calibration":
+/// callers must map them to `CameraConfidenceCalibrator.unavailable`, never
+/// to a default or substituted table.
+enum CameraCalibrationArtifactFailure: Equatable, Sendable {
+    case missingResource
+    case unreadableResource
+    case emptyData
+    case malformedJSON
+    case unsupportedSchemaVersion(String)
+    case unsupportedArtifactVersion(Int)
+    case emptyCoverage
+    case duplicateCoverage
+    case payloadHashMalformed
+    case payloadHashMismatch(expected: String, actual: String)
+    case emptyPayload
+    case invalidCurve(actionID: String)
+    case missingProducerProvenance(actionID: String)
+    case invalidThreshold(headID: String)
+    case thresholdForUncoveredHead(headID: String)
+}
+
+/// A verified artifact plus the calibrator built from it. `reference` binds
+/// the runtime calibrator to the exact contract version and payload digest,
+/// so downstream evidence can name the calibration it used.
+struct CameraCalibrationArtifactLoadResult: Equatable, Sendable {
+    let calibrator: CameraConfidenceCalibrator
+    let artifact: CameraProductionCalibrationArtifactV1
+    let reference: String
+
+    func thresholds(for head: CameraProductionCalibrationHeadV1) -> CameraCalibrationShowSilentThresholdsV1? {
+        artifact.thresholds[head.rawValue]
+    }
+}
+
+/// Outcome of fail-closed artifact loading. Only `.loaded` exposes a
+/// calibrator; every failure path yields `nil` here by construction.
+enum CameraCalibrationArtifactLoadOutcome: Equatable, Sendable {
+    case loaded(CameraCalibrationArtifactLoadResult)
+    case unavailable(CameraCalibrationArtifactFailure)
+
+    var calibrator: CameraConfidenceCalibrator? {
+        switch self {
+        case .loaded(let result): return result.calibrator
+        case .unavailable: return nil
+        }
+    }
+}
+
+/// The single fail-closed entry point for production calibration artifacts.
+enum CameraCalibrationArtifact {
+    /// Load and verify an artifact from bytes. Missing bytes, malformed JSON,
+    /// schema/version mismatch, hash mismatch or malformed hash, invalid or
+    /// provenance-less curves, and invalid thresholds all yield
+    /// `.unavailable` — never a default calibrator and never a crash.
+    static func load(from data: Data) -> CameraCalibrationArtifactLoadOutcome {
+        guard !data.isEmpty else { return .unavailable(.emptyData) }
+        guard let probe = try? JSONDecoder().decode(VersionProbe.self, from: data) else {
+            return .unavailable(.malformedJSON)
+        }
+        guard probe.schemaVersion == CameraProductionCalibrationArtifactV1.schemaVersion else {
+            return .unavailable(.unsupportedSchemaVersion(probe.schemaVersion))
+        }
+        guard let version = probe.artifactVersion, version >= 1 else {
+            return .unavailable(.unsupportedArtifactVersion(probe.artifactVersion ?? 0))
+        }
+        guard let artifact = try? JSONDecoder().decode(CameraProductionCalibrationArtifactV1.self, from: data) else {
+            return .unavailable(.malformedJSON)
+        }
+        if let failure = validationFailure(of: artifact) {
+            return .unavailable(failure)
+        }
+        let digest = CameraProductionCalibrationArtifactV1.sha256Hex(
+            of: CameraProductionCalibrationArtifactV1.canonicalPayloadData(artifact.payload)
+        )
+        return .loaded(CameraCalibrationArtifactLoadResult(
+            calibrator: CameraConfidenceCalibrator(schema: artifact.payload),
+            artifact: artifact,
+            reference: "\(CameraProductionCalibrationArtifactV1.contractID).v\(CameraProductionCalibrationArtifactV1.schemaVersion):\(digest)"
+        ))
+    }
+
+    /// Bundle-resource entry point. A missing or unreadable resource is an
+    /// honest `.unavailable` — no bundled production calibration artifact
+    /// exists yet, and this call must not fake one.
+    static func loadBundledResource(named name: String,
+                                    extension fileExtension: String = "json",
+                                    in bundle: Bundle) -> CameraCalibrationArtifactLoadOutcome {
+        guard let url = bundle.url(forResource: name, withExtension: fileExtension) else {
+            return .unavailable(.missingResource)
+        }
+        guard let data = try? Data(contentsOf: url) else {
+            return .unavailable(.unreadableResource)
+        }
+        return load(from: data)
+    }
+
+    private static func validationFailure(
+        of artifact: CameraProductionCalibrationArtifactV1
+    ) -> CameraCalibrationArtifactFailure? {
+        guard !artifact.coveredHeads.isEmpty else { return .emptyCoverage }
+        guard Set(artifact.coveredHeads).count == artifact.coveredHeads.count else {
+            return .duplicateCoverage
+        }
+        // Integrity before semantics: a tampered payload is reported as
+        // tampered even if its curves would also fail validation.
+        guard isHexDigest(artifact.payloadSHA256) else { return .payloadHashMalformed }
+        let actual = CameraProductionCalibrationArtifactV1.sha256Hex(
+            of: CameraProductionCalibrationArtifactV1.canonicalPayloadData(artifact.payload)
+        )
+        if actual != artifact.payloadSHA256.lowercased() {
+            return .payloadHashMismatch(expected: artifact.payloadSHA256, actual: actual)
+        }
+        guard !artifact.payload.entries.isEmpty else { return .emptyPayload }
+        for actionID in artifact.payload.entries.keys.sorted() {
+            guard let curve = artifact.payload.entries[actionID] else { continue }
+            guard curve.actionID == actionID,
+                  curve.version > 0,
+                  (try? curve.validate()) != nil else {
+                return .invalidCurve(actionID: actionID)
+            }
+            // Production handoff rule, identical to `calibratedEvidence`: a
+            // curve without producer provenance cannot certify production
+            // evidence, so it cannot be admitted inside a production artifact.
+            guard curve.inputVersion != nil else {
+                return .missingProducerProvenance(actionID: actionID)
+            }
+        }
+        for headID in artifact.thresholds.keys.sorted() {
+            guard let head = CameraProductionCalibrationHeadV1(rawValue: headID),
+                  artifact.coveredHeads.contains(head) else {
+                return .thresholdForUncoveredHead(headID: headID)
+            }
+            guard let threshold = artifact.thresholds[headID], threshold.isValid else {
+                return .invalidThreshold(headID: headID)
+            }
+        }
+        return nil
+    }
+
+    private static func isHexDigest(_ value: String) -> Bool {
+        value.count == 64 && value.allSatisfy(\.isHexDigit)
+    }
+
+    private struct VersionProbe: Decodable {
+        let schemaVersion: String
+        let artifactVersion: Int?
     }
 }

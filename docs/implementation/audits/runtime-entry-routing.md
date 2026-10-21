@@ -7,8 +7,8 @@ Baseline: `faf3e12abd6443877c7e5072fd67c878cce68553` (`docs: bootstrap camera co
 Authorities used:
 
 - Product: `docs/app-store-product-plan.md`.
-- Execution state: `docs/implementation/STATUS.md`.
-- Task definition: `docs/implementation/BACKLOG.md`, CC-006.
+- Current execution state: `docs/implementation/APP_STORE_RELEASE_TRACKER.md`.
+- Task definition: CAM/UI/DEV rows in that tracker; this file remains an audit artifact.
 - Existing implementation documents and source below are evidence of the current runtime, not commercial product authority.
 
 ## Executive finding

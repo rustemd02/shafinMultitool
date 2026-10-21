@@ -552,6 +552,9 @@ final class CameraCloudPauseIntegrationTests: XCTestCase {
         let allowed = try XCTUnwrap(vm.pauseCritique)
         XCTAssertEqual(allowed.summaryId, "technical_quality_underexposure")
         XCTAssertTrue(allowed.actions.contains { $0.semanticActionType == .addFrontFillLight })
+        let allowedLightActions = allowed.actions.filter { $0.semanticActionType == .addFrontFillLight }
+        XCTAssertEqual(allowedLightActions.count, 1)
+        XCTAssertNotNil(allowedLightActions.first?.targetRegion)
         vm.resetPauseSceneControl(expectedSnapshotID: fixture.accepted.snapshotID)
         let unknown = try XCTUnwrap(vm.pauseCritique)
         XCTAssertEqual(unknown.summaryId, "technical_quality_underexposure")

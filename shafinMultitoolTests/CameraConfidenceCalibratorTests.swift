@@ -7,6 +7,7 @@
 //  guarantee (raw logits never reach UI-facing outcomes).
 //
 
+import CryptoKit
 import XCTest
 @testable import shafinMultitool
 
@@ -232,5 +233,278 @@ final class CameraConfidenceCalibratorTests: XCTestCase {
         XCTAssertEqual(decoded, schema)
         XCTAssertEqual(decoded.schemaVersion, "cal1")
         XCTAssertEqual(decoded.entries["level_horizon"]?.version, 1)
+    }
+
+    // MARK: - CAM-003: typed production calibration artifact (fail-closed loading)
+    //
+    // ML-002 H7 routing: the artifact envelope is hash-bound over canonical
+    // payload bytes (decoded payload re-encoded with .sortedKeys); the tests
+    // pin that rule independently with CryptoKit instead of reusing the
+    // production digest helper.
+
+    private func fixtureSHA256Hex(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func fixtureCanonicalPayloadData(_ payload: CameraActionCalibrationSchemaV1) -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try! encoder.encode(payload)
+    }
+
+    private var artifactPayload: CameraActionCalibrationSchemaV1 {
+        CameraActionCalibrationSchemaV1(entries: [
+            "shift_frame_left": CameraCalibrationCurveV1(
+                actionID: "shift_frame_left", version: 2,
+                knots: [knot(0, 0.02), knot(0.5, 0.65), knot(1, 0.98)],
+                domainLow: 0, domainHigh: 1,
+                inputVersion: .boundedPlanConfidenceV1
+            ),
+            "stabilize_camera": CameraCalibrationCurveV1(
+                actionID: "stabilize_camera", version: 1,
+                knots: [knot(0, 0.05), knot(1, 0.9)],
+                domainLow: 0, domainHigh: 1,
+                inputVersion: .technicalStabilityConfidenceV1
+            ),
+        ])
+    }
+
+    private func artifactData(payload: CameraActionCalibrationSchemaV1,
+                              artifactVersion: Int = 1,
+                              coveredHeads: [CameraProductionCalibrationHeadV1] = [.actionUtilityLogits],
+                              payloadSHA256: String? = nil,
+                              thresholds: [String: CameraCalibrationShowSilentThresholdsV1] = [:]) throws -> Data {
+        let digest = payloadSHA256 ?? fixtureSHA256Hex(fixtureCanonicalPayloadData(payload))
+        let artifact = CameraProductionCalibrationArtifactV1(
+            artifactVersion: artifactVersion,
+            coveredHeads: coveredHeads,
+            payload: payload,
+            payloadSHA256: digest,
+            thresholds: thresholds
+        )
+        return try JSONEncoder().encode(artifact)
+    }
+
+    func testArtifactLoadMissingDataAndMissingResourceAreUnavailable() {
+        XCTAssertEqual(CameraCalibrationArtifact.load(from: Data()),
+                       .unavailable(.emptyData))
+        XCTAssertEqual(
+            CameraCalibrationArtifact.loadBundledResource(
+                named: "no_production_calibration_artifact_ships_in_this_build",
+                in: Bundle(for: CameraConfidenceCalibratorTests.self)
+            ),
+            .unavailable(.missingResource)
+        )
+        XCTAssertNil(CameraCalibrationArtifact.load(from: Data()).calibrator,
+                     "fail-closed loading must not expose a calibrator")
+    }
+
+    func testArtifactLoadRejectsMalformedAndIncompatibleSchemas() throws {
+        XCTAssertEqual(CameraCalibrationArtifact.load(from: Data("definitely not json".utf8)),
+                       .unavailable(.malformedJSON))
+
+        let wrongSchema = """
+        {"schemaVersion":"2","artifactVersion":1,"coveredHeads":["action_utility_logits"],\
+        "payload":{"schemaVersion":"cal1","entries":{}},"payloadSHA256":"\(String(repeating: "a", count: 64))"}
+        """
+        XCTAssertEqual(CameraCalibrationArtifact.load(from: Data(wrongSchema.utf8)),
+                       .unavailable(.unsupportedSchemaVersion("2")))
+
+        let zeroVersionData = try artifactData(payload: artifactPayload, artifactVersion: 0)
+        XCTAssertEqual(CameraCalibrationArtifact.load(from: zeroVersionData),
+                       .unavailable(.unsupportedArtifactVersion(0)))
+    }
+
+    func testArtifactCoverageMustBePresentAndUnique() throws {
+        let payload = artifactPayload
+        XCTAssertEqual(try CameraCalibrationArtifact.load(from: artifactData(payload: payload, coveredHeads: [])),
+                       .unavailable(.emptyCoverage))
+        XCTAssertEqual(
+            try CameraCalibrationArtifact.load(from: artifactData(
+                payload: payload,
+                coveredHeads: [.actionUtilityLogits, .actionUtilityLogits]
+            )),
+            .unavailable(.duplicateCoverage)
+        )
+    }
+
+    func testTamperedPayloadHashIsUnavailable() throws {
+        let payload = artifactPayload
+        let validDigest = fixtureSHA256Hex(fixtureCanonicalPayloadData(payload))
+        guard case .loaded(let valid) = try CameraCalibrationArtifact.load(
+            from: artifactData(payload: payload, payloadSHA256: validDigest)) else {
+            return XCTFail("valid fixture must load")
+        }
+        XCTAssertTrue(valid.reference.hasPrefix("camera_calibration_artifact.v1:"))
+        XCTAssertTrue(valid.reference.hasSuffix(validDigest))
+
+        // Flip one calibrated knot value but keep the declared hash.
+        let curve = try XCTUnwrap(payload.entries["shift_frame_left"])
+        let tamperedPayload = CameraActionCalibrationSchemaV1(entries: [
+            "shift_frame_left": CameraCalibrationCurveV1(
+                actionID: curve.actionID, version: curve.version,
+                knots: [knot(0, 0.02), knot(0.5, 0.66), knot(1, 0.98)],
+                domainLow: curve.domainLow, domainHigh: curve.domainHigh,
+                inputVersion: curve.inputVersion
+            ),
+            "stabilize_camera": try XCTUnwrap(payload.entries["stabilize_camera"]),
+        ])
+        let tamperedData = try artifactData(payload: tamperedPayload, payloadSHA256: validDigest)
+        XCTAssertEqual(CameraCalibrationArtifact.load(from: tamperedData),
+                       .unavailable(.payloadHashMismatch(
+                           expected: validDigest,
+                           actual: fixtureSHA256Hex(fixtureCanonicalPayloadData(tamperedPayload))
+                       )))
+        XCTAssertNil(CameraCalibrationArtifact.load(from: tamperedData).calibrator)
+
+        XCTAssertEqual(try CameraCalibrationArtifact.load(from: artifactData(payload: payload,
+                                                                             payloadSHA256: "deadbeef")),
+                       .unavailable(.payloadHashMalformed))
+    }
+
+    func testInvalidOrProvenancelessPayloadEntriesAreUnavailable() throws {
+        func curve(_ actionID: String,
+                   version: Int = 1,
+                   knots: [CameraCalibrationKnotV1],
+                   inputVersion: CameraCalibrationInputVersion? = .boundedPlanConfidenceV1) -> CameraCalibrationCurveV1 {
+            CameraCalibrationCurveV1(actionID: actionID, version: version,
+                                     knots: knots, domainLow: 0, domainHigh: 1,
+                                     inputVersion: inputVersion)
+        }
+
+        let mismatchedKey = CameraActionCalibrationSchemaV1(entries: [
+            "shift_frame_left": curve("other_action", knots: [knot(0, 0), knot(1, 1)])
+        ])
+        XCTAssertEqual(try CameraCalibrationArtifact.load(from: artifactData(payload: mismatchedKey)),
+                       .unavailable(.invalidCurve(actionID: "shift_frame_left")))
+
+        let nonMonotonic = CameraActionCalibrationSchemaV1(entries: [
+            "shift_frame_left": curve("shift_frame_left", knots: [knot(0, 0.9), knot(1, 0.1)])
+        ])
+        XCTAssertEqual(try CameraCalibrationArtifact.load(from: artifactData(payload: nonMonotonic)),
+                       .unavailable(.invalidCurve(actionID: "shift_frame_left")))
+
+        let zeroVersion = CameraActionCalibrationSchemaV1(entries: [
+            "shift_frame_left": curve("shift_frame_left", version: 0, knots: [knot(0, 0), knot(1, 1)])
+        ])
+        XCTAssertEqual(try CameraCalibrationArtifact.load(from: artifactData(payload: zeroVersion)),
+                       .unavailable(.invalidCurve(actionID: "shift_frame_left")))
+
+        // Historical tables without producer provenance cannot be admitted as
+        // a production artifact even though they interpolate fine offline.
+        let provenanceless = CameraActionCalibrationSchemaV1(entries: [
+            "shift_frame_left": curve("shift_frame_left",
+                                      knots: [knot(0, 0), knot(1, 1)],
+                                      inputVersion: nil)
+        ])
+        XCTAssertEqual(try CameraCalibrationArtifact.load(from: artifactData(payload: provenanceless)),
+                       .unavailable(.missingProducerProvenance(actionID: "shift_frame_left")))
+
+        XCTAssertEqual(try CameraCalibrationArtifact.load(
+            from: artifactData(payload: CameraActionCalibrationSchemaV1(entries: [:]))),
+            .unavailable(.emptyPayload))
+    }
+
+    func testInvalidOrUncoveredThresholdsAreUnavailable() throws {
+        let payload = artifactPayload
+        XCTAssertEqual(
+            try CameraCalibrationArtifact.load(from: artifactData(
+                payload: payload,
+                thresholds: ["action_utility_logits": .init(show: 0.3, silent: 0.6)]
+            )),
+            .unavailable(.invalidThreshold(headID: "action_utility_logits")),
+            "silent must not exceed show"
+        )
+        XCTAssertEqual(
+            try CameraCalibrationArtifact.load(from: artifactData(
+                payload: payload,
+                thresholds: ["action_utility_logits": .init(show: 1.5, silent: 0.2)]
+            )),
+            .unavailable(.invalidThreshold(headID: "action_utility_logits"))
+        )
+        // A valid head id outside the artifact's declared coverage is refused.
+        XCTAssertEqual(
+            try CameraCalibrationArtifact.load(from: artifactData(
+                payload: payload,
+                thresholds: ["risk_probability": .init(show: 0.6, silent: 0.2)]
+            )),
+            .unavailable(.thresholdForUncoveredHead(headID: "risk_probability"))
+        )
+        // So is a key that is not a production head at all.
+        XCTAssertEqual(
+            try CameraCalibrationArtifact.load(from: artifactData(
+                payload: payload,
+                thresholds: ["legacy_confidence_v0": .init(show: 0.6, silent: 0.2)]
+            )),
+            .unavailable(.thresholdForUncoveredHead(headID: "legacy_confidence_v0"))
+        )
+    }
+
+    func testValidFixtureLoadsAndCalibratesDeterministically() throws {
+        let payload = artifactPayload
+        let thresholds = [
+            "action_utility_logits": CameraCalibrationShowSilentThresholdsV1(show: 0.60, silent: 0.20)
+        ]
+        let data = try artifactData(payload: payload, thresholds: thresholds)
+
+        guard case .loaded(let first) = CameraCalibrationArtifact.load(from: data),
+              case .loaded(let second) = CameraCalibrationArtifact.load(from: data) else {
+            return XCTFail("valid fixture must load twice")
+        }
+
+        // Two reads of the same artifact are identical, reference included.
+        XCTAssertEqual(first, second)
+        XCTAssertTrue(first.reference.hasPrefix("camera_calibration_artifact.v1:"))
+        XCTAssertTrue(first.reference.contains(
+            fixtureSHA256Hex(fixtureCanonicalPayloadData(payload))
+        ))
+
+        // Show/silent thresholds travel with the artifact, per covered head.
+        XCTAssertEqual(first.thresholds(for: .actionUtilityLogits)?.show, 0.60)
+        XCTAssertEqual(first.thresholds(for: .actionUtilityLogits)?.silent, 0.20)
+        XCTAssertNil(first.thresholds(for: .abstentionProbability))
+
+        // Calibrated outputs are the pure piecewise interpolation of the
+        // verified payload — nothing else may influence them.
+        let grid = stride(from: 0.0, through: 1.0, by: 0.05).map { $0 }
+        let firstOutputs = grid.map {
+            first.calibrator.calibratedProbability(rawLogit: $0, actionID: "shift_frame_left")
+        }
+        let secondOutputs = grid.map {
+            second.calibrator.calibratedProbability(rawLogit: $0, actionID: "shift_frame_left")
+        }
+        XCTAssertEqual(firstOutputs, secondOutputs, "two loads must calibrate identically")
+
+        let curve = try XCTUnwrap(payload.entries["shift_frame_left"])
+        for (raw, outcome) in zip(grid, firstOutputs) {
+            guard case let .calibrated(probability) = outcome else {
+                return XCTFail("grid point \(raw) is inside the declared domain")
+            }
+            XCTAssertEqual(probability,
+                           try XCTUnwrap(curve.calibratedProbability(forRaw: raw)),
+                           accuracy: 1e-15)
+        }
+        XCTAssertEqual(
+            first.calibrator.calibratedProbability(rawLogit: 0.25, actionID: "shift_frame_left").probability!,
+            0.335, accuracy: 1e-12
+        )
+        XCTAssertEqual(
+            first.calibrator.calibratedProbability(rawLogit: 0.8, actionID: "shift_frame_left").probability!,
+            0.848, accuracy: 1e-12
+        )
+        XCTAssertEqual(first.calibrator.calibratedProbability(rawLogit: 1.5, actionID: "shift_frame_left"),
+                       .outOfDomain)
+        XCTAssertEqual(first.calibrator.calibratedProbability(rawLogit: 0.5, actionID: "unknown_action"),
+                       .unavailable)
+
+        // The evidence path keeps the existing producer-provenance contract.
+        let evidence = first.calibrator.calibratedEvidence(
+            rawScore: 0.8, actionID: "shift_frame_left", inputVersion: .boundedPlanConfidenceV1
+        )
+        XCTAssertEqual(evidence?.probability ?? .nan, 0.848, accuracy: 1e-12)
+        XCTAssertTrue(evidence?.calibrationReference.hasPrefix("cal1:") == true)
+        XCTAssertNil(first.calibrator.calibratedEvidence(
+            rawScore: 0.8, actionID: "shift_frame_left", inputVersion: .technicalStabilityConfidenceV1
+        ))
     }
 }

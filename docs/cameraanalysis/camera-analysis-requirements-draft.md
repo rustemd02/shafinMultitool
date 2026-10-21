@@ -645,7 +645,7 @@
 
 ### 23.2. Основания и текущий разрыв
 
-- [Master plan v2](../aegis/work/2026-09-03-gpt-5-6-pro-guidance/SET_OS_APP_STORE_1_0_CODEX_MASTER_PLAN_v2.md), §§3.1, 6.3, 7 и 9: текущая release-authority. Камера локальная, состояния `KEEP / CORRECT / SELECT_SUBJECT / WAIT / ABSTAIN`, одно действие и проверка результата. Upload кадров запрещён текущей границей 1.0; Deep Review требует отдельного production-контракта.
+- [Канонический App Store tracker](../implementation/APP_STORE_RELEASE_TRACKER.md): текущая release-authority. Камера локальная, состояния `KEEP / CORRECT / SELECT_SUBJECT / WAIT / ABSTAIN`, одно действие и проверка результата. Upload кадров запрещён текущей границей 1.0; Deep Review требует отдельного production-контракта.
 - [Каталог PR-S01](24-semantic-tip-taxonomy-and-action-catalog.md): уже содержит object/prop/light actions, `targetEntityRef`, `secondaryEntityRef`, safe labels и примеры перемещения предметов. Он описывает предыдущую семантическую поверхность; наличие action ID не доказывает детекцию и выполнение сценария.
 - [VLM evidence](25-vlm-visual-semantic-evidence-contract.md), [planner](26-semantic-tip-fusion-and-planner.md), [product baseline](30-semantic-camera-source-of-truth.md): существующие точки для будущего расширения; создавать параллельный planner без анализа этих владельцев не требуется.
 - `CameraAnalysisDomainContracts.swift` содержит entity refs и subject-сигналы `topObjectLabel/Confidence/Region`; `AnalysisPipeline.swift` заполняет их из первого foreground detection и использует для семантического evidence. Этот путь сам по себе не доказывает независимое устойчивое сопровождение нескольких одинаковых предметов.

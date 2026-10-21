@@ -25,6 +25,7 @@ import uuid
 import webbrowser
 import subprocess
 import tempfile
+import time
 
 from PIL import Image, ImageOps
 
@@ -35,6 +36,13 @@ from language_labels import (FLAGS, MODEL, output_schema, prompt, projection, su
 COMMAND_ENDPOINT = "https://api.commandcode.ai/provider/v1/"
 DERIVATIVE_RECIPE = "exif-transpose-rgb-jpeg-long-side-1024-quality-85-v1"
 LOOKAHEAD = 6
+FREE_ENDPOINTS = ("models",)
+FREE_RETRY_DELAYS = (1.0, 2.0)
+
+
+def redact(text, secret):
+    """Defense in depth: credential material must never reach journal or UI text."""
+    return str(text).replace(secret, "[redacted]") if secret else str(text)
 
 
 def command_api(path, key="", payload=None):
@@ -51,11 +59,16 @@ def command_api(path, key="", payload=None):
     if payload is not None:
         config += 'header = "Content-Type: application/json"\n'
         config += "data-binary = " + json.dumps(json.dumps(payload)) + "\n"
-    result = subprocess.run(
-        ["curl", "--silent", "--show-error", "--proto", "=https", "--max-time", "70",
-         "--max-filesize", "2097152", "--config", "-", "--write-out", "\n%{http_code}",
-         COMMAND_ENDPOINT + path], input=config, text=True, capture_output=True, timeout=80,
-    )
+    try:
+        result = subprocess.run(
+            ["curl", "--silent", "--show-error", "--proto", "=https", "--max-time", "70",
+             "--max-filesize", "2097152", "--config", "-", "--write-out", "\n%{http_code}",
+             COMMAND_ENDPOINT + path], input=config, text=True, capture_output=True, timeout=80,
+        )
+    except subprocess.TimeoutExpired:
+        # Typed, content-free failure: argv/stderr never carry the key, but a
+        # raw TimeoutExpired string would embed the full command line.
+        raise RuntimeError("command_transport_timeout; billing_unknown") from None
     if result.returncode:
         raise RuntimeError(f"command_transport_exit_{result.returncode}; billing_unknown")
     body, status = result.stdout.rsplit("\n", 1)
@@ -73,6 +86,25 @@ def command_api(path, key="", payload=None):
     if not isinstance(response, dict):
         raise RuntimeError("command_invalid_provider_envelope; billing_unknown")
     return response
+
+
+def command_api_free(path, key, attempts=3):
+    """Bounded retry with backoff for free idempotent endpoints ONLY.
+
+    A paid chat/completions request is never retried automatically: its billing
+    state is unknown after a transport failure and a silent resend can consume
+    the request budget twice. Only clearly transient transport/server failures
+    of the free catalog call are retried, at most `attempts` times.
+    """
+    if path not in FREE_ENDPOINTS:
+        raise ValueError("free-endpoint retry allowlist")
+    for attempt in range(attempts):
+        try:
+            return command_api(path, key)
+        except RuntimeError as exc:
+            transient = str(exc).startswith(("command_transport_exit_", "command_http_5"))
+            if attempt == attempts - 1 or not transient: raise
+            time.sleep(FREE_RETRY_DELAYS[min(attempt, len(FREE_RETRY_DELAYS) - 1)])
 
 
 def rows(path):
@@ -265,7 +297,7 @@ class Review:
 
     def connect(self, key):
         if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_-]{12,200}", key): raise ValueError("Неверный формат ключа")
-        catalog = command_api("models", key)
+        catalog = command_api_free("models", key)
         if MODEL not in {m.get("id") for m in catalog.get("data", []) if isinstance(m, dict)}:
             raise ValueError("Модель отсутствует в каталоге Command Code для этого ключа")
         self.key = key; self.model = MODEL
@@ -355,7 +387,7 @@ class Review:
                     response_id=response.get("id"), visual_assisted=True, pixels_sent=True)
             except Exception as exc:
                 self.billing_unknown = response is None
-                public = "Визуальный анализ остановлен: " + str(exc)[:180] + ". Автоповтора нет."
+                public = "Визуальный анализ остановлен: " + redact(str(exc), self.key)[:180] + ". Автоповтора нет."
                 self.event("visual_error", record_id=rid, job_id=job_id, cache_key=cache_key,
                     media_sha256=self.items[rid]["media_sha256"], media_kind=self.items[rid]["kind"],
                     billing_unknown=self.billing_unknown, error=type(exc).__name__, public_error=public,
@@ -468,7 +500,7 @@ class Review:
             except Exception as exc:
                 self.billing_unknown = True
                 self.event("error", **fields, billing_unknown=True, error=type(exc).__name__, provider="command-code")
-                return dict(error="Перевод не принят: " + str(exc)[:250] + ". Ваш исходный текст сохранён; повтор не запускался.", draft_saved=True)
+                return dict(error="Перевод не принят: " + redact(str(exc), self.key)[:250] + ". Ваш исходный текст сохранён; повтор не запускался.", draft_saved=True)
         finally:
             self.paid_lock.release()
 
@@ -600,7 +632,7 @@ class Handler(BaseHTTPRequestHandler):
             else: self.send(404, dict(error="Не найдено")); return
             self.send(200, result)
         except Exception as exc:
-            self.send(400, dict(error=str(exc)[:250]))
+            self.send(400, dict(error=redact(str(exc), self.server.review.key)[:250]))
 
 
 def self_check():
@@ -622,7 +654,11 @@ def self_check():
             except ValueError: pass
             else: raise AssertionError("duplicate prefetch admitted")
         finally: review.close()
-    print("LANGUAGE REVIEW SELF-CHECK PASS: derivative, allowlist, lookahead and worker shutdown")
+    assert redact("Bearer k-abc k-abc", "k-abc") == "Bearer [redacted] [redacted]"
+    try: command_api_free("chat/completions", "k" * 12)
+    except ValueError: pass
+    else: raise AssertionError("paid endpoint admitted to free-endpoint retry")
+    print("LANGUAGE REVIEW SELF-CHECK PASS: derivative, allowlist, lookahead, worker shutdown, retry allowlist, redaction")
 
 
 def main():

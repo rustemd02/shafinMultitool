@@ -17,7 +17,9 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 from annotation_labels import ACTIONS, ISSUES, DELTAS, INTENT_STYLES, build_label, validate_label, sha256_file, local_media_path
@@ -47,6 +49,81 @@ def write_rows(path, rows):
 
 def fingerprint(value):
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def redact(text, *secrets):
+    """Credential material must never reach journals, receipts or stdout."""
+    for secret in secrets:
+        if secret: text = str(text).replace(secret, "[redacted]")
+    return text
+
+
+FREE_ENDPOINTS = ("models?type=chat", "balance")
+FREE_RETRY_DELAYS = (1.0, 2.0)
+
+
+def _polza_api():
+    """Reuse the existing TLS-verified Polza transport and billing behavior."""
+    sys.path.insert(0, str(REPO / "docs/cameraanalysis/eval"))
+    from run_polza_probe import api
+    return api
+
+
+def api_free(path, key, attempts=3):
+    """Bounded retry with backoff for free idempotent endpoints ONLY.
+
+    A billed chat/completions request is never retried automatically: a
+    transport failure leaves billing unknown, and a silent resend can
+    double-charge (run_polza_probe enforces the same policy). Only clearly
+    transient server-side failures are retried, at most `attempts` times.
+    """
+    if path not in FREE_ENDPOINTS:
+        raise ValueError("api_free is allowlisted to free idempotent endpoints")
+    api = _polza_api()
+    for attempt in range(attempts):
+        try:
+            return api(path, key)
+        except subprocess.TimeoutExpired:
+            raise  # The call already consumed its whole window; stay bounded.
+        except RuntimeError as exc:
+            transient = str(exc).startswith(("transport_exit_", "http_5"))
+            if attempt == attempts - 1 or not transient: raise
+            time.sleep(FREE_RETRY_DELAYS[min(attempt, len(FREE_RETRY_DELAYS) - 1)])
+
+
+def schema_violation(value, schema):
+    """True when value violates the local JSON-Schema subset used by proposal_schema().
+
+    The wire schema is the provider contract; the hand checks below encode review
+    semantics. Checking against the schema before accepting a proposal keeps the
+    local gate from drifting when the schema changes.
+    """
+    allowed = schema["type"]
+    if isinstance(allowed, str): allowed = (allowed,)
+    if value is None: return "null" not in allowed
+    if isinstance(value, bool): kind = "boolean"
+    elif isinstance(value, str): kind = "string"
+    elif isinstance(value, (int, float)):
+        if not math.isfinite(value): return True
+        kind = "number"
+    elif isinstance(value, list): kind = "array"
+    elif isinstance(value, dict): kind = "object"
+    else: return True
+    if kind not in allowed: return True
+    if "enum" in schema and value not in schema["enum"]: return True
+    if kind == "number":
+        if "minimum" in schema and value < schema["minimum"]: return True
+        if "maximum" in schema and value > schema["maximum"]: return True
+    if kind == "array":
+        if "minItems" in schema and len(value) < schema["minItems"]: return True
+        if "maxItems" in schema and len(value) > schema["maxItems"]: return True
+        return any(schema_violation(item, schema["items"]) for item in value)
+    if kind == "object":
+        properties = schema.get("properties", {})
+        if schema.get("additionalProperties") is False and set(value) != set(properties): return True
+        if any(key not in value for key in schema.get("required", ())): return True
+        return any(schema_violation(item, properties[key]) for key, item in value.items())
+    return False
 
 
 def checked_image(row):
@@ -125,6 +202,12 @@ def prepare(args):
 
 
 def validate_proposal(proposal, row):
+    # Strict pre-write gate: the raw model JSON must satisfy the exact wire
+    # schema (proposal_schema) before any semantic hand check runs. Partial,
+    # schema-drifting or non-finite payloads are rejected here and never
+    # become an accepted proposal (teacher) or an assembled queue row.
+    if schema_violation(proposal, proposal_schema()):
+        raise ValueError("teacher proposal violates the strict local schema")
     expected = {"record_id", "beauty", "improvement_needed", "issues", "actions", "regions", "notes", "unsure"}
     if not isinstance(proposal, dict) or set(proposal) != expected:
         raise ValueError("teacher proposal keys differ from the review protocol")
@@ -188,15 +271,13 @@ def proposal_schema():
 
 
 def teacher(args):
-    # Reuse the existing TLS-verified Polza transport and billing behavior.
-    sys.path.insert(0, str(REPO / "docs/cameraanalysis/eval"))
-    from run_polza_probe import api
+    api = _polza_api()  # Raw transport for the paid call; free endpoints go through api_free.
     rows = readrows(args.pilot)
     prior = [r for path in args.exclude_results for r in readrows(path)]
     done = {r["record_id"] for r in prior}  # Never silently retry an ambiguous billed request.
     chosen = [r for r in rows if r["review_mode"] == "assisted" and r["record_id"] not in done][:args.limit]
     if not chosen: raise ValueError("no remaining assisted candidates")
-    catalog = api("models?type=chat")
+    catalog = api_free("models?type=chat")
     model = next((m for m in catalog["data"] if m["id"] == args.model), None)
     if model is None or "image" not in model.get("architecture", {}).get("input_modalities", []):
         raise ValueError("model absent from current vision catalog")
@@ -224,7 +305,7 @@ def teacher(args):
     if not args.allow_public_image_egress or not 10 < args.max_spend_rub <= 600 or not 1 <= args.limit <= 200:
         raise ValueError("public image egress and bounded budget/call count required")
     key = os.environ.get("POLZA_API_KEY") or getpass.getpass("Polza key (hidden): ")
-    balance = api("balance", key)
+    balance = api_free("balance", key)
     write_new(args.out / "balance-start.json", balance)
     start_available = float(balance["available"])
     if not math.isfinite(start_available) or min(start_available, args.max_spend_rub) < reserve:
@@ -233,7 +314,7 @@ def teacher(args):
     from PIL import Image, ImageOps
     with (args.out / "results.jsonl").open("x", encoding="utf-8") as log:
         for row in chosen:
-            available = float(api("balance", key)["available"])
+            available = float(api_free("balance", key)["available"])
             if not math.isfinite(available) or min(available, args.max_spend_rub - max(spent, start_available - available)) < reserve:
                 stop = "budget_reserve"; break
             if row["provenance"].get("origin") != "commons.wikimedia.org" or not row["provenance"].get("license_url"):
@@ -270,7 +351,9 @@ def teacher(args):
                 result["proposal"] = dict(proposal, capture_intent=row["capture_intent"], proposal_id="teacher-" + fingerprint(json.dumps(proposal, sort_keys=True) + args.model)[:24], model=args.model, **FLAGS)
                 result["accepted"] = True; accepted += 1
             except Exception as exc:
-                result["error"] = type(exc).__name__ + ": " + str(exc)[:300]
+                # Redaction keeps credential material out of the audit trail even
+                # if a transport layer ever embeds request data in an exception.
+                result["error"] = type(exc).__name__ + ": " + redact(str(exc), key)[:300]
                 if result["cost_rub"] is None: fatal = True
             result["state"] = "finished"
             log.write(json.dumps(result, ensure_ascii=False, allow_nan=False) + "\n"); log.flush(); os.fsync(log.fileno()); count += 1
@@ -457,6 +540,16 @@ def self_check():
         try: validate_proposal(dict(proposal,actions=["invented"]),row)
         except ValueError: pass
         else: raise AssertionError("unknown action accepted")
+        # DATA-006: the strict schema gate rejects drift the hand checks miss
+        # (a subject ROI keeps the older semantic checks satisfied here).
+        grounded = dict(proposal,improvement_needed=True,issues=["horizon_distracts"],
+            actions=["shift_frame_left","shift_frame_right","step_back"],
+            regions=[dict(role="subject",rect=[.1,.1,.5,.5],label="лампа")])
+        try: validate_proposal(grounded,row)
+        except ValueError: pass
+        else: raise AssertionError("wire-schema action cap not enforced locally")
+        assert schema_violation(dict(proposal,notes=None),proposal_schema())
+        assert redact("Bearer secret-key ok","secret-key") == "Bearer [redacted] ok"
     print("SELF-CHECK PASS: masks, uncertainty, vocabulary, research review projection")
 
 

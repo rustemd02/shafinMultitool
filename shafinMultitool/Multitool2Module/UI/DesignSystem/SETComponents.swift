@@ -253,11 +253,12 @@ struct SETPauseReviewBand: View {
         VStack(alignment: .leading, spacing: SETSpacing.x2) {
             HStack(alignment: .firstTextBaseline, spacing: SETSpacing.x3) {
                 Text(title)
-                    .font(SETTypography.font(.hudMono, size: SETTypographySize.body))
+                    // The pause title follows Dynamic Type and wraps fully; the
+                    // band lives inside a scrollable review surface, so growth
+                    // is absorbed by the scroll instead of clipping the copy.
+                    .font(SETTypography.scaledFont(.hudMono, size: SETTypographySize.body, relativeTo: .body))
                     .fontWeight(.bold)
                     .foregroundStyle(.setTextPrimary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
                 Spacer(minLength: SETSpacing.x2)
             }
 

@@ -1,7 +1,7 @@
 # Camera Coach human attempt record schema v1 (docs-level contract)
 
 Status: **preparation / `needs_review`**. Samа оценка — `blocked_external`.
-Дата: 2026-09-13. Задача: runbook Q02 (`docs/aegis/plans/2026-09-13-setos-release-execution.md`).
+Дата: 2026-09-13. Текущая задача: DATA-013/014 в `docs/implementation/APP_STORE_RELEASE_TRACKER.md`.
 Дополняет существующие контракты, не заменяет их:
 
 - `datasets/camera-coach/v1/episode-schema.json` v1.0.0 — before/action/after, `outcome`, `outcome_verifier`, `subject_continuity`;

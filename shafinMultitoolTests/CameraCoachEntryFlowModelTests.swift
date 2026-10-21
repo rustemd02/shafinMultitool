@@ -32,6 +32,8 @@ final class CameraCoachEntryFlowModelTests: XCTestCase {
             (cameraSnapshot(authorization: .denied), .blocked(.denied)),
             (cameraSnapshot(authorization: .restricted), .blocked(.restricted)),
             (cameraSnapshot(authorization: .unknown), .blocked(.unknown)),
+            (cameraSnapshot(authorization: .limited), .blocked(.unknown)),
+            (cameraSnapshot(authorization: .notDetermined, available: false), .blocked(.unavailable)),
             (cameraSnapshot(authorization: .authorized, available: false), .blocked(.unavailable))
         ]
 

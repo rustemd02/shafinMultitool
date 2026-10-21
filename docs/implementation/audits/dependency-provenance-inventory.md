@@ -39,8 +39,8 @@ The record's `git_lineage`, `runtime_consumers`, and `source_project.target_boun
 Authorities read:
 
 - `docs/app-store-product-plan.md`: identifies unknown benchmark provenance, potentially bundled ~1 GB model material, missing privacy manifest, and legal review of models/datasets/images/assets as App Store gates.
-- `docs/implementation/BACKLOG.md`, CC-004: requires this exact audit path and the dependency/model/media fields used below.
-- `docs/implementation/STATUS.md`: records historical bundle observations, including a parent Release partial app of 1,198,316 KB and a 1,094,912 KB GGUF; those figures are not measurements of this clean checkout.
+- `docs/implementation/APP_STORE_RELEASE_TRACKER.md`, SEC-006/SEC-009: current owner for this audit path and dependency/model/media admission.
+- Historical status figures from the retired tracker are not measurements of this clean checkout.
 - `docs/implementation/audits/release-bundle-inventory.md`: absent at the starting commit; no accepted bundle allowlist was available.
 - `Podfile`, `Podfile.lock`, the vendored `Pods/**` metadata, `Frameworks/llama.xcframework`, Core ML packages, app resources, source consumers, acknowledgements, README files, and `shafinMultitool.xcodeproj/project.pbxproj`.
 
@@ -191,7 +191,7 @@ git status --short --branch
 git rev-parse HEAD
 git log -1 --oneline
 test ! -e docs/implementation/audits/release-bundle-inventory.md
-git ls-files docs/app-store-product-plan.md docs/implementation/BACKLOG.md docs/implementation/STATUS.md Podfile Podfile.lock
+git ls-files docs/app-store-product-plan.md docs/implementation/APP_STORE_RELEASE_TRACKER.md Podfile Podfile.lock
 ```
 
 Observed start: clean detached `HEAD`; `d40a4ec67e34260b77584a62f4efd76ccff41c6a`; `d40a4ec docs: accept privacy and test topology audits`; no accepted release-bundle inventory.

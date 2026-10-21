@@ -1,4 +1,7 @@
 import UIKit
+#if DEBUG
+import os
+#endif
 
 /// The routes exposed by the commercial shell.
 public enum CommercialSection: Int, CaseIterable, Hashable, Sendable {
@@ -114,6 +117,38 @@ public final class CommercialShellViewController: UIViewController {
         activeViewController?.supportedInterfaceOrientations ?? .all
     }
 
+    public override func viewWillTransition(to size: CGSize, with coordinator: any UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        #if DEBUG
+        logGeometrySnapshot(event: "willTransition", targetSize: size)
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+            self?.logGeometrySnapshot(event: "didTransition", targetSize: size)
+        }
+        #endif
+    }
+
+#if DEBUG
+    /// UI-009 rotation evidence: the shell reports the running app's actual
+    /// window/scene geometry and orientation, so landscape qualification reads
+    /// real bounds from the app log instead of a portrait-like false pass.
+    private static let rotationLog = Logger(
+        subsystem: "com.vigvamcev-media.shafinMultitool",
+        category: "rotation"
+    )
+    private var didLogInitialGeometry = false
+
+    private func logGeometrySnapshot(event: String, targetSize: CGSize? = nil) {
+        let window = view.window
+        let scene = window?.windowScene
+        let orientation = scene?.interfaceOrientation.rawValue ?? -1
+        let mask = supportedInterfaceOrientations.rawValue
+        let section = String(describing: selectedSection)
+        Self.rotationLog.notice(
+            "event=\(event, privacy: .public) section=\(section, privacy: .public) interfaceOrientation=\(orientation, privacy: .public) window=\(String(describing: window?.bounds), privacy: .public) target=\(String(describing: targetSize), privacy: .public) screen=\(String(describing: scene?.screen.bounds.size), privacy: .public) mask=\(mask, privacy: .public)"
+        )
+    }
+#endif
+
     public init(routeFactory: @escaping CommercialRouteFactory) {
         self.routeFactory = routeFactory
         super.init(nibName: nil, bundle: nil)
@@ -160,6 +195,12 @@ public final class CommercialShellViewController: UIViewController {
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        #if DEBUG
+        if view.window != nil, !didLogInitialGeometry {
+            didLogInitialGeometry = true
+            logGeometrySnapshot(event: "initialLayout")
+        }
+        #endif
         if let libraryRoute = activeRouteStorage as? CommercialSceneLibraryRoute {
             let obstruction = modeControl.isHidden
                 ? 0 : max(0, modeControl.frame.maxY - view.safeAreaInsets.top)
@@ -392,6 +433,9 @@ public final class CommercialShellViewController: UIViewController {
         activeRouteStorage = route
         activeChildStorage = child
         setNeedsUpdateOfSupportedInterfaceOrientations()
+        #if DEBUG
+        logGeometrySnapshot(event: "routeInstalled")
+        #endif
     }
 
     private func removeActiveRoute() {

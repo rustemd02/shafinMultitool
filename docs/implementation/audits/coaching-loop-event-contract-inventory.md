@@ -18,7 +18,7 @@ The audit started from the following repository state:
 
 Post-baseline accepted-main correction: CC-010A landed at e0bd423 (camera: serialize coach capture lifecycle). Its CameraManager exposes awaitable startAndWait(), stopAndWait(), and releaseAndWait() operations serialized on the session queue; it disables/detaches frame delivery and drains the video-output queue on stop/release. CameraManagerLifecycleTests cover concurrent lifecycle calls, idempotent release, stale start completion, and the frame-delivery fence. This later accepted-main evidence does not change the exact audit start commit; the seam statements below use the corrected state.
 
-The authority documents read in full were docs/app-store-product-plan.md, docs/implementation/STATUS.md, docs/implementation/BACKLOG.md, docs/implementation/ux/camera-coach-state-spec.md, docs/implementation/audits/privacy-permissions-inventory.md, and docs/implementation/audits/camera-session-ownership.md. The state specification is still marked proposed_for_owner_acceptance; its analytics labels are therefore source evidence and naming input, not an already-shipped contract.
+The authority documents read in full were docs/app-store-product-plan.md, docs/implementation/APP_STORE_RELEASE_TRACKER.md, docs/implementation/ux/camera-coach-state-spec.md, docs/implementation/audits/privacy-permissions-inventory.md, and docs/implementation/audits/camera-session-ownership.md. The state specification is still marked proposed_for_owner_acceptance; its analytics labels are therefore source evidence and naming input, not an already-shipped contract.
 
 ## 2. Executive finding
 
@@ -690,13 +690,13 @@ git branch --show-current
 git status --short
 git status --porcelain=v1 -uno
 find docs/implementation -maxdepth 3 -type f | sort
-wc -l docs/app-store-product-plan.md docs/implementation/STATUS.md docs/implementation/BACKLOG.md docs/implementation/ux/camera-coach-state-spec.md docs/implementation/audits/privacy-permissions-inventory.md docs/implementation/audits/camera-session-ownership.md
+wc -l docs/app-store-product-plan.md docs/implementation/APP_STORE_RELEASE_TRACKER.md docs/implementation/ux/camera-coach-state-spec.md docs/implementation/audits/privacy-permissions-inventory.md docs/implementation/audits/camera-session-ownership.md
 ~~~
 
 ### Authority and state-spec discovery
 
 ~~~bash
-rg -n 'CC-012|Camera Coach|activation|first.*loop|Deep Review|analytics|telemetry|crash|thermal|record' docs/app-store-product-plan.md docs/implementation/STATUS.md docs/implementation/BACKLOG.md
+rg -n 'CAM-|DATA-|ML-|Camera Coach|activation|first.*loop|Deep Review|analytics|telemetry|crash|thermal|record' docs/app-store-product-plan.md docs/implementation/APP_STORE_RELEASE_TRACKER.md
 rg -n '^### S|^## |analytics|tip_stabilized|tip_action_observed|verification|record|Deep Review|thermal|History|section_selected' docs/implementation/ux/camera-coach-state-spec.md
 rg -n 'raw|media|frame|photo|video|audio|transcript|identifier|provider|endpoint|region|retention|consent|PrivacyInfo|analytics|telemetry' docs/implementation/audits/privacy-permissions-inventory.md docs/implementation/audits/camera-session-ownership.md
 ~~~

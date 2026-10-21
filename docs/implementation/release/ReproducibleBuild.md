@@ -2,7 +2,7 @@
 
 Этот рецепт создаёт неподписанный archive для устройства и сохраняет доказательства
 его происхождения. Он не выполняет Apple publishing workflow. Текущий статус
-функций и допуска остаётся в `EXECUTION_STATE.md` и `AppStoreSubmissionGates.json`.
+функций и допуска остаётся в `APP_STORE_RELEASE_TRACKER.md` и `AppStoreSubmissionGates.json`.
 
 ## Исходники и окружение
 
@@ -277,7 +277,8 @@ Debug app не квалифицирует подписание приложен�
 репозиторный ExportOptions фиксирует Personal Team `5NAKQ28539` и остаётся
 неподтверждённым шаблоном. Его нельзя запускать как готовую signing-конфигурацию: сначала
 нужны выбранная владельцем App Attest-capable команда и соответствующие profiles.
-Точный более поздний physical/diagnostic статус сверяют в `EXECUTION_STATE.md`;
+Точный более поздний physical/diagnostic статус сверяют в
+`APP_STORE_RELEASE_TRACKER.md` и hash-bound receipts;
 диагностическая конфигурация без capability не закрывает предусмотренное подписание.
 Загрузка, metadata, TestFlight, App Review и публикация остаются действиями
 владельца. Побайтовая идентичность двух Xcode archives этим рецептом не заявляется:

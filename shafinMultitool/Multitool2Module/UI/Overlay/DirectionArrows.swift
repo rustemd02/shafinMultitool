@@ -88,7 +88,7 @@ struct DirectionArrows: View {
     
     private func arrowShape() -> some View {
         Image(systemName: "arrow.up.circle.fill")
-            .font(.system(size: 48))
+            .font(.system(size: SETTypographySize.displayLarge))
             .foregroundStyle(.white)
             .accessibilityHidden(true)
             .background(Circle().fill(.black.opacity(0.55)))
@@ -96,7 +96,7 @@ struct DirectionArrows: View {
     
     private func rotationIndicator(clockwise: Bool) -> some View {
         Image(systemName: clockwise ? "arrow.clockwise.circle.fill" : "arrow.counterclockwise.circle.fill")
-            .font(.system(size: 48))
+            .font(.system(size: SETTypographySize.displayLarge))
             .foregroundStyle(.white)
             .accessibilityHidden(true)
             .background(Circle().fill(.black.opacity(0.55)))

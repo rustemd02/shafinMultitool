@@ -20,8 +20,7 @@ The evidence labels below distinguish what this checkout proves:
 Product authority remains `docs/app-store-product-plan.md`. It keeps Camera
 Coach primary and Scene Mode secondary/preserved; it does not establish that
 research benchmark data or a particular model file may be redistributed.
-`docs/implementation/BACKLOG.md` CC-001 and
-`docs/implementation/STATUS.md` were used as execution evidence only.
+The retired CC-001 status/backlog records were used as historical execution evidence only; current follow-up is `REL-004`–`REL-006` in `docs/implementation/APP_STORE_RELEASE_TRACKER.md`.
 
 ## Executive disposition
 

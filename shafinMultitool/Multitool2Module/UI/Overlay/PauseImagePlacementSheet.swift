@@ -171,7 +171,7 @@ struct PauseImagePlacementSheet: View {
                 if let rect = mapped(candidate.region, canvas: canvas) {
                     Rectangle().stroke(.black.opacity(0.9), lineWidth: 3)
                         .overlay {
-                            Rectangle().stroke(.white.opacity(0.7), lineWidth: 1)
+                            Rectangle().stroke(.white.opacity(0.7), lineWidth: SETStroke.standard)
                         }
                         .overlay(alignment: .topLeading) {
                             Text("\(index + 1)").font(.caption.bold()).padding(3)

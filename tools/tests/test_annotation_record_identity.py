@@ -8,6 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "camera_annotation"))
 import build_annotation_queue as builder
+import language_intake as intake
 import language_review as review
 
 
@@ -52,6 +53,33 @@ def test_same_pixels_do_not_merge_different_pair_membership(tmp_path, monkeypatc
     with pytest.raises(ValueError, match="Conflicting record ID"):
         invoke_builder(monkeypatch, output, manifest)
     assert not output.exists()
+
+
+def test_content_hash_collision_under_stable_id_rejects(tmp_path, monkeypatch):
+    # Same raw record_id and same pair/source identity, only the frame content
+    # (image_sha256) changed: content is part of the stable identity, so a
+    # silent rebind of the ID onto new pixels must stay rejected.
+    manifest = write_rows(tmp_path / "source.jsonl", [record(), record(media_sha="b" * 64)])
+    output = tmp_path / "queue.jsonl"
+    with pytest.raises(ValueError, match="Conflicting record ID"):
+        invoke_builder(monkeypatch, output, manifest)
+    assert not output.exists()
+
+
+def test_intake_queue_collision_rejects_before_any_review_or_output(tmp_path):
+    # The language intake exporter merges the queue by raw record_id before any
+    # journal interpretation; a colliding ID must fail closed there too, leaving
+    # both source snapshots and the (nonexistent) output untouched.
+    folder = tmp_path / "journal"
+    folder.mkdir()
+    write_rows(folder / "queue.jsonl", [photo(tmp_path), photo(tmp_path, digest="b" * 64)])
+    journal = folder / "opinions.jsonl"
+    journal.write_bytes(b'{"historical":"untouched"}\n')
+    out = tmp_path / "intake-out"
+    with pytest.raises(ValueError, match="Duplicate queue record IDs"):
+        intake.export_language_review(folder, out)
+    assert not out.exists()
+    assert journal.read_bytes() == b'{"historical":"untouched"}\n'
 
 
 def test_exact_repeat_remains_idempotent_and_distinct_ids_keep_identical_pixels(tmp_path, monkeypatch):

@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import XCTest
 @testable import shafinMultitool
 
@@ -78,6 +79,44 @@ final class CameraCoachEntryPresentationTests: XCTestCase {
             XCTAssertNotEqual(english, key.rawValue, "English falls back to key for \(key.rawValue)")
             XCTAssertNotEqual(russian, key.rawValue, "Russian falls back to key for \(key.rawValue)")
         }
+    }
+
+    func testSettingsReturnPolicyShowsFallbackForRefusedHandoffOnly() {
+        // A10: an accepted Settings handoff keeps the denied panel unchanged;
+        // a refused open (or a missing platform URL) is the only path that
+        // surfaces the manual fallback instructions.
+        XCTAssertFalse(CameraCoachSettingsReturn.showsFallback(afterOpenAccepted: true))
+        XCTAssertTrue(CameraCoachSettingsReturn.showsFallback(afterOpenAccepted: false))
+        XCTAssertEqual(
+            CameraCoachSettingsReturn.settingsURL?.absoluteString,
+            UIApplication.openSettingsURLString
+        )
+        XCTAssertEqual(CameraCoachEntryCopy.settingsActionKey, .openSettings)
+        XCTAssertEqual(CameraCoachEntryCopy.settingsFallbackKey, .entrySettingsFallback)
+    }
+
+    func testSettingsFallbackFooterIsResetWhenTheDeniedPanelIsLeft() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("shafinMultitool/Multitool2Module/EntryFlow/CameraCoachEntryView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        XCTAssertTrue(
+            source.contains(".onChange(of: phase)"),
+            "The stale Settings-fallback footer must not survive a phase change."
+        )
+        XCTAssertTrue(
+            source.contains("showsSettingsFallback = false"),
+            "Leaving the denied panel must clear the one-shot fallback footer."
+        )
+        XCTAssertTrue(
+            source.contains("CameraCoachSettingsReturn.showsFallback(afterOpenAccepted: accepted)"),
+            "The fallback decision must stay owned by the settings-return policy."
+        )
+        XCTAssertFalse(
+            source.contains("if !accepted"),
+            "The fallback decision must not regress to an inline openURL branch."
+        )
     }
 
     func testEveryRenderedPhaseHasStableRootAndActionIdentifiers() {

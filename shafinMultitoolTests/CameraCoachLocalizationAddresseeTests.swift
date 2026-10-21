@@ -89,6 +89,62 @@ final class CameraCoachLocalizationAddresseeTests: XCTestCase {
         }
     }
 
+    // MARK: - UI-012 preview audit: keys added by the 2026-09-22 UI slices
+
+    /// Keys added by the accepted 2026-09-22 slices (UI-008 region words,
+    /// UI-011 library loading/rename). The full-catalog validator stays with
+    /// the complete UI-012 line; this pins the preview slice against the four
+    /// audit criteria. Presence matters beyond cosmetics: the catalog resolver
+    /// (`SETLibraryLocalizedCopy.string`) falls back to the raw key, so a
+    /// missing entry would put a technical identifier straight into the UI.
+    func testUI012PreviewSliceKeysAreLocalizedForRuAndEnWithoutTechnicalCopy() throws {
+        let strings = try catalogStrings()
+        let keys = [
+            "set.a11y.region.target", "set.a11y.region.top", "set.a11y.region.middle",
+            "set.a11y.region.bottom", "set.a11y.region.left", "set.a11y.region.centre",
+            "set.a11y.region.right",
+            "set.library.loading", "set.library.rename.confirm",
+        ]
+        let forbidden = ["todo", "fixme", "nil", "null", "traceid", "uuid", "pipeline", "confidence"]
+        for key in keys {
+            let entry = try XCTUnwrap(strings[key], key)
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+            for language in ["en", "ru"] {
+                let unit = try XCTUnwrap(localizations[language] as? [String: Any], "\(key) [\(language)]")
+                let stringUnit = try XCTUnwrap(unit["stringUnit"] as? [String: Any], "\(key) [\(language)]")
+                XCTAssertEqual(stringUnit["state"] as? String, "translated", "\(key) [\(language)]")
+                let value = try XCTUnwrap(stringUnit["value"] as? String, "\(key) [\(language)]")
+                XCTAssertFalse(
+                    value.trimmingCharacters(in: .whitespaces).isEmpty,
+                    "\(key) [\(language)]"
+                )
+                // Pluralization is N/A by construction: these keys carry no
+                // numeric placeholders. A future countable copy must go through
+                // a plural decision, not a bare %d.
+                XCTAssertFalse(
+                    value.contains("%"),
+                    "\(key) [\(language)] unexpected format specifier: \(value)"
+                )
+                let lowered = value.lowercased()
+                for fragment in forbidden {
+                    XCTAssertFalse(
+                        lowered.contains(fragment),
+                        "\(key) [\(language)] leaks technical copy: \(value)"
+                    )
+                }
+            }
+            // Truncation budget by consumption channel: the region words render
+            // only in the VoiceOver value channel; the two library keys render
+            // as the skeleton accessibility label and a two-line-wrapping action
+            // label (SETCommandLabel). A short phrase in both languages must
+            // always fit; the widest current value is 20 chars.
+            let ru = try localizedValue(key, "ru", in: strings)
+            let en = try localizedValue(key, "en", in: strings)
+            XCTAssertLessThanOrEqual(en.count, 32, key)
+            XCTAssertLessThanOrEqual(ru.count, 32, key)
+        }
+    }
+
     // MARK: - RU and EN never disagree on who is addressed
 
     func testCameraCoachRUAndENAgreeOnAddressee() throws {

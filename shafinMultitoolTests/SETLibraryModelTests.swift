@@ -487,6 +487,214 @@ final class SETLibraryModelTests: XCTestCase {
         model.cancelDelete()
         XCTAssertEqual(model.flow, .idle)
     }
+
+    // MARK: - UI-011 zone G focused coverage
+
+    /// G2/G3: the empty hero (and its create CTA) exists only after a
+    /// successful zero-project load; a pre-load surface is the loading state,
+    /// never a fabricated empty story.
+    func testEmptyStateCTAExistsOnlyForSuccessfulZeroProjectLoad() {
+        let provider = MockProvider()
+        let model = SETLibraryModel(controlling: provider)
+
+        XCTAssertFalse(model.shouldShowEmptyState, "Pre-load must stay on the loading surface (G3).")
+
+        provider.snapshotsResult = .success([])
+        model.reload()
+        XCTAssertTrue(model.shouldShowEmptyState, "A successful zero-project load is the only honest empty state.")
+
+        // The empty CTA action must exist and be reachable from the idle flow.
+        model.beginCreate()
+        XCTAssertEqual(model.flow, .creating)
+
+        model.cancelCreate()
+        XCTAssertEqual(model.flow, .idle)
+        XCTAssertTrue(model.shouldShowEmptyState, "Cancel returns to the same honest empty state.")
+    }
+
+    /// UI-011: a CTA is allowed to render only while its action exists. While
+    /// a flow owns the surface the competing entries must stay inert, and the
+    /// presented rename panel must always offer a working escape.
+    func testLibraryCTAsAreInertOutsideIdleFlowAndCancelAlwaysEscapes() {
+        let provider = MockProvider()
+        let firstID = UUID()
+        let secondID = UUID()
+        provider.summaries = [makeSummary("А", id: firstID), makeSummary("Б", id: secondID)]
+        let model = SETLibraryModel(controlling: provider)
+        model.reload()
+
+        model.beginCreate()
+        XCTAssertEqual(model.flow, .creating)
+        model.beginDelete(sceneID: firstID)
+        model.beginRename(sceneID: secondID)
+        model.select(secondID)
+        XCTAssertEqual(model.flow, .creating, "Competing CTAs must stay inert while a flow owns the surface.")
+        XCTAssertTrue(provider.deleteRequests.isEmpty)
+        XCTAssertTrue(provider.renameRequests.isEmpty)
+        model.cancelCreate()
+        XCTAssertEqual(model.flow, .idle)
+
+        model.beginRename(sceneID: firstID)
+        XCTAssertEqual(model.flow, .renaming(sceneID: firstID, sceneName: "А"))
+        model.select(secondID)
+        model.beginCreate()
+        model.beginDelete(sceneID: secondID)
+        model.beginRename(sceneID: secondID)
+        XCTAssertEqual(model.selectedSceneID, firstID)
+        XCTAssertEqual(model.flow, .renaming(sceneID: firstID, sceneName: "А"))
+
+        model.cancelRename()
+        XCTAssertEqual(model.flow, .idle)
+        XCTAssertEqual(model.renameDraft, "", "Cancel must clear the rename draft.")
+        XCTAssertEqual(model.selectedSceneID, firstID, "Cancel keeps the row selection made before the flow.")
+    }
+
+    /// G6: the rename duplicate state is now presented, so an edited draft
+    /// must confirm against the same target without touching persistence on
+    /// the conflicting attempt.
+    func testRenameDuplicatePanelStateEditsOrCancelsDeterministically() {
+        let provider = MockProvider()
+        let firstID = UUID()
+        let secondID = UUID()
+        provider.summaries = [makeSummary("А", id: firstID), makeSummary("Б", id: secondID)]
+        let model = SETLibraryModel(controlling: provider)
+        model.reload()
+
+        model.beginRename(sceneID: firstID)
+        XCTAssertEqual(model.renameDraft, "А", "The rename field must open pre-filled with the current name.")
+        model.renameDraft = "Б"
+        model.confirmRename()
+
+        XCTAssertEqual(model.flow, .renameDuplicate(conflictingName: "Б"))
+        XCTAssertTrue(provider.renameRequests.isEmpty, "A local rename duplicate must short-circuit before persistence.")
+
+        model.renameDraft = "В"
+        model.confirmRename()
+        XCTAssertEqual(model.flow, .idle)
+        XCTAssertEqual(model.selectedScene?.name, "В", "An edited non-conflicting draft must commit from the duplicate state.")
+    }
+
+    /// G9: a row whose owned recording is gone keeps its honest health state
+    /// and localized copy; the presentation never converts it into an empty
+    /// story or a fabricated preview.
+    func testMissingAssetRowProjectsHonestHealthAndLocalizedCopy() {
+        let provider = MockProvider()
+        let id = UUID()
+        provider.snapshotsResult = .success([
+            SETLibrarySceneSnapshot(
+                id: id,
+                name: "БРОШЕННАЯ ЗАПИСЬ",
+                updatedAt: Date(timeIntervalSince1970: 100),
+                preview: SETLibraryPreviewMetadata(
+                    kind: .metadataOnly,
+                    beatCount: 2,
+                    actorCount: 0,
+                    objectCount: 0,
+                    recordingCount: 1,
+                    recordingReference: SceneRecordingReference(
+                        recordingID: UUID(),
+                        relativePath: "Projects/gone.mov"
+                    )
+                ),
+                artifactHealth: .missing
+            )
+        ])
+        let model = SETLibraryModel(controlling: provider)
+        model.reload()
+
+        XCTAssertFalse(model.shouldShowEmptyState, "A missing-asset row must never be masked as an empty library.")
+        XCTAssertEqual(model.scenes.count, 1)
+        XCTAssertEqual(model.scenes[0].artifactHealth, .missing)
+        XCTAssertEqual(
+            SETLibraryLocalizedCopy.artifactStatus(.missing),
+            .libraryArtifactMissing,
+            "The missing artifact state must resolve to the localized MEDIA MISSING copy."
+        )
+        XCTAssertEqual(
+            SETLibraryLocalizedCopy.previewStatus(model.scenes[0].preview),
+            .libraryPreviewRecording,
+            "A dangling-but-owned reference still announces the recording kind; the health copy carries the missing state."
+        )
+    }
+
+    /// G9: every artifact health state resolves to exactly one localized key.
+    func testArtifactHealthCopyMappingCoversEveryState() {
+        XCTAssertEqual(SETLibraryLocalizedCopy.artifactStatus(.none), .libraryArtifactNone)
+        XCTAssertEqual(SETLibraryLocalizedCopy.artifactStatus(.healthy), .libraryArtifactHealthy)
+        XCTAssertEqual(SETLibraryLocalizedCopy.artifactStatus(.missing), .libraryArtifactMissing)
+        XCTAssertEqual(SETLibraryLocalizedCopy.artifactStatus(.corrupt), .libraryArtifactCorrupt)
+        XCTAssertEqual(SETLibraryLocalizedCopy.artifactStatus(.unavailable), .libraryArtifactUnavailable)
+        XCTAssertEqual(
+            SETLibraryLocalizedCopy.previewStatus(SETLibraryPreviewMetadata.unavailable),
+            .libraryPreviewMetadataPlaceholder,
+            "No owned recording means the honest metadata placeholder."
+        )
+    }
+
+    /// G9: the poster loader guard deterministically discards a missing or
+    /// empty artifact to "no resolvable media" instead of fabricating a frame.
+    func testMissingRecordingArtifactDeterministicallyDiscardsPosterURL() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ui011-artifact-\(UUID().uuidString)", isDirectory: true)
+        let store = try RecordingArtifactStore(applicationSupportDirectoryURL: root)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // A reference whose file never existed discards to no URL. Store
+        // references resolve below Application Support and must stay inside
+        // the Recordings root (production uses "Recordings/Projects/...").
+        let dangling = SceneRecordingReference(recordingID: UUID(), relativePath: "Recordings/Projects/missing.mov")
+        XCTAssertNil(SETLibraryPosterArtifactGuard.resolvableMediaURL(for: dangling, store: store))
+
+        // A zero-byte artifact is damaged, not presentable.
+        let emptyURL = store.recordingsDirectoryURL.appendingPathComponent("Projects/empty.mov")
+        try FileManager.default.createDirectory(
+            at: emptyURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        FileManager.default.createFile(atPath: emptyURL.path, contents: Data())
+        let emptyReference = SceneRecordingReference(recordingID: UUID(), relativePath: "Recordings/Projects/empty.mov")
+        XCTAssertNil(SETLibraryPosterArtifactGuard.resolvableMediaURL(for: emptyReference, store: store))
+
+        // A present, non-empty artifact resolves to its URL.
+        let goodURL = store.recordingsDirectoryURL.appendingPathComponent("Projects/good.mov")
+        FileManager.default.createFile(atPath: goodURL.path, contents: Data([0x01]))
+        let goodReference = SceneRecordingReference(recordingID: UUID(), relativePath: "Recordings/Projects/good.mov")
+        XCTAssertEqual(
+            SETLibraryPosterArtifactGuard.resolvableMediaURL(for: goodReference, store: store)?.standardizedFileURL,
+            goodURL.standardizedFileURL
+        )
+    }
+
+    /// The DEBUG fixture provider must keep serving the deterministic rename
+    /// outcomes the `library.rename-name` / `library.rename-duplicate-name`
+    /// fixture routes present.
+    func testFixtureProviderRenameStaysDeterministicForPresentation() {
+        let firstID = SETLibraryFixtureData.ids[0]
+        let secondID = SETLibraryFixtureData.ids[1]
+        let provider = SETLibraryFixtureProvider(scenes: SETLibraryFixtureData.summaries(locale: Locale(identifier: "ru")))
+
+        let renamed = provider.libraryRenameSceneResult(
+            id: firstID,
+            to: "НОВОЕ ИМЯ",
+            expectedUpdatedAt: SETLibraryFixtureData.dates[0]
+        )
+        guard case .success(let snapshot) = renamed else {
+            return XCTFail("A valid rename against the fixture provider must succeed.")
+        }
+        XCTAssertEqual(snapshot.id, firstID)
+        XCTAssertEqual(snapshot.name, "НОВОЕ ИМЯ")
+
+        let conflicting = provider.libraryRenameSceneResult(
+            id: firstID,
+            to: SETLibraryLocalizedCopy.string(.librarySceneTwo, locale: Locale(identifier: "ru")),
+            expectedUpdatedAt: snapshot.updatedAt
+        )
+        guard case .failure(.duplicateName(let conflictingName, let conflictingID)) = conflicting else {
+            return XCTFail("A conflicting rename must surface the typed duplicate failure.")
+        }
+        XCTAssertEqual(conflictingID, secondID)
+        XCTAssertEqual(conflictingName, SETLibraryLocalizedCopy.string(.librarySceneTwo, locale: Locale(identifier: "ru")))
+    }
 }
 
 @MainActor

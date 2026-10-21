@@ -7,9 +7,9 @@ Scope: executable production Swift, app configuration, tests, and included depen
 ## Reading rules and authority
 
 - Product authority is `docs/app-store-product-plan.md`. It describes the intended `coach-first, local-first, server-deep` boundary, but it does not establish a provider, processor region, retention term, legal basis, tracking declaration, or final App Privacy answer.
-- Execution authority is CC-003 in `docs/implementation/BACKLOG.md`; `docs/implementation/STATUS.md` records the current known gaps.
+- Current execution authority is `docs/implementation/APP_STORE_RELEASE_TRACKER.md`; the relevant permission work is tracked by GOV/CAM/UI/DEV tasks there.
 - “Observed” below means a symbol, path, configuration value, or test was found in the repository. “Unknown” means the repository does not establish it. Unknowns are not filled with legal or commercial assumptions.
-- The normal launch path currently remains `SceneDelegate` → `SOModuleBuilder` → scene overview. Camera Coach is not the default product route according to `STATUS.md`; reachable legacy, modern, and benchmark paths are inventoried separately.
+- The normal launch path and Camera Coach route are tracked as current candidate facts in `docs/implementation/APP_STORE_RELEASE_TRACKER.md`; reachable legacy, modern, and benchmark paths are inventoried separately here.
 
 ## Executive disposition
 

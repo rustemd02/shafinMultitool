@@ -61,6 +61,20 @@ enum CameraCoachEntryAccessibilityID {
     static let recheckAction = "camera-coach-entry-recheck"
 }
 
+/// Owner of the Settings handoff outcome for the denied panel. Extracted so
+/// the A10 fallback decision stays unit-testable without presenting UIKit
+/// surfaces: an accepted open keeps the panel unchanged, a refused open (or a
+/// missing platform URL) is the only path that shows the fallback footer.
+enum CameraCoachSettingsReturn {
+    static var settingsURL: URL? {
+        URL(string: UIApplication.openSettingsURLString)
+    }
+
+    static func showsFallback(afterOpenAccepted accepted: Bool) -> Bool {
+        !accepted
+    }
+}
+
 enum CameraCoachEntryVisualPolicy {
     static let sourceMarkers = [
         "set-os-two-registers",
@@ -136,6 +150,13 @@ struct CameraCoachEntryView: View {
         }
         .background(.setInk)
         .preferredColorScheme(.dark)
+        .onChange(of: phase) { _, nextPhase in
+            guard nextPhase != .blocked(.denied) else { return }
+            // The fallback footer describes one refused Settings handoff. A
+            // recheck cycle or any other phase change starts a clean attempt,
+            // so the stale footer cannot survive it.
+            showsSettingsFallback = false
+        }
     }
 
     @ViewBuilder
@@ -492,13 +513,13 @@ struct CameraCoachEntryView: View {
     }
 
     private func openSettings() {
-        guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else {
+        guard let settingsURL = CameraCoachSettingsReturn.settingsURL else {
             showsSettingsFallback = true
             return
         }
 
         openURL(settingsURL) { accepted in
-            if !accepted {
+            if CameraCoachSettingsReturn.showsFallback(afterOpenAccepted: accepted) {
                 showsSettingsFallback = true
             }
         }

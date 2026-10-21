@@ -26,7 +26,7 @@ struct DebugOverlay: View {
     
     var body: some View {
         if isVisible {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: SETSpacing.x1) {
                 // FPS
                 HStack {
                     Text("FPS:")
@@ -42,7 +42,7 @@ struct DebugOverlay: View {
                     Text(metrics.thermalState)
                         .foregroundColor(thermalColor(metrics.thermalState))
                     
-                    Spacer().frame(width: 16)
+                    Spacer().frame(width: SETSpacing.x4)
                     
                     Text("Battery:")
                         .fontWeight(.semibold)
@@ -121,13 +121,13 @@ struct DebugOverlay: View {
                     }
                 }
             }
-            .font(.system(size: 11, design: .monospaced))
+            .font(.system(size: SETTypographySize.micro, design: .monospaced))
             .foregroundColor(.white)
-            .padding(12)
+            .padding(SETSpacing.x3)
             .background(.black.opacity(0.75))
-            .cornerRadius(8)
+            .cornerRadius(SETRadius.control)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(8)
+            .padding(SETSpacing.x2)
         }
     }
     

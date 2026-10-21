@@ -153,7 +153,7 @@ the app was neither installed nor launched. Its `build-receipt.json` SHA256 is
 The owner's selection of a suitable App Attest-capable signing team remains
 separate. The repository ExportOptions currently names that Personal team and
 is an unqualified template, not a working signing recipe. Later diagnostic
-results, if any, stay in EXECUTION_STATE.md; a diagnostic Debug app does not
+results, if any, stay in the canonical tracker and its receipts; a diagnostic Debug app does not
 close intended App Attest signing or physical acceptance.
 
 ## Open items before this draft can be submitted

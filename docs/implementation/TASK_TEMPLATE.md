@@ -23,8 +23,9 @@ INTERFACES
 - <contracts, schemas, commands and behavior that remain compatible>
 
 CONSTRAINTS
-- Product authority: docs/app-store-product-plan.md.
-- Execution state: docs/implementation/STATUS.md.
+- Acceptance authority: docs/implementation/PRODUCTION_ACCEPTANCE.md.
+- Current task/status authority: docs/implementation/APP_STORE_RELEASE_TRACKER.md.
+- Product context: docs/app-store-product-plan.md.
 - Use GPT-5.6 Luna at Max reasoning.
 - Do not substitute another model, native agent or effort.
 - Do not turn an audit assumption into a product or architecture decision.

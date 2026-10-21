@@ -242,6 +242,10 @@ final class SETLibraryModel: ObservableObject {
     /// Retry context captures the immutable identity and snapshot used by the
     /// failed operation; retry never re-derives a delete/rename from selection.
     private var pendingRetry: RetryOperation?
+    /// UI-011 / G6: identity of the scene being renamed, kept across the
+    /// `.renameDuplicate` round-trip so an edited draft can be confirmed
+    /// without re-deriving the target from selection.
+    private var renameTargetID: UUID?
 
     init(controlling: SETLibrarySceneProviding) {
         self.controlling = controlling
@@ -418,12 +422,14 @@ final class SETLibraryModel: ObservableObject {
     func beginRename(sceneID: UUID) {
         guard flow == .idle, let scene = scenes.first(where: { $0.id == sceneID }) else { return }
         selectedSceneID = scene.id
+        renameTargetID = scene.id
         renameDraft = scene.name
         flow = .renaming(sceneID: scene.id, sceneName: scene.name)
     }
 
     func cancelRename() {
         guard isRenameFlow || isRenameDuplicateFlow else { return }
+        renameTargetID = nil
         renameDraft = ""
         flow = .idle
     }
@@ -438,8 +444,22 @@ final class SETLibraryModel: ObservableObject {
         return false
     }
 
+    /// The rename target as seen by the presented flow. `.renameDuplicate`
+    /// keeps the identity captured in `beginRename` so the panel confirm CTA
+    /// stays live while the user edits the conflicting draft.
+    private var renameFlowTargetID: UUID? {
+        switch flow {
+        case .renaming(let id, _):
+            return id
+        case .renameDuplicate:
+            return renameTargetID
+        default:
+            return nil
+        }
+    }
+
     func confirmRename() {
-        guard case .renaming(let id, _) = flow,
+        guard let id = renameFlowTargetID,
               let scene = scenes.first(where: { $0.id == id }) else { return }
         let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -463,6 +483,7 @@ final class SETLibraryModel: ObservableObject {
                 return $0.id.uuidString < $1.id.uuidString
             }
             renameDraft = ""
+            renameTargetID = nil
             pendingRetry = nil
             flow = .idle
         case .failure(let failure):
@@ -498,6 +519,7 @@ final class SETLibraryModel: ObservableObject {
             flow = .creating
             performCreate(named: name)
         case .rename(let id, let name, let expectedUpdatedAt):
+            renameTargetID = id
             renameDraft = name
             flow = .renaming(sceneID: id, sceneName: name)
             performRename(id: id, name: name, expectedUpdatedAt: expectedUpdatedAt)
@@ -744,7 +766,9 @@ enum SETLibraryLocalizedCopy {
             updatedLabel(for: scene.updatedAt, locale: locale)
     }
 
-    private static func previewStatus(_ preview: SETLibraryPreviewMetadata) -> SETCopyKey {
+    /// Internal so the focused UI-011 tests can pin the localized health
+    /// vocabulary without a UI harness.
+    static func previewStatus(_ preview: SETLibraryPreviewMetadata) -> SETCopyKey {
         // A content kind without an owned, resolvable source is metadata only;
         // announce the honest fallback instead of implying a media preview.
         if preview.recordingReference == nil {
@@ -756,7 +780,7 @@ enum SETLibraryLocalizedCopy {
         }
     }
 
-    private static func artifactStatus(_ health: SETLibraryArtifactHealth) -> SETCopyKey {
+    static func artifactStatus(_ health: SETLibraryArtifactHealth) -> SETCopyKey {
         switch health {
         case .none: return .libraryArtifactNone
         case .healthy: return .libraryArtifactHealthy
@@ -791,6 +815,11 @@ enum SETLibraryAccessibilityID {
     static let deleteConfirm = "library_delete_confirm"
     static let deleteCancel = "library_delete_cancel"
     static let failureRetry = "library_failure_retry"
+    static let loading = "library_loading"
+    static let renameField = "library_rename_field"
+    static let renameConfirm = "library_rename_confirm"
+    static let renameCancel = "library_rename_cancel"
+    static let renameDuplicateNotice = "library_rename_duplicate_notice"
 
     static func sceneRow(at position: Int) -> String {
         "library_scene_row_\(position)"
@@ -893,6 +922,12 @@ private struct SETLibraryFixtureSurface: View {
             let scene = provider.scenes[2]
             model.select(scene.id)
             model.beginDelete(sceneID: scene.id)
+        case "library.rename-name":
+            model.beginRename(sceneID: provider.scenes[1].id)
+        case "library.rename-duplicate-name":
+            model.beginRename(sceneID: provider.scenes[0].id)
+            model.renameDraft = provider.scenes[1].name
+            model.confirmRename()
         case "library.persistence-failure":
             model.beginCreate()
             model.createDraft = SETLibraryLocalizedCopy.string(.librarySceneFour, locale: configuration.locale)
@@ -921,10 +956,17 @@ private struct SETLibraryContactSheet: View {
                 } else if model.shouldShowEmptyState {
                     SETLibraryEmptyState(model: model)
                         .frame(maxHeight: .infinity)
-                } else if !model.hasLoadedSuccessfully || model.scenes.isEmpty {
-                    // A pre-load or mutation-failure surface has no honest row
-                    // content to render. Keep the empty hero reserved for a
-                    // successful zero-project load.
+                } else if !model.hasLoadedSuccessfully {
+                    // UI-011 / G3: a load that has not succeeded yet has no
+                    // honest row content, but a bare blank surface is also
+                    // dishonest. The static skeleton marks the wait without
+                    // reserving the empty hero for a non-empty-store result.
+                    SETLibraryLoadingState()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if model.scenes.isEmpty {
+                    // A loaded zero-project store with an active flow keeps
+                    // the empty hero reserved; the flow panel below carries
+                    // the honest surface.
                     Color.clear
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -1004,10 +1046,13 @@ private struct SETLibraryContactSheet: View {
             SETLibraryCreatePanel(model: model, duplicateName: nil)
         case .duplicate(let conflictingName):
             SETLibraryCreatePanel(model: model, duplicateName: conflictingName)
-        case .renaming, .renameDuplicate:
-            // Rename presentation is owned by the later Library rename slice;
-            // the contract still keeps these states distinct here.
-            EmptyView()
+        case .renaming:
+            // UI-011 / G6: the row rename CTA is live, so the flow it opens
+            // must be reachable too. The panel keeps confirm/cancel honest
+            // instead of stranding the surface in an unpresented flow.
+            SETLibraryRenamePanel(model: model, duplicateName: nil)
+        case .renameDuplicate(let conflictingName):
+            SETLibraryRenamePanel(model: model, duplicateName: conflictingName)
         case .deleting(_, let sceneName, _):
             SETLibraryDeletePanel(model: model, sceneName: sceneName)
         case .failure(let kind):
@@ -1059,6 +1104,46 @@ private struct SETLibraryEmptyState: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(SETLibraryAccessibilityID.emptyState)
+    }
+}
+
+// MARK: - Pre-load state (G3)
+
+/// Static skeleton for the not-yet-loaded surface. It marks the wait while
+/// keeping the empty hero reserved for a successful zero-project load, and is
+/// deliberately animation-free so Reduce Motion and fixture runs render the
+/// exact same deterministic frame.
+private struct SETLibraryLoadingState: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: SETSpacing.x2) {
+            ForEach(0..<3, id: \.self) { _ in
+                loadingRow
+            }
+        }
+        .overlay {
+            Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(SETCopyKey.libraryLoading.localizedTextKey))
+        .accessibilityIdentifier(SETLibraryAccessibilityID.loading)
+    }
+
+    private var loadingRow: some View {
+        HStack(alignment: .center, spacing: SETSpacing.x3) {
+            Rectangle()
+                .fill(Color.setSurfaceSolid)
+                .frame(width: 28, height: 16)
+            Rectangle()
+                .fill(Color.setSurfaceSolid)
+                .frame(width: 220, height: 16)
+            Spacer(minLength: 0)
+            Rectangle()
+                .fill(Color.setSurfaceSolid)
+                .frame(width: 120, height: 12)
+        }
+        .padding(.horizontal, SETSpacing.x4)
+        .padding(.vertical, SETSpacing.x3)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -1410,10 +1495,7 @@ private struct SETLibraryScenePreview: View {
         guard let reference = preview.recordingReference else { return nil }
         return await Task.detached(priority: .utility) {
             guard let store = try? RecordingArtifactStore(),
-                  let url = store.resolve(reference),
-                  let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-                  let size = attributes[.size] as? NSNumber,
-                  size.int64Value > 0 else {
+                  let url = SETLibraryPosterArtifactGuard.resolvableMediaURL(for: reference, store: store) else {
                 return nil
             }
             let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
@@ -1424,6 +1506,25 @@ private struct SETLibraryScenePreview: View {
                 actualTime: nil
             )
         }.value
+    }
+}
+
+/// UI-011 / G9: synchronous resolution guard for the poster-frame loader.
+/// A reference whose file is gone, is not a regular file, or is empty
+/// deterministically discards to the metadata-only placeholder; the loader
+/// never fabricates an image from a damaged artifact.
+enum SETLibraryPosterArtifactGuard {
+    static func resolvableMediaURL(
+        for reference: SceneRecordingReference,
+        store: RecordingArtifactStore
+    ) -> URL? {
+        guard let url = store.resolve(reference),
+              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? NSNumber,
+              size.int64Value > 0 else {
+            return nil
+        }
+        return url
     }
 }
 
@@ -1546,6 +1647,109 @@ private struct SETLibraryCreatePanel: View {
                 .frame(width: SETComponentMetric.registrationMarkLength * 2, height: SETComponentMetric.registrationMarkLength * 2)
                 .padding(SETSpacing.x2)
         }
+        .overlay {
+            Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
+        }
+    }
+}
+
+// MARK: - Rename panel (`library.rename-name`, `library.rename-duplicate-name`)
+
+/// UI-011 / G6: the rename flow was fully modeled (draft, duplicate, retry)
+/// but never presented, which left the live row rename CTA opening an
+/// unreachable state. This panel mirrors the create panel so rename
+/// confirm, cancel and the conflicting-name notice stay first-class.
+private struct SETLibraryRenamePanel: View {
+    @ObservedObject var model: SETLibraryModel
+    let duplicateName: String?
+
+    @Environment(\.locale) private var locale
+    @FocusState private var fieldFocused: Bool
+
+    private var isDuplicate: Bool { duplicateName != nil }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SETSpacing.x3) {
+            HStack(alignment: .firstTextBaseline, spacing: SETSpacing.x3) {
+                Text(
+                    isDuplicate
+                        ? SETCopyKey.libraryDuplicateTitle.localizedTextKey
+                        : SETCopyKey.libraryRename.localizedTextKey
+                )
+                .font(SETTypography.font(.display, size: SETTypographySize.title))
+                .fontWeight(.bold)
+                .setDisplayTracking()
+                .foregroundStyle(.setTextPrimary)
+
+                if isDuplicate, let duplicateName {
+                    Text(
+                        SETLibraryLocalizedCopy.formatted(
+                            .libraryDuplicateDetail,
+                            locale: locale,
+                            arguments: [duplicateName]
+                        )
+                    )
+                    .font(SETTypography.uiBodyFont())
+                    .foregroundStyle(.setTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(SETLibraryAccessibilityID.renameDuplicateNotice)
+                }
+            }
+
+            ZStack(alignment: .bottom) {
+                TextField(
+                    "",
+                    text: $model.renameDraft,
+                    prompt: Text(SETCopyKey.libraryCreatePlaceholder.localizedTextKey)
+                        .foregroundStyle(.setTextTertiary)
+                )
+                .font(SETTypography.font(.screenplay, size: SETTypographySize.body))
+                .foregroundStyle(.setTextPrimary)
+                .padding(SETSpacing.x3)
+                .background(Color.setSurfaceSolid)
+                .overlay {
+                    Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
+                }
+                .focused($fieldFocused)
+                .disableAutocorrection(true)
+                .submitLabel(.done)
+                .onSubmit { model.confirmRename() }
+                .accessibilityIdentifier(SETLibraryAccessibilityID.renameField)
+
+                if isDuplicate {
+                    // One circle annotation around the conflicting name.
+                    GlassMarkGuide(kind: .outline, color: .setOrange)
+                        .padding(SETSpacing.x1)
+                } else {
+                    // Underline annotation on the active field.
+                    GlassMarkGuide(kind: .underline, color: fieldFocused ? .setOrange : .setHairline)
+                        .frame(height: SETSpacing.x2)
+                        .padding(.horizontal, SETSpacing.x2)
+                }
+            }
+
+            HStack(spacing: SETSpacing.x4) {
+                SETDigitalAction(title: .libraryRenameConfirm, action: { model.confirmRename() })
+                    .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .accessibilityIdentifier(SETLibraryAccessibilityID.renameConfirm)
+
+                Button(action: { model.cancelRename() }) {
+                    Text(SETCopyKey.libraryCancel.localizedTextKey)
+                        .font(SETTypography.uiBodyFont(weight: .semibold))
+                        .foregroundStyle(.setTextSecondary)
+                        .underline()
+                        .padding(.horizontal, SETSpacing.x3)
+                        .frame(minHeight: SETComponentMetric.minimumHitTarget)
+                }
+                .buttonStyle(.plain)
+                .frame(minHeight: SETComponentMetric.minimumHitTarget, alignment: .leading)
+                .contentShape(Rectangle())
+                .accessibilityIdentifier(SETLibraryAccessibilityID.renameCancel)
+            }
+        }
+        .padding(SETSpacing.x4)
+        .background(Color.setSurfaceSolid)
         .overlay {
             Rectangle().stroke(.setHairline, lineWidth: SETStroke.hairline)
         }
