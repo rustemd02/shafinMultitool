@@ -1,0 +1,33 @@
+name: CameraCoach CC19 complete encrypted shard delivery
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-complete-delivery.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/dataset/cc19
+          persist-credentials: false
+      - name: Verify and join original encrypted parts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/dataset/cc19/recover_transport.py --shard '${{ matrix.shard }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-synthetic-complete-${{ matrix.shard }}
+          path: bundle/
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
