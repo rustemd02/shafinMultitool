@@ -1,0 +1,25 @@
+name: CameraCoach v17 curated full movement comparisons
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc17-curate-rapidata.yml']
+permissions:
+  contents: read
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg >/dev/null
+          python3 -m pip install --quiet requests numpy pyarrow pillow
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - run: python3 tools/dataset/cc17/curate_rapidata.py
+      - uses: ./.github/actions/cc17-upload
