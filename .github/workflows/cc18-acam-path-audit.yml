@@ -1,0 +1,51 @@
+name: CameraCoach ACaM native path audit
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc18-acam-path-audit.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - run: python3 -m pip install --quiet requests
+      - name: Compare exact native identifiers and archive folder conventions
+        run: |
+          PYTHONPATH=tools/dataset/cc17 python3 - <<'PY'
+          import json,zipfile,collections
+          from pathlib import Path
+          from acquire import acquire_files
+          root=Path('audit');root.mkdir()
+          receipts=acquire_files('acam',root,lambda v:v['path'] in ('real_videos.zip','syn_videos.zip') or v['path'].endswith('.jsonl'))
+          assert all(r['status']=='downloaded' for r in receipts)
+          media=[]
+          for p in (root/'native').glob('*.zip'):
+              with zipfile.ZipFile(p) as z:
+                  media.extend({'archive':p.name,'member':i.filename} for i in z.infolist() if i.filename.lower().endswith(('.mp4','.mov','.mkv','.avi','.webm')))
+          exact=collections.defaultdict(list)
+          for r in media:
+              n=r['member'];exact[n].append(r)
+              prefix='real_videos/' if r['archive']=='real_videos.zip' else 'syn_videos/'
+              if not n.startswith(prefix):exact[prefix+n].append(r)
+          unresolved=[];counts=collections.Counter();candidates=[]
+          for p in (root/'native').glob('*.jsonl'):
+              for i,line in enumerate(p.read_text().splitlines()):
+                  if not line.strip():continue
+                  n=json.loads(line)['image'];matches=exact.get(n,[])
+                  if not matches:matches=[r for r in media if n.endswith('/'+r['member']) or r['member'].endswith('/'+n)]
+                  if len(matches)==1:continue
+                  archive='syn_videos.zip' if n.startswith('syn_videos/') else 'real_videos.zip'
+                  bs=[r for r in media if r['archive']==archive and Path(r['member']).name==Path(n).name]
+                  prefix=str(Path(n).parent);counts[(prefix,len(bs))]+=1
+                  rec={'annotation_file':p.name,'row':i,'annotation_path':n,'exact_basename_candidates':bs}
+                  unresolved.append(rec)
+                  if len(bs)==1 and len(candidates)<16:candidates.append(rec)
+          print('CC18_PATH_AUDIT '+json.dumps({'native_members':len(media),'unresolved_rows':len(unresolved),'counts':[{'prefix':k[0],'basename_candidates':k[1],'rows':v} for k,v in counts.items()],'unique_basename_examples':candidates}))
+          (root/'path_audit.json').write_text(json.dumps({'unresolved':unresolved,'native_members':media},indent=2))
+          PY
