@@ -1,0 +1,5 @@
+name: Upload private CameraCoach dataset parts
+description: Upload only bounded encrypted payload parts and integrity manifests.
+runs:
+  using: node24
+  main: index.js
