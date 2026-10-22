@@ -1,0 +1,59 @@
+name: CameraCoach v17 curated ET and receipt audit
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc17-curate-et.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  et:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - run: |
+          python3 -m pip install --quiet requests numpy
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - run: python3 tools/dataset/cc17/curate_et.py
+      - uses: ./.github/actions/cc17-upload
+  receipts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read only aggregate receipts from our completed data runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,re,urllib.request,pathlib
+          root='https://api.github.com/repos/rustemd02/shafinMultitool'
+          def get(url):
+            req=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+            with urllib.request.urlopen(req,timeout=90) as r:return r.read()
+          reports=[]
+          for run in [39777605185,39778195327,39778399872]:
+            jobs=json.loads(get(root+'/actions/runs/'+str(run)+'/jobs?per_page=100'))['jobs']
+            for job in jobs:
+              record={'run':run,'job':job['id'],'name':job['name'],'conclusion':job['conclusion'],'summaries':[]}
+              if job['conclusion']=='success':
+                text=get(root+'/actions/jobs/'+str(job['id'])+'/logs').decode('utf-8-sig')
+                for line in text.splitlines():
+                  if ' CC17_SUMMARY ' in line:record['summaries'].append(json.loads(line.split(' CC17_SUMMARY ',1)[1]))
+              reports.append(record)
+          out=pathlib.Path('report');out.mkdir()
+          (out/'ACQUISITION_RECEIPTS.json').write_text(json.dumps(reports,indent=2))
+          for r in reports:
+            if r['name']!='acquire (metadata)':print('CC17_VERIFIED_RECEIPT '+json.dumps(r))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc17-acquisition-receipts
+          path: report/*
+          compression-level: 6
+          retention-days: 7
