@@ -1,0 +1,89 @@
+name: CameraCoach CC19 joint private data audit
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-joint-private-audit.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  joint-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc19
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: dd9cc68c3e1c12fb913a4a8590b55ff0bbdff2ed
+          path: frozen
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare private audit recipient and data readers
+        run: |
+          python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0' requests
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+          umask 077
+          openssl req -x509 -newkey rsa:3072 -nodes -keyout "$RUNNER_TEMP/cc19-audit-private.pem" -out audit-public.pem -subj '/CN=CameraCoach one-run data audit' -days 1 >/dev/null 2>&1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-audit-public-recipient
+          path: audit-public.pem
+          retention-days: 1
+      - name: Decrypt transient replays privately and audit all combined records
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -u tools/dataset/cc19/secure_joint_audit.py joint --key "$RUNNER_TEMP/cc19-audit-private.pem"
+      - run: cp -a frozen/delivery ./delivery
+      - uses: ./.github/actions/cc17-upload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-joint-audit-proof
+          path: proof/
+          retention-days: 30
+      - name: Remove ephemeral private key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/cc19-audit-private.pem"
+  frozen-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/dataset/cc19
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: dd9cc68c3e1c12fb913a4a8590b55ff0bbdff2ed
+          path: frozen
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'bpy==4.5.0' 'numpy==1.26.4' 'Pillow==11.3.0' requests
+      - name: Reproduce accepted scenes without learning or changing labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -u tools/dataset/cc19/secure_joint_audit.py worker --shard '${{ matrix.shard }}' > replay.log 2>&1 || { tail -n 30 replay.log; exit 1; }
+          grep '^CC19_REPLAY_COMPLETE\|^CC18_FINAL_QA' replay.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-replay-shard-${{ matrix.shard }}
+          path: replay/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
