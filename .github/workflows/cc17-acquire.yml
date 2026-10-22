@@ -1,0 +1,29 @@
+name: CameraCoach v17 acquisition
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc17-acquire.yml', 'tools/dataset/cc17/**']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect public dataset manifests only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import urllib.request, json, concurrent.futures
+          ids = ['Yuwen2024/ACaM-Bench', 'Rapidata/camera-movement', 'Rapidata/relative-camera-movement', 'robin-courant/et-data']
+          def inspect(repo):
+              try:
+                  req=urllib.request.Request('https://huggingface.co/api/datasets/'+repo,headers={'User-Agent':'CameraCoach-dataset-acquisition/17'})
+                  with urllib.request.urlopen(req,timeout=45) as r: info=json.load(r)
+                  req=urllib.request.Request('https://huggingface.co/api/datasets/'+info['id']+'/tree/'+info['sha']+'?recursive=true&limit=1000',headers={'User-Agent':'CameraCoach-dataset-acquisition/17'})
+                  with urllib.request.urlopen(req,timeout=60) as r: tree=json.load(r); link=r.headers.get('Link')
+                  files=[{'path':v['path'],'size':v.get('size'),'type':v['type']} for v in tree if v['type']=='file']
+                  return {'repo':info['id'],'sha':info['sha'],'gated':info.get('gated'),'card':info.get('cardData'),'tree_paginated':bool(link),'files':files[:100],'page_file_count':len(files),'page_bytes':sum(v.get('size',0) or 0 for v in files)}
+              except Exception as e:return {'repo':repo,'error':str(e)}
+          for out in concurrent.futures.ThreadPoolExecutor(max_workers=4).map(inspect,ids): print('CC17_PROBE '+json.dumps(out,ensure_ascii=False))
+          PY
