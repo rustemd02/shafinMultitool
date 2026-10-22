@@ -27,7 +27,7 @@ jobs:
       - name: Verify all families and conditional tensor contract
         run: |
           python -u tools/dataset/cc17/cc18_entry.py --shard 0 --shards 1 --count 8 --label-prefix cc18-preflight > render.log 2>&1 || { tail -n 35 render.log; exit 1; }
-          grep '^CC18_SUMMARY\|^CC17_RELEASE' render.log
+          grep '^CC18_FINAL_QA\|^CC17_RELEASE' render.log
       - uses: ./.github/actions/cc17-upload
   complete-corpus:
     needs: semantic-preflight
@@ -55,5 +55,5 @@ jobs:
       - name: Render every candidate and validate all data batches
         run: |
           python -u tools/dataset/cc17/cc18_entry.py --shard '${{ matrix.shard }}' --shards 8 --count 512 > render.log 2>&1 || { tail -n 35 render.log; exit 1; }
-          grep '^CC18_SUMMARY\|^CC17_RELEASE' render.log
+          grep '^CC18_FINAL_QA\|^CC17_RELEASE' render.log
       - uses: ./.github/actions/cc17-upload
