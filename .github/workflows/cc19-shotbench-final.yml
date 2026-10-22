@@ -1,0 +1,31 @@
+name: CameraCoach CC19 verified ShotBench native recovery
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-shotbench-final.yml']
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc19
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - name: Prepare media decoding
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          NEEDRESTART_MODE: a
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg >/dev/null
+          python3 -m pip install --quiet requests numpy pillow
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - name: Recover native files using repaired native list parser
+        run: python3 -u tools/dataset/cc19/repair_shotbench.py
+      - uses: ./.github/actions/cc17-upload
