@@ -1,0 +1,72 @@
+name: CameraCoach CC19 native evaluation recovery
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-native-recovery.yml']
+permissions:
+  contents: read
+jobs:
+  shotbench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc19
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - name: Install data readers only
+        run: |
+          command -v ffmpeg
+          python3 -m pip install --quiet requests numpy pillow
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - name: Recover original files with exact annotation joins
+        run: python3 -u tools/dataset/cc19/repair_shotbench.py
+      - uses: ./.github/actions/cc17-upload
+  inspect-author-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - run: python3 -m pip install --quiet requests
+      - name: Inspect missing original identities without downloading copyrighted video links
+        run: |
+          python3 - <<'PY'
+          import json,collections,pathlib,requests,sys
+          sys.path.insert(0,'tools/dataset/cc17')
+          from acquire import acquire_files
+          root=pathlib.Path('probe');root.mkdir(exist_ok=True)
+          acquire_files('acam',root,lambda f:f['path'].endswith('.jsonl'))
+          rows=[]
+          for p in (root/'native').glob('*.jsonl'):
+              rows += [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+          for repo,tag in [('syCen/CameraBench','CameraBench'),('Xinran0906/CineTechBench','CineTechBench')]:
+              info=requests.get('https://huggingface.co/api/datasets/'+repo,timeout=40).json();sha=info['sha']
+              tree=[];url='https://huggingface.co/api/datasets/'+repo+'/tree/'+sha+'?recursive=true&limit=1000'
+              while url:
+                  r=requests.get(url,timeout=50);r.raise_for_status();tree.extend(r.json());url=r.links.get('next',{}).get('url')
+              files=[f for f in tree if f['type']=='file'];names=collections.defaultdict(list)
+              for f in files:names[pathlib.Path(f['path']).name].append(f['path'])
+              requested=[r for r in rows if '/'+tag+'/' in r['image']]
+              exact=[r['image'] for r in requested if pathlib.Path(r['image']).name in names]
+              gif=[{'acam':r['image'],'author_gif':names.get(pathlib.Path(r['image']).with_suffix('.gif').name)} for r in requested if pathlib.Path(r['image']).with_suffix('.gif').name in names]
+              small=[f for f in files if f['path'].endswith(('.md','.json','.jsonl','.csv')) and f.get('size',0)<2_000_000]
+              samples={}
+              for f in small:
+                  rr=requests.get('https://huggingface.co/datasets/'+repo+'/resolve/'+sha+'/'+f['path'],timeout=45)
+                  if rr.status_code!=200:continue
+                  txt=rr.text
+                  if f['path'].endswith('.md') or f['path']=='LICENSE':samples[f['path']]=txt[:10000]
+                  elif f['path'].endswith('.jsonl'):samples[f['path']]=txt.splitlines()[:2]
+                  elif f['path'].endswith('.csv'):samples[f['path']]=txt.splitlines()[:4]
+                  else:
+                      try:
+                          j=rr.json();samples[f['path']]=list(j.items())[:2] if isinstance(j,dict) else j[:2]
+                      except Exception:samples[f['path']]=txt[:500]
+              print('CC19_SOURCE_PROBE '+json.dumps({'repo':repo,'sha':sha,'card':info.get('cardData'),'requested':len(requested),'requested_examples':[r['image'] for r in requested[:5]],'files':len(files),'file_examples':[f['path'] for f in files[:12]],'exact_original_matches':len(exact),'gif_stem_matches':len(gif),'gif_examples':gif[:3],'samples':samples},ensure_ascii=False))
+          PY
