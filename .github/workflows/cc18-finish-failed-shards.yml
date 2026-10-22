@@ -1,0 +1,63 @@
+name: CameraCoach CC18 finish rejected geometry shards
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc18-finish-failed-shards.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  finish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0,1,2,3,4,5,6,7]
+    steps:
+      - name: Preserve successful source shards and identify failed ones
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 - <<'PY'
+          import json,os,time,urllib.request
+          url='https://api.github.com/repos/rustemd02/shafinMultitool/actions/runs/39809877540/jobs?per_page=100'
+          name='complete-corpus ('+os.environ['SHARD']+')'
+          for attempt in range(90):
+              req=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(req,timeout=30) as r:data=json.load(r)
+              jobs=[j for j in data['jobs'] if j['name']==name]
+              if jobs and jobs[0]['status']=='completed':
+                  recover=jobs[0]['conclusion']!='success'
+                  with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('recover='+str(recover).lower()+'\n')
+                  print('CC18_SOURCE_SHARD',name,jobs[0]['conclusion'],'recover',recover)
+                  break
+              time.sleep(20)
+          else:raise RuntimeError('Source job did not reach a final status; not guessing')
+          PY
+      - uses: actions/checkout@v4
+        if: steps.source.outputs.recover == 'true'
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        if: steps.source.outputs.recover == 'true'
+        with:
+          python-version: '3.11'
+      - name: Install pinned renderer only for rejected shards
+        if: steps.source.outputs.recover == 'true'
+        run: |
+          python -m pip install --quiet 'bpy==4.5.0' 'numpy==1.26.4' 'Pillow==11.3.0' requests
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - name: Traverse every remaining scene without weakening checks
+        if: steps.source.outputs.recover == 'true'
+        run: |
+          python -u tools/dataset/cc17/cc18_quarantine.py --shard '${{ matrix.shard }}' --shards 8 --count 512 > render.log 2>&1 || { tail -n 35 render.log; exit 1; }
+          grep '^CC18_QUARANTINE\|^CC18_FINAL_QA\|^CC17_RELEASE' render.log
+      - uses: ./.github/actions/cc17-upload
+        if: steps.source.outputs.recover == 'true'
