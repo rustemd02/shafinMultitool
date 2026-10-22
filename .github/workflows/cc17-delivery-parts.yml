@@ -1,0 +1,76 @@
+name: CameraCoach v17 existing artifact delivery
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc17-delivery-parts.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  split:
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - name: cc17-et-core-encrypted
+            run: 39777605185
+            label: et-core
+          - name: cc17-acam-real-encrypted
+            run: 39778195327
+            label: acam-real
+          - name: cc17-acam-syn-encrypted
+            run: 39778195327
+            label: acam-syn
+          - name: cc17-rapidata-media-1-encrypted
+            run: 39778399872
+            label: rapidata-1
+          - name: cc17-rapidata-media-2-encrypted
+            run: 39778399872
+            label: rapidata-2
+          - name: cc17-rapidata-media-3-encrypted
+            run: 39778399872
+            label: rapidata-3
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+          path: source
+      - name: Split encrypted bytes and retain exact ordering
+        env:
+          LABEL: ${{ matrix.label }}
+        run: |
+          python3 - <<'PY'
+          import pathlib,json,hashlib,os
+          root=pathlib.Path('source');out=pathlib.Path('parts');out.mkdir()
+          src=list(root.glob('*.cms'))
+          assert len(src)==1
+          src=src[0];full=hashlib.sha256();parts=[]
+          with src.open('rb') as f:
+            for i in range(100):
+              data=f.read(480*1024*1024)
+              if not data:break
+              p=out/(os.environ['LABEL']+'.p'+str(i).zfill(3))
+              p.write_bytes(data);full.update(data)
+              parts.append({'name':p.name,'size':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+          receipts=[json.loads(p.read_text()) for p in root.glob('*.json')]
+          assert len(receipts)==1 and full.hexdigest()==receipts[0]['encrypted_sha256']
+          (out/'PARTS.json').write_text(json.dumps({'label':os.environ['LABEL'],'original_name':src.name,'original_sha256':full.hexdigest(),'parts':parts,'transport':receipts[0]},indent=2))
+          print('PARTS_READY',os.environ['LABEL'],len(parts),sum(p['size'] for p in parts))
+          PY
+      - name: Install official artifact client
+        run: npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - name: Upload separately addressable encrypted parts
+        env:
+          LABEL: ${{ matrix.label }}
+        run: |
+          node <<'JS'
+          const fs=require('fs');const path=require('path');const {DefaultArtifactClient}=require('@actions/artifact');
+          (async()=>{const client=new DefaultArtifactClient();const root=path.resolve('parts');const index=JSON.parse(fs.readFileSync(path.join(root,'PARTS.json'),'utf8'));const results=[];
+          for(const p of index.parts){const r=await client.uploadArtifact('cc17-part-'+process.env.LABEL+'-'+p.name.split('.p').pop(),[path.join(root,p.name),path.join(root,'PARTS.json')],root,{compressionLevel:0,retentionDays:7});results.push({part:p.name,...r});}
+          console.log('CC17_PART_ARTIFACTS '+JSON.stringify(results));})().catch(e=>{console.error(e);process.exit(1)});
+          JS
