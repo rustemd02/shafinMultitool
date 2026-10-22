@@ -1,0 +1,50 @@
+name: CameraCoach CC19 recover completed data state
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-state-audit.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Read exact workflow summaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,urllib.request,urllib.parse,time
+          base='https://api.github.com/repos/rustemd02/shafinMultitool'
+          class NoAuthRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,req,fp,code,msg,headers,newurl):
+                  r=super().redirect_request(req,fp,code,msg,headers,newurl)
+                  if r and urllib.parse.urlparse(newurl).hostname!='api.github.com':
+                      r.remove_header('Authorization')
+                  return r
+          opener=urllib.request.build_opener(NoAuthRedirect())
+          def get(path):
+              req=urllib.request.Request(base+path,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with opener.open(req,timeout=90) as r:return r.read()
+          runs=json.loads(get('/actions/runs?branch=data%2Fcameracoach-v17-acquisition-20261022&per_page=80'))['workflow_runs']
+          selected={}
+          for r in runs:
+              name=r['name']
+              print('CC19_RUN '+json.dumps({k:r[k] for k in ['id','name','head_sha','status','conclusion']}))
+              if ('CC18' in name or 'ACaM' in name) and name not in selected:selected[name]=r
+          for r in selected.values():
+              jobs=json.loads(get('/actions/runs/'+str(r['id'])+'/jobs?per_page=100'))['jobs']
+              print('CC19_JOBS '+json.dumps({'run':r['id'],'jobs':[{k:j[k] for k in ['id','name','status','conclusion']} for j in jobs]}))
+              if r['status']=='completed':
+                  for j in jobs:
+                      if j['status']!='completed':continue
+                      try:
+                          text=get('/actions/jobs/'+str(j['id'])+'/logs').decode('utf-8-sig')
+                          matches=[line for line in text.splitlines() if any(x in line for x in ['CC18_FINAL_QA ','CC18_SUMMARY ','CC17_CURATED_SUMMARY ','CC18_SHOT','CC17_ARTIFACT_INDEX ','AssertionError:','HTTPError:','ValueError:','Process completed with exit'])]
+                          for line in matches:print('CC19_LOG '+json.dumps({'run':r['id'],'job':j['id'],'line':line}))
+                      except Exception as e:print('CC19_LOG_ERROR '+json.dumps({'job':j['id'],'error':str(e)}))
+              arts=json.loads(get('/actions/runs/'+str(r['id'])+'/artifacts?per_page=100'))['artifacts']
+              print('CC19_ARTIFACTS '+json.dumps({'run':r['id'],'artifacts':[{k:a.get(k) for k in ['id','name','size_in_bytes','digest','expired']} for a in arts]}))
+          PY
