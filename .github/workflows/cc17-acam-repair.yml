@@ -1,0 +1,32 @@
+name: CameraCoach v17 ACaM video acquisition
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc17-acam-repair.yml']
+permissions:
+  contents: read
+jobs:
+  acquire:
+    strategy:
+      fail-fast: false
+      matrix:
+        corpus: [acam-real, acam-syn]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg >/dev/null
+          python3 -m pip install --quiet requests pyarrow numpy
+      - run: python3 tools/dataset/cc17/acquire.py '${{ matrix.corpus }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc17-${{ matrix.corpus }}-encrypted
+          path: delivery/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
