@@ -1,0 +1,33 @@
+name: CameraCoach v17 complete Rapidata media
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc17-rapidata.yml']
+permissions:
+  contents: read
+jobs:
+  acquire:
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg >/dev/null
+          python3 -m pip install --quiet requests pyarrow numpy pillow
+      - run: python3 tools/dataset/cc17/rapidata_media.py --shard '${{ matrix.shard }}' --shards 4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc17-rapidata-media-${{ matrix.shard }}-encrypted
+          path: delivery/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
