@@ -1,0 +1,47 @@
+name: CameraCoach v17 renderer runtime
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc17-render-runtime.yml']
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Prepare isolated Python and renderer dependencies
+        run: |
+          python3 -m pip install --quiet uv
+          uv python install 3.11
+          mkdir -p runtime
+          PYTHON=$(uv python find 3.11)
+          cp -a "$(dirname "$(dirname "$PYTHON")")" runtime/python
+          uv pip install --python "$PYTHON" --target runtime/site-packages 'bpy==4.5.0' 'numpy==1.26.4' 'Pillow==11.3.0' 'OpenEXR==3.3.5'
+          PYTHONPATH="$PWD/runtime/site-packages" runtime/python/bin/python3.11 -c 'import bpy,numpy,PIL,OpenEXR,json;print(json.dumps({"blender":bpy.app.version_string,"numpy":numpy.__version__,"PIL":PIL.__version__,"OpenEXR":OpenEXR.__version__}))' > runtime/VERSIONS.json
+          cat runtime/VERSIONS.json
+      - name: Package runtime without font files or user data
+        run: |
+          find runtime -type f \( -iname '*.ttf' -o -iname '*.otf' -o -iname '*.woff' -o -iname '*.woff2' \) -delete
+          tar -czf runtime.tar.gz runtime
+          mkdir parts
+          split -b 400M -d -a 3 runtime.tar.gz parts/runtime.tar.gz.p
+          sha256sum runtime.tar.gz parts/* > parts/SHA256SUMS.txt
+          ls -lh parts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc17-render-runtime-000
+          path: |
+            parts/runtime.tar.gz.p000
+            parts/SHA256SUMS.txt
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('parts/runtime.tar.gz.p001') != '' }}
+        with:
+          name: cc17-render-runtime-001
+          path: |
+            parts/runtime.tar.gz.p001
+            parts/SHA256SUMS.txt
+          compression-level: 0
+          retention-days: 7
