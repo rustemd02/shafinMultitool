@@ -1,0 +1,33 @@
+name: CameraCoach CC19 finalized training-data handoff
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-finalize-handoff.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc19
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0'
+      - name: Assemble source proofs and execute protected restoration checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -u tools/dataset/cc19/finalize_handoff.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-training-handoff
+          path: cc19_handoff/
+          if-no-files-found: error
+          retention-days: 30
