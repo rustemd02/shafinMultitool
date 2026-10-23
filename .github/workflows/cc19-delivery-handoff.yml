@@ -1,0 +1,35 @@
+name: CameraCoach CC19 final selected-data handoff
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-delivery-handoff.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc19
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0'
+      - name: Pin source manifests and run private-key-free self tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -m py_compile tools/dataset/cc19/prepare_cc19.py tools/dataset/cc19/build_delivery_handoff.py
+          python -u tools/dataset/cc19/build_delivery_handoff.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-training-handoff
+          path: cc19_handoff/
+          if-no-files-found: error
+          retention-days: 30
