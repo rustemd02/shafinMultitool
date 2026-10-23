@@ -2,7 +2,9 @@ name: CameraCoach CC19 native CameraBench missing-video recovery
 on:
   push:
     branches: ['data/cameracoach-v17-acquisition-20261022']
-    paths: ['.github/workflows/cc19-camerabench-originals.yml']
+    paths:
+      - '.github/workflows/cc19-camerabench-originals.yml'
+      - 'tools/dataset/cc19/recover_camerabench_entry.py'
 permissions:
   contents: read
 jobs:
