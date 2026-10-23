@@ -1,0 +1,31 @@
+name: CameraCoach CC19 Swift input parity
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-swift-contract.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: macos-14
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc19
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install data readers only
+        run: python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0'
+      - name: Compile and verify Swift numeric features
+        run: python -u tools/dataset/cc19/check_swift_contract.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-swift-numeric-contract
+          path: contract_proof/
+          retention-days: 30
+          if-no-files-found: error
