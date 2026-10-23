@@ -1,0 +1,50 @@
+name: CameraCoach CC19 exact ACaM recovery
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-recover-acam.yml']
+permissions:
+  contents: read
+jobs:
+  shotbench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - run: |
+          command -v ffmpeg || { sudo apt-get update -qq; sudo apt-get install -y -qq ffmpeg >/dev/null; }
+          python3 -m pip install --quiet requests numpy pillow
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - name: Exact author-media recovery with proper TSV array parsing
+        run: python3 -u tools/dataset/cc17/cc19_shotbench_recover.py
+      - uses: ./.github/actions/cc17-upload
+  source-media-discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect author media manifests only
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request,urllib.parse
+          def get(u):
+              with urllib.request.urlopen(urllib.request.Request(u,headers={'User-Agent':'CameraCoach-native-data-audit/19'}),timeout=60) as r:return json.load(r),r.headers.get('Link')
+          repos=['syCen/CameraBench','Yuwen2024/ACaM-Bench','Yuwen2024/ACaM','Vchitect/ShotBench']
+          for repo in repos:
+              try:
+                  info,_=get('https://huggingface.co/api/datasets/'+repo);sha=info['sha'];url='https://huggingface.co/api/datasets/'+info['id']+'/tree/'+sha+'?recursive=true&limit=1000';allfiles=[]
+                  for page in range(10):
+                      rows,link=get(url);allfiles += [v for v in rows if v['type']=='file']
+                      if not link:break
+                      import re
+                      m=re.search(r'<([^>]+)>;\s*rel="next"',link)
+                      if not m:break
+                      url=m.group(1)
+                  selected=[{'path':v['path'],'size':v.get('size'),'lfs':v.get('lfs')} for v in allfiles if not v['path'].lower().endswith(('.gif','.png','.jpg','.jpeg'))]
+                  print('CC19_SOURCE '+json.dumps({'repo':info['id'],'revision':sha,'gated':info.get('gated'),'card':info.get('cardData'),'file_count':len(allfiles),'selected':selected[:100],'gif_count':sum(v['path'].endswith('.gif') for v in allfiles),'video_count':sum(v['path'].lower().endswith(('.mp4','.mov','.avi','.mkv')) for v in allfiles)}))
+              except Exception as e:print('CC19_SOURCE_ERROR '+json.dumps({'repo':repo,'error':str(e)}))
+          PY
