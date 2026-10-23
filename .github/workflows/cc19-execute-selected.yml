@@ -1,0 +1,101 @@
+name: CameraCoach CC19 actual selected data execution
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-execute-selected.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  joint-selected:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc19
+            tools/dataset/cc17
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: dd9cc68c3e1c12fb913a4a8590b55ff0bbdff2ed
+          path: frozen
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare isolated data-only recipient
+        run: |
+          python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0'
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+          python -m py_compile tools/dataset/cc19/execute_selected.py tools/dataset/cc19/selected_reader.py
+          umask 077
+          openssl req -x509 -newkey rsa:3072 -nodes -keyout audit-private.pem -out audit-public.pem -days 1 -subj '/CN=CameraCoach-Same-Job-Audit' >/dev/null 2>&1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-audit-public-recipient
+          path: audit-public.pem
+          retention-days: 1
+      - name: Restore worker output and execute every selected real pixel batch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -u tools/dataset/cc19/execute_selected.py joint --key "$PWD/audit-private.pem"
+      - name: Hash the actual final tensor streams and state scope
+        run: |
+          PYTHONPATH="$PWD/frozen/tools/dataset/cc17" python tools/dataset/cc19/selected_reader.py --root selected_core --verify --receipt proof/SELECTED_TENSOR_QA.json > selected_reader.log
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('proof/SELECTED_TENSOR_QA.json');r=json.loads(p.read_text())
+          status={'component_data_ready':True,'component_scope':r['component_scope'],'full_cameracoach_training_ready':False,'model_execution_authorized':False,'model_calls':0,'new_human_responses':0,'selected_records':r['selected_records'],'selected_scenes':r['scene_configurations'],'verified_split_records':{k:v['records'] for k,v in r['split_checks'].items()},'actual_Drive_restore':False,'private_runtime_error':'ClientError in the conversation execution environment; no Drive plaintext restoration claimed','source':'actual frozen-generator replay followed by real pixel/batch selection; not a reclassification of metadata-only tests'}
+          Path('proof/FINAL_COMPONENT_STATUS.json').write_text(json.dumps(status,indent=2)+'\n')
+          print('CC19_FINAL_SELECTED_STATUS '+json.dumps(status))
+          PY
+      - uses: ./.github/actions/cc17-upload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-actual-selected-proof
+          path: proof/
+          retention-days: 30
+      - name: Remove ephemeral private recipient
+        if: always()
+        run: rm -f audit-private.pem
+  source-workers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/dataset/cc19
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: dd9cc68c3e1c12fb913a4a8590b55ff0bbdff2ed
+          path: frozen
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned simulator
+        run: python -m pip install --quiet 'bpy==4.5.0' 'numpy==1.26.4' 'Pillow==11.3.0' requests
+      - name: Replay accepted immutable source configurations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -u tools/dataset/cc19/execute_selected.py worker --shard '${{ matrix.shard }}' > worker.log 2>&1 || { tail -n 35 worker.log; exit 1; }
+          grep '^CC19_REPLAY_COMPLETE\|^CC18_FINAL_QA' worker.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-replay-shard-${{ matrix.shard }}
+          path: replay/
+          compression-level: 0
+          retention-days: 7
