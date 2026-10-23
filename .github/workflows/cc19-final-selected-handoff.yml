@@ -1,0 +1,38 @@
+name: CameraCoach CC19 final selected handoff
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-final-selected-handoff.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  handoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc19
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: dd9cc68c3e1c12fb913a4a8590b55ff0bbdff2ed
+          path: frozen
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0' requests
+      - name: Verify completed source proofs and portable restore checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -u tools/dataset/cc19/build_final_selected_entry.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-final-selected-handoff
+          path: final_selected_handoff/
+          retention-days: 30
