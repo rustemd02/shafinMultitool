@@ -7,7 +7,24 @@ permissions:
   contents: read
   actions: read
 jobs:
+  dependency-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc19
+            tools/dataset/cc17
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0' requests
+          PYTHONPATH=tools/dataset/cc17:tools/dataset/cc19 python -c 'import release_pack,execute_selected,selected_reader,selection_v19,secure_joint_audit; print(selection_v19.selection_metadata_test())'
   joint-selected:
+    needs: dependency-preflight
     runs-on: ubuntu-latest
     timeout-minutes: 70
     steps:
@@ -29,7 +46,7 @@ jobs:
           python-version: '3.11'
       - name: Prepare isolated data-only recipient
         run: |
-          python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0'
+          python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0' requests
           npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
           python -m py_compile tools/dataset/cc19/execute_selected.py tools/dataset/cc19/selected_reader.py
           umask 077
@@ -43,15 +60,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python -u tools/dataset/cc19/execute_selected.py joint --key "$PWD/audit-private.pem"
-      - name: Hash the actual final tensor streams and state scope
+      - name: Freshly restore the final encrypted archive and compare every batch
         run: |
-          PYTHONPATH="$PWD/frozen/tools/dataset/cc17" python tools/dataset/cc19/selected_reader.py --root selected_core --verify --receipt proof/SELECTED_TENSOR_QA.json > selected_reader.log
-          python - <<'PY'
-          import json
+          PYTHONPATH="$PWD/frozen/tools/dataset/cc17:$PWD/tools/dataset/cc19" python - <<'PY'
+          import json,subprocess
           from pathlib import Path
-          p=Path('proof/SELECTED_TENSOR_QA.json');r=json.loads(p.read_text())
-          status={'component_data_ready':True,'component_scope':r['component_scope'],'full_cameracoach_training_ready':False,'model_execution_authorized':False,'model_calls':0,'new_human_responses':0,'selected_records':r['selected_records'],'selected_scenes':r['scene_configurations'],'verified_split_records':{k:v['records'] for k,v in r['split_checks'].items()},'actual_Drive_restore':False,'private_runtime_error':'ClientError in the conversation execution environment; no Drive plaintext restoration claimed','source':'actual frozen-generator replay followed by real pixel/batch selection; not a reclassification of metadata-only tests'}
-          Path('proof/FINAL_COMPONENT_STATUS.json').write_text(json.dumps(status,indent=2)+'\n')
+          import secure_joint_audit as J
+          import selected_reader as S
+          r=json.loads(Path('delivery/RELEASE.json').read_text())
+          cipher=Path('frozen')/(r['label']+'.tar.gz.cms')
+          assert J.sha(cipher)==r['encrypted_sha256']
+          subprocess.run(['openssl','cms','-decrypt','-binary','-inform','DER','-in',str(cipher),'-inkey','audit-private.pem','-out','selected_restore.tar.gz'],check=True)
+          assert J.sha('selected_restore.tar.gz')==r['plaintext_sha256']
+          restored=J.extract_checked(Path('selected_restore.tar.gz'),Path('selected_clean_restore'))
+          original=S.verify(Path('selected_core'));repeat=S.verify(Path('selected_clean_restore'))
+          assert original==repeat
+          J.dump('proof/SELECTED_TENSOR_QA.json',original)
+          J.dump('proof/SELECTED_ARCHIVE_RESTORE_QA.json',{'fresh_clean_restore':restored,'all_actual_tensor_streams_identical':True,'source':'local finalized encrypted artifact, not Google Drive','actual_Drive_restore':False,'model_calls':0})
+          status={'component_data_ready':True,'component_scope':original['component_scope'],'full_cameracoach_training_ready':False,'model_execution_authorized':False,'model_calls':0,'new_human_responses':0,'selected_records':original['selected_records'],'selected_scenes':original['scene_configurations'],'verified_split_records':{k:v['records'] for k,v in original['split_checks'].items()},'actual_Drive_restore':False,'fresh_archive_restore':True,'private_runtime_error':'ClientError in the conversation execution environment; no Drive plaintext restoration claimed','source':'actual frozen-generator replay, real selected pixel batches, and clean final archive restore'}
+          J.dump('proof/FINAL_COMPONENT_STATUS.json',status)
           print('CC19_FINAL_SELECTED_STATUS '+json.dumps(status))
           PY
       - uses: ./.github/actions/cc17-upload
@@ -64,6 +91,7 @@ jobs:
         if: always()
         run: rm -f audit-private.pem
   source-workers:
+    needs: dependency-preflight
     runs-on: ubuntu-latest
     timeout-minutes: 50
     strategy:
