@@ -1,0 +1,58 @@
+name: CameraCoach CC19 final source inventory
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-final-artifact-inventory.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/dataset/cc19
+          persist-credentials: false
+      - name: Validate saved index objects without decrypting media
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import hashlib,io,json,os,urllib.request,urllib.parse,zipfile
+          from pathlib import Path
+          class Redirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self,req,fp,code,msg,headers,newurl):
+              r=super().redirect_request(req,fp,code,msg,headers,newurl)
+              if r and urllib.parse.urlparse(newurl).hostname!='api.github.com':r.remove_header('Authorization')
+              return r
+          opener=urllib.request.build_opener(Redirect())
+          def get(path):
+            req=urllib.request.Request('https://api.github.com/repos/rustemd02/shafinMultitool'+path,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+            with opener.open(req,timeout=90) as r:return r.read()
+          out=Path('proof');out.mkdir(exist_ok=True);results=[]
+          ids=[12440418880,12440468812,12442007649,12440789282,12441006488,12442025700,12442175706,12441096895,12466361889,12438533006,12465381558,12466900902,12493309039]
+          for aid in ids:
+            meta=json.loads(get(f'/actions/artifacts/{aid}'));b=get(f'/actions/artifacts/{aid}/zip')
+            assert len(b)==meta['size_in_bytes'] and meta['digest']=='sha256:'+hashlib.sha256(b).hexdigest()
+            with zipfile.ZipFile(io.BytesIO(b)) as z:
+              assert z.testzip() is None
+              release=json.loads(z.read('RELEASE.json')) if 'RELEASE.json' in z.namelist() else None
+              record={'artifact_id':aid,'name':meta['name'],'source_run':meta['workflow_run']['id'],'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest(),'release':release}
+              if release:
+                original=[n for n in z.namelist() if 'ARTIFACT' in n and n.endswith('.json')]
+                for n in original:record['source_artifacts']=json.loads(z.read(n))
+              else:
+                for n in z.namelist():
+                  if n.endswith('.json'):record[n]=json.loads(z.read(n))
+              results.append(record)
+              print('CC19_INDEX '+json.dumps(record))
+            (out/(str(aid)+'.zip')).write_bytes(b)
+          (out/'SOURCE_INVENTORY.json').write_text(json.dumps(results,ensure_ascii=False,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-final-source-inventory
+          path: proof/
+          retention-days: 30
