@@ -1,0 +1,48 @@
+name: CameraCoach CC19 verified recovery bundles
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc19-recover-transport.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/dataset/cc19
+          persist-credentials: false
+      - name: Recover bytes and verify source artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u tools/dataset/cc19/recover_transport.py --shard '${{ matrix.shard }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-synthetic-bundle-${{ matrix.shard }}
+          path: bundle/
+          compression-level: 0
+          retention-days: 30
+      - name: Collect concise verified build report
+        run: |
+          mkdir reports
+          python3 - <<'PY'
+          import json,pathlib
+          r=pathlib.Path('bundle')
+          q=json.loads((r/'BUILD_QA.json').read_text());t=json.loads((r/'TRANSPORT_VERIFICATION.json').read_text())
+          out={'schema':'cc19.recovered_build.v1','label':t['label'],'source_run':t['source_run'],'source_job':t['source_job'],'stats':q['stats'],'renderer_free_consumer':q.get('renderer_free_consumer'),'quarantine_count':q.get('scene_quarantine_count',0),'near_duplicate_review_candidate_count':q.get('near_duplicate_review_candidate_count'),'verified_ciphertext_sha256':t['joined_encrypted_sha256'],'verified_ciphertext_bytes':t['joined_encrypted_bytes'],'verified_source_parts':len(t['source_parts_verified']),'plaintext_restore_this_run':False,'drive_readback_this_run':False,'full_cameracoach_training_ready':False}
+          pathlib.Path('reports/'+t['label']+'.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('CC19_VERIFIED '+json.dumps(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-synthetic-report-${{ matrix.shard }}
+          path: reports/
+          retention-days: 30
