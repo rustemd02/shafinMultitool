@@ -1,0 +1,47 @@
+name: CameraCoach CC20 source gap audit
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-source-gap-audit.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc19
+            tools/dataset/cc20
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0' 'requests==2.32.5'
+      - name: Inspect bounded source directories and completed build receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import sys,json,requests
+          from pathlib import Path
+          sys.path.insert(0,'tools/dataset/cc20');sys.path.insert(0,'tools/dataset/cc19')
+          import real_lighting as L
+          import recover_transport as G
+          for url in ['https://oppo-us-research.github.io/OpenIllumination/data.json','https://oppo-us-research.github.io/OpenIllumination/data_olat.json']:
+            r=requests.get(url,timeout=30);print('CC20_AUTHOR_INVENTORY '+json.dumps({'url':url,'status':r.status_code,'body':r.text[:24000]}))
+          print('CC20_ALL_SUBJECT_DIRS '+json.dumps([x['path'] for x in L.tree('lighting_patterns') if x['type']=='directory']))
+          for p in ['lighting_patterns/obj_52_hair_background','lighting_patterns/obj_52_hair','lighting_patterns/obj_51_hair']:
+            try: print('CC20_SPECIAL '+json.dumps({'path':p,'files':L.tree(p)}))
+            except Exception as e:print('CC20_SPECIAL_ERROR',p,str(e))
+          jobs=json.loads(G.get('/actions/runs/40095632381/jobs?per_page=100'))['jobs']
+          for j in jobs:
+            if j['status']!='completed':continue
+            log=G.get('/actions/jobs/'+str(j['id'])+'/logs').decode('utf-8-sig')
+            for line in log.splitlines():
+              if any(k in line for k in ['CC20_QA {','CC17_ARTIFACT_INDEX {','HTTPError:','AssertionError:','ValueError:']):print('CC20_BUILD_RECEIPT '+json.dumps({'job':j['id'],'name':j['name'],'line':line}))
+          PY
