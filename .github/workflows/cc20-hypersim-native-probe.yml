@@ -1,0 +1,69 @@
+name: CameraCoach photoreal native source verification
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-hypersim-native-probe.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet requests h5py numpy
+      - name: Fetch actual lossless RGB, native masks and calibrated camera records
+        run: |
+          python -u - <<'PY'
+          import requests,zipfile,io,json,csv,hashlib,re,h5py,numpy as np
+          pin='3463c5c4a75f3cbfc65ed31cfd6e87204b3a2254'
+          base='https://raw.githubusercontent.com/apple-aiml-research/ml-hypersim/'+pin+'/'
+          session=requests.Session();session.headers['Accept-Encoding']='identity'
+          for path in ['README.md','evermotion_dataset/analysis/metadata_images_split_scene_v1.csv','contrib/mikeroberts3000/metadata_camera_parameters.csv']:
+              r=session.get(base+path,timeout=60);r.raise_for_status()
+              if path.endswith('.csv'):
+                  rows=list(csv.DictReader(io.StringIO(r.text)));print('SOURCE_METADATA',path,json.dumps(rows[:2]),len(rows),flush=True)
+              else:assert 'Creative Commons Attribution-ShareAlike 3.0' in r.text
+          class Remote(io.RawIOBase):
+              def __init__(self,url):
+                  self.url=url;self.pos=0;self.cache={};self.transferred=0
+                  r=session.get(url,headers={'Range':'bytes=0-0'},timeout=90);r.raise_for_status();assert r.status_code==206
+                  self.size=int(r.headers['Content-Range'].split('/')[-1]);self.etag=r.headers.get('ETag');self.transferred+=len(r.content)
+              def readable(self):return True
+              def seekable(self):return True
+              def tell(self):return self.pos
+              def seek(self,n,w=0):
+                  self.pos=n if w==0 else self.pos+n if w==1 else self.size+n
+                  if self.pos<0:raise ValueError('negative seek')
+                  return self.pos
+              def read(self,n=-1):
+                  if n<0:n=self.size-self.pos
+                  n=min(n,self.size-self.pos)
+                  if n<=0:return b''
+                  out=[];end=self.pos+n;block=2*1024*1024
+                  while self.pos<end:
+                      k=self.pos//block
+                      if k not in self.cache:
+                          lo=k*block;hi=min(self.size-1,lo+block-1)
+                          r=session.get(self.url,headers={'Range':f'bytes={lo}-{hi}'},timeout=90);r.raise_for_status()
+                          assert r.status_code==206 and len(r.content)==hi-lo+1
+                          assert int(r.headers['Content-Range'].split()[1].split('-')[0])==lo
+                          if self.etag:assert r.headers.get('ETag')==self.etag
+                          self.cache[k]=r.content;self.transferred+=len(r.content)
+                      value=self.cache[k];off=self.pos%block;take=min(end-self.pos,len(value)-off);out.append(value[off:off+take]);self.pos+=take
+                  return b''.join(out)
+          f=Remote('https://docs-assets.developer.apple.com/ml-research/datasets/hypersim/v1/scenes/ai_001_001.zip')
+          z=zipfile.ZipFile(f);names=z.namelist();print('ARCHIVE_INDEX',len(names),names[:8],flush=True)
+          wanted=[n for n in names if n.endswith('metadata_scene.csv') or ('cam_00/camera_keyframe_' in n and n.endswith('.hdf5')) or ('frame.0000.' in n and n.endswith(('.color.hdf5','.semantic_instance.hdf5','.semantic.hdf5','.depth_meters.hdf5','.render_entity_id.hdf5')))]
+          for name in wanted[:15]:
+              b=z.read(name)
+              if name.endswith('.hdf5'):
+                  with h5py.File(io.BytesIO(b),'r') as h:
+                      x=h['dataset'][:];shape=list(x.shape);kind=str(x.dtype)
+                      stats={'shape':shape,'dtype':kind,'finite':int(np.isfinite(x).sum()),'size':int(x.size),'min':float(np.nanmin(x)),'max':float(np.nanmax(x))}
+              else:stats={'text':b.decode()}
+              print('NATIVE_SAMPLE',json.dumps({'name':name,'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest(),**stats}),flush=True)
+          print('NATIVE_PROBE_PASS',json.dumps({'bytes_actually_fetched':f.transferred,'archive_bytes':f.size,'etag':f.etag,'model_calls':0}),flush=True)
+          PY
