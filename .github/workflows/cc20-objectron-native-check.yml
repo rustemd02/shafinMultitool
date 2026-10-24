@@ -8,7 +8,7 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,7 +23,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install --quiet 'numpy==1.26.4' 'protobuf==3.20.3' 'requests==2.32.5'
+      - run: |
+          python -m pip install --quiet 'numpy==1.26.4' 'protobuf==3.20.3' 'requests==2.32.5'
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
       - name: Inspect source schema, native bytes and actual timestamps
         run: |
           python - <<'PY'
@@ -33,7 +36,7 @@ jobs:
           sys.path.insert(0,str(Path('official_objectron').resolve()))
           from objectron.schema import annotation_data_pb2 as P
           base='https://storage.googleapis.com/objectron/'
-          ids=(Path('official_objectron/index/book_annotations_train').read_text().strip().splitlines())
+          ids=Path('official_objectron/index/book_annotations_train').read_text().strip().splitlines()
           ids.sort(key=lambda s:hashlib.sha256(('cc20:'+s).encode()).hexdigest())
           chosen=None
           for seq in ids[:12]:
@@ -49,6 +52,6 @@ jobs:
           frames=json.loads(subprocess.check_output(['ffprobe','-v','error','-select_streams','v:0','-show_frames','-show_entries','frame=best_effort_timestamp_time,width,height','-of','json','sample.MOV']))['frames']
           def sample(a):return {'frame_id':a.frame_id,'timestamp':a.timestamp,'width':a.camera.image_resolution_width,'height':a.camera.image_resolution_height,'camera_transform_len':len(a.camera.transform),'camera_view_len':len(a.camera.view_matrix),'camera_intrinsics':list(a.camera.intrinsics),'objects':[{'object_id':o.object_id,'visibility':o.visibility,'keypoints2d':[[k.point_2d.x,k.point_2d.y,k.point_2d.depth] for k in o.keypoints]} for o in a.annotations]}
           print('CC20_OBJECTRON_STRUCTURE '+json.dumps({'selected':chosen,'objects':len(seq.objects),'annotation_frames':len(ann),'annotations':[sample(ann[i]) for i in [0,1,len(ann)//2,len(ann)-1]],'video_streams':probe['streams'],'decoded_frames':len(frames),'pts_samples':[frames[i] for i in [0,1,len(frames)//2,len(frames)-1]]}))
-          for path in Path('official_objectron/notebooks').glob('*Py*torch*'):
-            n=json.loads(path.read_text());print('CC20_NOTEBOOK_CODE '+''.join(''.join(c.get('source',[])) for c in n['cells'] if c['cell_type']=='code')[:12000])
+          for path in Path('official_objectron/notebooks').glob('*Pytorch*'):
+            n=json.loads(path.read_text());print('CC20_NOTEBOOK_CODE '+''.join(''.join(c.get('source',[])) for c in n['cells'] if c['cell_type']=='code')[:18000])
           PY
