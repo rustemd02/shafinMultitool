@@ -1,0 +1,88 @@
+name: CameraCoach CC21 observable real motion
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc21-real-motion-observable.yml']
+permissions:
+  contents: read
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc21
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install data-only dependencies
+        run: |
+          python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0' requests
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - name: Validate native GT cleaning and observable-scale masks
+        run: |
+          python tools/dataset/cc21/trajectory_validation.py
+          python - <<'PY'
+          import sys,tempfile,json
+          from pathlib import Path
+          import numpy as np
+          from PIL import Image
+          sys.path.insert(0,'tools/dataset/cc21');import observed_motion_reader as R
+          with tempfile.TemporaryDirectory() as td:
+              root=Path(td);frames={}
+              for i in range(2):
+                  rgb=f'rgb{i}.png';depth=f'depth{i}.png';Image.new('RGB',(640,480),(50,60,70)).save(root/rgb)
+                  Image.fromarray(np.full((480,640),10000,np.uint16)).save(root/depth)
+                  frames[rgb]={'depth_path':depth,'rgb_time':i,'depth_time':i}
+              r={'sequence':'freiburg1_xyz','observations':{'before_rgb':'rgb0.png','after_rgb':'rgb1.png','delta_time_s':1.},'targets':{'measured_camera_motion':[.2,0,0,0,.1,0],'human_intent':None,'operator_utility':None}}
+              X,Y,M=R.encode(root,[r],frames,'rgb_direction');assert not M['translation_m'].any() and 'depth_m' not in X
+              X,Y,M=R.encode(root,[r],frames,'rgbd_metric');assert M['translation_m'].all() and np.all(X['depth_m']==2.)
+          print('CC21_OBSERVABLE_SCALE_UNIT_TESTS_PASS')
+          p=Path('tools/dataset/cc21/tum_motion.py');s=p.read_text()
+          fixes={
+          'assert gt.shape[1]==8 and np.isfinite(gt).all() and np.all(np.diff(gt[:,0])>0)':"from trajectory_validation import clean_groundtruth;gt,validation=clean_groundtruth(gt);write_json(source/'GT_VALIDATION.json',validation);print('CC21_NATIVE_GT_VALIDATION '+json.dumps({'sequence':name,**{k:v for k,v in validation.items() if k!='row_decisions'}}),flush=True)",
+          "'native_gt_poses':len(gt)":"'native_gt_poses':validation['native_rows'],'retained_gt_poses':len(gt)",
+          "shutil.copyfile(__file__,root/'tum_motion.py')":"shutil.copyfile(__file__,root/'tum_motion.py');shutil.copyfile(Path(__file__).parent/'trajectory_validation.py',root/'trajectory_validation.py')"}
+          for before,after in fixes.items():
+              assert s.count(before)==1,before
+              s=s.replace(before,after)
+          p.write_text(s);compile(s,str(p),'exec')
+          PY
+      - name: Acquire and align all four native sequences
+        run: python -u tools/dataset/cc21/tum_motion.py
+      - name: Read all actual RGB and RGBD batches with correct loss eligibility
+        run: |
+          python tools/dataset/cc21/observed_motion_reader.py --root cc21-real-motion
+          python - <<'PY'
+          import json,shutil,sys
+          from pathlib import Path
+          root=Path('cc21-real-motion')
+          shutil.copyfile('tools/dataset/cc21/observed_motion_reader.py',root/'observed_motion_reader.py')
+          (root/'motion_reader.py').write_text('from observed_motion_reader import batches\n')
+          (root/'requirements.txt').write_text('numpy==1.26.4\nPillow==11.3.0\n')
+          metadata={'entrypoint':'observed_motion_reader.batches(root, split="train", mode="rgb_direction")','modes':{'rgb_direction':'rotation and direction; absolute translation meters loss disabled','rgbd_metric':'native measured depth plus RGB; metric translation enabled only with adequate depth coverage'},'legacy_acquisition_reader':'tum_motion.batches is a diagnostic raw-target reader, NOT the approved training entrypoint','counterfactual_policy_training':False,'new_human_utility_labels':0,'full_CameraCoach_training_ready':False}
+          (root/'TRAINING_ENTRYPOINT.json').write_text(json.dumps(metadata,indent=2))
+          (root/'START_HERE_RU.md').write_text('# CameraCoach: реальные измеренные движения\n\nЧитать через observed_motion_reader.batches(root, split="train", mode="rgb_direction"). По умолчанию RGB учит повороту и направлению перемещения; метрическая величина перемещения замаскирована, поскольку масштаб из двух RGB неоднозначен.\n\nmode="rgbd_metric" добавляет исходную измеренную глубину и её маску, масштаб PNG/5000, и допускает метры при достаточной валидной глубине. Для зарегистрированной глубины использованы рекомендованные источником ROS-default intrinsics с явным признаком приблизительности.\n\nЭто два представления одних записей, не два независимых датасета. Все native PNG и таблицы оставлены неизменными; производные траектории сохраняют журнал исключения недостоверных точек. Новых человеческих оценок или намерений нет. Это verifier после действия, не online policy до действия.\n\nОкончательная проверка массивов — OBSERVABILITY_QA.json. Старый диагностический reader tum_motion.batches не является входом обучения.\n')
+          shutil.rmtree('delivery')
+          sys.path.insert(0,'tools/dataset/cc17');from release_pack import package
+          package(root,'cc21-real-motion-observable')
+          proof=Path('cc21-real-observable-proof');proof.mkdir()
+          for name in ['QA.json','OBSERVABILITY_QA.json','SOURCE_RECEIPTS.json','TRAINING_ENTRYPOINT.json','START_HERE_RU.md','ATTRIBUTION.md','observed_motion_reader.py','requirements.txt']:
+              shutil.copyfile(root/name,proof/name)
+          validations=[]
+          for p in root.glob('native/*/GT_VALIDATION.json'):
+              v=json.loads(p.read_text());v['sequence']=p.parent.name;validations.append(v)
+          (proof/'NATIVE_GT_VALIDATIONS.json').write_text(json.dumps(validations,indent=2))
+          print('CC21_OBSERVABLE_REAL_DELIVERY_READY')
+          PY
+      - uses: ./.github/actions/cc17-upload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc21-real-observable-proof
+          path: cc21-real-observable-proof/
+          retention-days: 30
