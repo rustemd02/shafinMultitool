@@ -1,0 +1,79 @@
+name: CameraCoach CC21 validated real measured motion
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc21-real-motion-validated.yml']
+permissions:
+  contents: read
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc21
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install data-only dependencies
+        run: |
+          python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0' requests
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - name: Add explicit native trajectory sanitation and regression tests
+        run: |
+          python tools/dataset/cc21/trajectory_validation.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('tools/dataset/cc21/tum_motion.py');s=p.read_text()
+          fixes={
+          'assert gt.shape[1]==8 and np.isfinite(gt).all() and np.all(np.diff(gt[:,0])>0)':"from trajectory_validation import clean_groundtruth;gt,validation=clean_groundtruth(gt);write_json(source/'GT_VALIDATION.json',validation);print('CC21_NATIVE_GT_VALIDATION '+json.dumps({'sequence':name,**{k:v for k,v in validation.items() if k!='row_decisions'}}),flush=True)",
+          "'native_gt_poses':len(gt)":"'native_gt_poses':validation['native_rows'],'retained_gt_poses':len(gt)",
+          "shutil.copyfile(__file__,root/'tum_motion.py')":"shutil.copyfile(__file__,root/'tum_motion.py');shutil.copyfile(Path(__file__).parent/'trajectory_validation.py',root/'trajectory_validation.py')"}
+          for before,after in fixes.items():
+              assert s.count(before)==1,before
+              s=s.replace(before,after)
+          p.write_text(s);compile(s,str(p),'exec')
+          PY
+      - name: Acquire native media and validate physically measured transitions
+        run: python -u tools/dataset/cc21/tum_motion.py
+      - name: Build and test standalone renderer-free verifier reader
+        run: |
+          python - <<'PY'
+          import ast,json,hashlib,sys
+          from pathlib import Path
+          root=Path('cc21-real-motion');text=(root/'tum_motion.py').read_text();tree=ast.parse(text);node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='batches')
+          reader='from pathlib import Path\nimport json\nimport numpy as np\nfrom PIL import Image\n\n'+ast.get_source_segment(text,node)+'\n'
+          (root/'motion_reader.py').write_text(reader);sys.path.insert(0,str(root.resolve()));import motion_reader
+          q=json.loads((root/'QA.json').read_text());results={}
+          for split in ['train','validation','test']:
+              h=hashlib.sha256();count=0
+              for X,Y,M in motion_reader.batches(root,split):
+                  count+=len(X['delta_time_s'])
+                  for d in [X,Y,M]:
+                      for k,v in sorted(d.items()):h.update(k.encode());h.update(str(v.shape).encode());h.update(v.tobytes())
+              assert h.hexdigest()==q['split_streams'][split]['tensor_sha256']
+              results[split]={'actual_rows':count,'identical_original_and_standalone_tensor_stream':True}
+          (root/'STANDALONE_READER_QA.json').write_text(json.dumps(results,indent=2))
+          sys.path.insert(0,'tools/dataset/cc17');from release_pack import package
+          package(root,'cc21-real-motion')
+          proof=Path('cc21-real-proof');proof.mkdir()
+          import shutil
+          for name in ['QA.json','STANDALONE_READER_QA.json','SOURCE_RECEIPTS.json','README_RU.md','ATTRIBUTION.md','motion_reader.py']:
+              shutil.copyfile(root/name,proof/name)
+          validations=[]
+          for p in root.glob('native/*/GT_VALIDATION.json'):
+              v=json.loads(p.read_text());v['sequence']=p.parent.name;validations.append(v)
+          (proof/'NATIVE_GT_VALIDATIONS.json').write_text(json.dumps(validations,indent=2))
+          print('CC21_STANDALONE_REAL_READER_PASS '+json.dumps(results))
+          PY
+      - uses: ./.github/actions/cc17-upload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc21-real-motion-proof
+          path: cc21-real-proof/
+          retention-days: 30
