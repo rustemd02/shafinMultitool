@@ -1,0 +1,83 @@
+name: CameraCoach CC20 completed evidence
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-final-evidence.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc20
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0' requests
+      - name: Collect successful actual acquisition and batch receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json,urllib.request,urllib.parse,os,time,hashlib,shutil,collections,ast
+          base='https://api.github.com/repos/rustemd02/shafinMultitool';out=Path('CC20_HANDOFF');out.mkdir()
+          class Redirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,req,fp,code,msg,headers,newurl):
+                  r=super().redirect_request(req,fp,code,msg,headers,newurl)
+                  if r and urllib.parse.urlparse(newurl).hostname!='api.github.com':r.remove_header('Authorization')
+                  return r
+          opener=urllib.request.build_opener(Redirect())
+          def get(path):
+              with opener.open(urllib.request.Request(base+path,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']}),timeout=90) as r:return r.read()
+          def dump(name,obj):(out/name).write_text(json.dumps(obj,ensure_ascii=False,indent=2)+'\n')
+          native=40102954600;temporal=40103252693
+          x=json.loads(get('/actions/workflows/cc20-captureguide-complete.yml/runs?branch=data%2Fcameracoach-v17-acquisition-20261022&per_page=1'));adapt=x['workflow_runs'][0]['id']
+          reports={};releases=[]
+          for label,run in [('native',native),('temporal',temporal),('captureguide_adapter',adapt)]:
+              for _ in range(60):
+                  status=json.loads(get(f'/actions/runs/{run}'))
+                  if status['status']=='completed':break
+                  time.sleep(5)
+              assert status['conclusion']=='success',{'failed_run':run,'status':status['status'],'conclusion':status['conclusion']}
+              jobs=json.loads(get(f'/actions/runs/{run}/jobs?per_page=100'))['jobs'];summaries=[]
+              for job in jobs:
+                  if job['name']=='semantic-preflight':continue
+                  log=get(f'/actions/jobs/{job["id"]}/logs').decode('utf-8-sig')
+                  for line in log.splitlines():
+                      for marker in ['CC20_NATIVE_COMPLETE ','CC20_TEMPORAL_QA ','CC20_CAPTUREGUIDE_ADAPTER_QA ']:
+                          if ' '+marker in line:summaries.append({'run':run,'job':job['id'],'result':json.loads(line.split(' '+marker,1)[1])})
+                      if ' CC17_ARTIFACT_INDEX ' in line:releases.append({'source_run':run,**json.loads(line.split(' CC17_ARTIFACT_INDEX ',1)[1])})
+              reports[label]=summaries
+          assert len(reports['temporal'])==4 and len(reports['native'])==1 and len(reports['captureguide_adapter'])==1
+          totals=collections.Counter()
+          for item in reports['temporal']:
+              q=item['result'];totals.update(q['stats']);totals['unique_mid_occlusion_cases']+=q['unique_subject_action_mid_occlusion_cases'];totals['actual_batches']+=q['actual_numpy_batches']
+          q=reports['captureguide_adapter'][0]['result'];assert q['records_source']==q['records_ready']+q['quarantined_records'] and q['train_records']==0
+          dump('ACTUAL_QA.json',reports);dump('RELEASE_CATALOG.json',releases)
+          status={'new_temporal_scenes':totals['scenes'],'new_temporal_policy_rows':totals['policy_rows'],'new_rendered_rgb_files':totals['rgb_files'],'new_physical_action_sequences':totals['action_sequences'],'temporal_measurement_states':totals['measurement_states'],'different_action_after_subject_switch':totals['different_action_after_subject_switch'],'unique_subject_action_mid_occlusion_cases':totals['unique_mid_occlusion_cases'],'temporal_actual_batches':totals['actual_batches'],'native_photographs':reports['native'][0]['result']['images_decoded'],'captureguide':q,'models_executed':0,'new_independent_human_responses':0,'full_original_DoD_pass':False,'actual_Drive_plaintext_restore':False,'cross_shard_pixel_joint_replay':False,'scope':'new physical temporal component plus research-only published framing benchmark; not full CameraCoach readiness'}
+          dump('CURRENT_STATUS.json',status)
+          shutil.copyfile('tools/dataset/cc17/restore_dataset.py',out/'restore_dataset.py');shutil.copyfile('tools/dataset/cc20/temporal_reader.py',out/'temporal_reader.py')
+          # Standalone data-only CaptureGuide reader; no acquisition/model imports.
+          source=Path('tools/dataset/cc20/captureguide_adapter.py').read_text();tree=ast.parse(source);node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='batches');reader=ast.get_source_segment(source,node)
+          reader=reader.replace("boxes[i,:n]=target['acceptable_crops_xyxy']","boxes[i,:n]=np.asarray(target['acceptable_crops_xyxy'],np.float32).reshape(-1,4)")
+          (out/'captureguide_reader.py').write_text('from pathlib import Path\nimport json\nimport numpy as np\nfrom PIL import Image,ImageOps\n\n'+reader+'\n')
+          (out/'requirements.txt').write_text('numpy==1.26.4\nPillow==11.3.0\n')
+          (out/'START_HERE_RU.md').write_text('# CameraCoach v20: новые данные\n\nACTUAL_QA.json содержит результаты завершённых запусков, RELEASE_CATALOG.json — точные архивы и контрольные суммы. Старые v19 данные не пересоздавались и не приплюсованы к новым как независимые примеры.\n\n## Восстановление\n\nВ приватном облачном окружении, не на публичном сервисе: `python restore_dataset.py --parts-dir /private/v20 --key /private/PRIVATE_transport_key_DO_NOT_PUBLISH.pem --out /private/restored --all`. Используется ранее сохранённый приватный транспортный ключ v19; ключ не содержится в этом комплекте и не должен публиковаться.\n\n## Чтение\n\n`temporal_reader.batches(Path("/private/restored/cc20-temporal-00"), split="train")` возвращает X/Y/loss masks. Повторить для 00–03 без перемешивания split. Все задания одной сцены и обоих выбранных субъектов имеют одну выборку.\n\n`captureguide_reader.batches(Path("/private/restored/cc20-captureguide-evaluation"), split="evaluation")` читает исследовательский опубликованный benchmark. Train намеренно запрещён. Его keep/crop/reject — цифровое кадрирование; не физическое действие и не доказанная полезность CameraCoach.\n\n## Границы\n\nВременная синтетика: процедурные mesh-объекты и геометрическая видимость по 192 поверхностным пробам на пяти моментах; не фотореализм, не человеческая/художественная оценка, не гарантия непрерывной видимости между пробами. Вход содержит только прошлые RGB и tap/цель/доступность кандидатов. Послекадры и геометрия только в supervision.\n\nАрхивы проверены при создании; все batch каждого компонента реально прочитаны. Совместный replay всех частей и повторная расшифровка после скачивания с Google Drive здесь не объявлены выполненными. Приёмка всего исходного CameraCoach DoD остаётся BLOCKED: независимая человеческая полезность, real-iPhone перенос, hardware preprocessing и ограниченный разрешённый ML-эксперимент не заменяются этим выпуском.\n')
+          for p in out.glob('*.py'):compile(p.read_text(),str(p),'exec')
+          dump('HANDOFF_MANIFEST.json',{'files':[{'name':str(p.relative_to(out)),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in out.rglob('*') if p.is_file()],'contains_private_key':False,'contains_media':False})
+          print('CC20_COMPLETED_SUMMARY '+json.dumps(status),flush=True)
+          for r in releases:print('CC20_DELIVERY '+json.dumps({'label':r['label'],'index_artifact_id':r['index_artifact_id'],'parts':[{'id':a['id'],'name':a['name'],'bytes':a['size']} for a in r['artifacts']]}),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc20-completed-evidence
+          path: CC20_HANDOFF/
+          retention-days: 30
