@@ -1,5 +1,7 @@
 """Portable native Objectron consumer: no requests, protobuf, models or renderer.
-Install NumPy, Pillow, PyAV. Functions do not write files or access the network.
+Install NumPy, Pillow, PyAV. No writes or network. The native MOV display rotation
+must be source-verified and present in every record; legacy raw-orientation data
+is rejected rather than silently producing misaligned supervision.
 """
 from __future__ import annotations
 import hashlib,json
@@ -20,6 +22,14 @@ def safe(root,path):
 
 def image_tensor(im):return np.asarray(ImageOps.exif_transpose(im).convert('RGB').resize((224,224),Image.Resampling.BILINEAR),np.float32).transpose(2,0,1)/255.
 
+def oriented_image(frame,record):
+    k=record.get('rgb_rotation_quarters_ccw')
+    if type(k) is not int or k not in range(4) or record.get('orientation_verified_against_source_decoder') is not True:
+        raise ValueError('Missing verified native display rotation; use oriented release, not legacy raw-orientation records')
+    im=frame.to_image()
+    if k:im=im.transpose({1:Image.Transpose.ROTATE_90,2:Image.Transpose.ROTATE_180,3:Image.Transpose.ROTATE_270}[k])
+    return im
+
 def records(root,split=None):
     with safe(root,'video_records.jsonl').open() as f:
         for line in f:
@@ -28,6 +38,7 @@ def records(root,split=None):
             if split is None or split==r['split']:yield r
 
 def video_batches(root,record,task='perception'):
+    if record.get('orientation_verified_against_source_decoder') is not True:raise ValueError('Unverified native frame orientation')
     path=safe(root,record['video']);labels=safe(root,record['labels'])
     if digest(path)!=record['video_sha256'] or digest(labels)!=record['labels_sha256']:raise ValueError('Native component hash mismatch')
     with np.load(labels,allow_pickle=False) as z:arrays={k:z[k] for k in z.files}
@@ -37,7 +48,7 @@ def video_batches(root,record,task='perception'):
     with av.open(str(path)) as v:
         for i,frame in enumerate(v.decode(video=0)):
             if i>=n:raise ValueError('Extra native video frame')
-            with frame.to_image() as im:rgb=image_tensor(im)[None]
+            with oriented_image(frame,record) as im:rgb=image_tensor(im)[None]
             if task=='perception':
                 X={'rgb':rgb};Y={'xy_normalized':arrays['xy'][i:i+1],'xyz_camera_m':arrays['xyz'][i:i+1]}
                 M={'xy_normalized':arrays['keypoint_mask'][i:i+1],'xyz_camera_m':arrays['keypoint_mask'][i:i+1],'human_utility':np.zeros(1,bool)}
