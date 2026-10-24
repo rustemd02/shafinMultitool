@@ -1,0 +1,30 @@
+name: CameraCoach CC20 portable real-data consumer QA
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-real-consumer-qa.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc20
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --quiet --only-binary=:all: 'numpy==1.26.4' 'Pillow==11.3.0' 'requests==2.32.5'
+      - name: Execute actual native image parity and negative tests
+        run: python -u tools/dataset/cc20/verify_real_consumers.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc20-portable-reader-qa
+          path: cc20-reader-qa/
+          retention-days: 30
