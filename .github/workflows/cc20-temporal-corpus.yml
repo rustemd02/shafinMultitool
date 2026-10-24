@@ -1,0 +1,68 @@
+name: CameraCoach CC20 temporal mesh corpus
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-temporal-corpus.yml']
+permissions:
+  contents: read
+jobs:
+  semantic-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc20
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'bpy==4.5.0' 'numpy==1.26.4' 'Pillow==11.3.0' requests
+      - name: Pin neutral Standard display look and check syntax
+        run: |
+          sed -i "s/s.view_settings.look='Medium High Contrast'/s.view_settings.look='None'/" tools/dataset/cc20/temporal_factory.py
+          python -m py_compile tools/dataset/cc20/temporal_factory.py tools/dataset/cc20/temporal_reader.py
+      - name: Render and inspect development preflight
+        run: |
+          python -u tools/dataset/cc20/temporal_factory.py --shard 0 --shards 1 --count 4 > temporal.log 2>&1 || { tail -n 24 temporal.log; exit 1; }
+          grep '^CC20_TEMPORAL_QA' temporal.log
+          python - <<'PY'
+          import json
+          q=json.load(open('cc20-temporal-00/QA.json'))
+          assert q['stats']['recommend']>0 and q['stats']['keep']>0
+          assert q['stats']['ask']>0
+          assert q['future_input_frames']==0
+          print('CC20_TEMPORAL_PREFLIGHT_PASS')
+          PY
+  corpus:
+    needs: semantic-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      max-parallel: 4
+      fail-fast: false
+      matrix:
+        shard: [0,1,2,3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc20
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --quiet 'bpy==4.5.0' 'numpy==1.26.4' 'Pillow==11.3.0' requests
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+          sed -i "s/s.view_settings.look='Medium High Contrast'/s.view_settings.look='None'/" tools/dataset/cc20/temporal_factory.py
+      - name: Generate all native physical transitions and actual batches
+        run: |
+          python -u tools/dataset/cc20/temporal_factory.py --shard '${{ matrix.shard }}' --shards 4 --count 128 > temporal.log 2>&1 || { tail -n 24 temporal.log; exit 1; }
+          grep '^CC20_TEMPORAL_QA\|^CC17_RELEASE' temporal.log
+      - uses: ./.github/actions/cc17-upload
