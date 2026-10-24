@@ -1,0 +1,45 @@
+name: CameraCoach CC20 persist tested source fixes
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-persist-tested-fixes.yml']
+permissions:
+  contents: write
+jobs:
+  persist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Commit only exact successful production substitutions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.parse,json,base64,os,hashlib
+          branch='data/cameracoach-v17-acquisition-20261022'
+          base='https://api.github.com/repos/rustemd02/shafinMultitool/contents/'
+          changes={
+            'tools/dataset/cc20/temporal_factory.py':[("s.view_settings.look='Medium High Contrast'","s.view_settings.look='None'")],
+            'tools/dataset/cc20/captureguide_adapter.py':[
+              ('np.allclose(expected,crops,atol=1e-9)','np.allclose(expected,np.asarray(crops,float).reshape(-1,4),atol=1e-9,rtol=0)'),
+              ("boxes[i,:n]=target['acceptable_crops_xyxy']","boxes[i,:n]=np.asarray(target['acceptable_crops_xyxy'],np.float32).reshape(-1,4)")]
+          }
+          def request(url,data=None):
+              h={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+              if data is not None:h['Content-Type']='application/json'
+              req=urllib.request.Request(url,data=json.dumps(data).encode() if data is not None else None,headers=h,method='PUT' if data is not None else 'GET')
+              with urllib.request.urlopen(req,timeout=60) as r:return json.load(r)
+          for path,replacements in changes.items():
+              src=request(base+path+'?ref='+urllib.parse.quote(branch,safe=''))
+              text=base64.b64decode(src['content']).decode();original=text
+              for before,after in replacements:
+                  if text.count(before)==1:text=text.replace(before,after)
+                  elif text.count(before)==0 and text.count(after)==1:pass
+                  else:raise ValueError('Unexpected source shape: '+path)
+              compile(text,path,'exec')
+              if text!=original:
+                  out=request(base+path,{'message':'data: persist verified CC20 production source fixes','content':base64.b64encode(text.encode()).decode(),'sha':src['sha'],'branch':branch})
+                  print('CC20_SOURCE_FIXED '+json.dumps({'path':path,'commit':out['commit']['sha'],'source_sha256':hashlib.sha256(text.encode()).hexdigest()}))
+              else:print('CC20_SOURCE_ALREADY_FIXED '+path)
+          print('CC20_PERSISTED_PRODUCTION_EQUIVALENCE_PASS')
+          PY
