@@ -36,7 +36,7 @@ def cam_at(base,a,t):
 def setup():
     bpy.ops.wm.read_factory_settings(use_empty=True);s=bpy.context.scene;s.render.engine='CYCLES';s.cycles.samples=8;s.cycles.use_denoising=False;s.cycles.device='CPU'
     s.render.resolution_x=W;s.render.resolution_y=H;s.render.resolution_percentage=100;s.render.image_settings.file_format='PNG';s.render.image_settings.color_mode='RGB'
-    s.view_settings.view_transform='Standard';s.view_settings.look='Medium High Contrast';s.world=bpy.data.worlds.new('World');s.world.use_nodes=True;s.world.node_tree.nodes['Background'].inputs[1].default_value=.2
+    s.view_settings.view_transform='Standard';s.view_settings.look='None';s.world=bpy.data.worlds.new('World');s.world.use_nodes=True;s.world.node_tree.nodes['Background'].inputs[1].default_value=.2
     data=bpy.data.cameras.new('Camera');camera=bpy.data.objects.new('Camera',data);s.collection.objects.link(camera);s.camera=camera;data.sensor_width=36.;data.sensor_fit='HORIZONTAL';data.clip_start=.05
     ld=bpy.data.lights.new('Key','AREA');light=bpy.data.objects.new('Key',ld);s.collection.objects.link(light);light.location=(-3,-4,6);ld.energy=1100;ld.size=5.
     light.rotation_euler=(Vector((0,0,1))-light.location).to_track_quat('-Z','Y').to_euler();return s
