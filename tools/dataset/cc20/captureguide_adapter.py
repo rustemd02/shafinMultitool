@@ -47,7 +47,7 @@ def batches(root,batch_size=8,split='evaluation'):
             assert all(obs[k] is None for k in ['selected_subject','capture_time_intent','protected_style','constraints'])
             with Image.open(root/obs['image']) as im:
                 im=im.convert('RGB');im=ImageOps.pad(im,(224,224),method=Image.Resampling.BILINEAR,color=(0,0,0));images.append(np.asarray(im,np.float32).transpose(2,0,1)/255.)
-            target=r['targets'];dec.append(['keep','crop','reject'].index(target['native_decision']));n=len(target['acceptable_crops_xyxy']);boxes[i,:n]=target['acceptable_crops_xyxy'];mask[i,:n]=True
+            target=r['targets'];dec.append(['keep','crop','reject'].index(target['native_decision']));n=len(target['acceptable_crops_xyxy']);boxes[i,:n]=np.asarray(target['acceptable_crops_xyxy'],np.float32).reshape(-1,4);mask[i,:n]=True
         X={'rgb_letterboxed':np.stack(images)};Y={'native_decision':np.asarray(dec,np.int64),'crops_normalized_to_original_display_image':boxes};M={'decision':np.ones(len(block),bool),'crops':mask,'physical_action':np.zeros(len(block),bool),'human_operator_utility':np.zeros(len(block),bool)}
         yield X,Y,M
 
@@ -83,7 +83,7 @@ def run():
         if id not in official:raise AssertionError('Local parser accepts row absent from author parser')
         oi=official[id];w,h=receipt['display_size'];native_label=env['_gt_decision_type'](oi['is_reject_case'],oi['gt_bboxes'],w,h)
         assert label==native_label
-        expected=np.asarray(oi['gt_bboxes'],float).reshape(-1,4)/[w,h,w,h];assert expected.shape==(len(crops),4) and np.allclose(expected,crops,atol=1e-9);author_agreement+=1
+        expected=np.asarray(oi['gt_bboxes'],float).reshape(-1,4)/[w,h,w,h];assert expected.shape==(len(crops),4) and np.allclose(expected,np.asarray(crops,float).reshape(-1,4),atol=1e-9,rtol=0);author_agreement+=1
         valid=[]
         for c in crops:
             if not (0<=c[0]<c[2]<=1 and 0<=c[1]<c[3]<=1):invalid+=1
