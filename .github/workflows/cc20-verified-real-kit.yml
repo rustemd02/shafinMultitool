@@ -1,0 +1,49 @@
+name: CameraCoach CC20 verified real-supervision delivery
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-verified-real-kit.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  handoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc20
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --quiet --only-binary=:all: 'numpy==1.26.4' 'Pillow==11.3.0' 'requests==2.32.5' 'av==18.1.0'
+      - name: Require successful corrected native-source completion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os,time,json,urllib.request
+          url='https://api.github.com/repos/rustemd02/shafinMultitool/actions/runs/40085597803'
+          for _ in range(120):
+              req=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})
+              with urllib.request.urlopen(req,timeout=30) as f:r=json.load(f)
+              if r['status']=='completed':
+                  if r['conclusion']!='success':raise RuntimeError('Corrected source run did not pass')
+                  break
+              time.sleep(5)
+          else:raise RuntimeError('Source run not yet completed within bound')
+          PY
+      - name: Pin exact releases and executed task-specific proofs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -u tools/dataset/cc20/build_verified_real_kit.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc20-verified-real-kit
+          path: cc20-verified-real-kit/
+          retention-days: 30
