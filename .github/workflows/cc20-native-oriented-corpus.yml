@@ -1,0 +1,30 @@
+name: CameraCoach CC20 source-oriented native camera corpus
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-native-oriented-corpus.yml']
+permissions:
+  contents: read
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc20
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --quiet --only-binary=:all: 'numpy==1.26.4' 'Pillow==11.3.0' 'requests==2.32.5' 'av==18.1.0' 'grpcio-tools==1.68.1'
+          sed -i 's/av==14.4.0/av==18.1.0/g' tools/dataset/cc20/real_common.py
+          if ! command -v ffmpeg >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /tmp/ffmpeg-install.log; fi
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - name: Verify source orientation, capture clocks, projections and all batches
+        run: python -u tools/dataset/cc20/objectron_oriented_entry.py
+      - uses: ./.github/actions/cc17-upload
