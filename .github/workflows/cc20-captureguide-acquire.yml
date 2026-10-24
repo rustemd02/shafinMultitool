@@ -1,0 +1,83 @@
+name: CameraCoach CC20 captureguide originals
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-captureguide-acquire.yml']
+permissions:
+  contents: read
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0' requests
+      - name: Acquire native benchmark bytes only; no training or inference
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import requests,json,ast,hashlib,concurrent.futures,collections,sys,re,io
+          from PIL import Image
+          sys.path.insert(0,'tools/dataset/cc17')
+          from acquire import write_json,digest
+          from release_pack import package
+          repo='ShutterMuse/CaptureGuide-Bench';rev='bd7d513ce8be56796395dd51b8fef17f58ff192e';base=f'https://huggingface.co/datasets/{repo}/resolve/{rev}/'
+          root=Path('captureguide-native');root.mkdir();tree=[]
+          def get(url):
+              r=requests.get(url,timeout=(20,180),headers={'User-Agent':'CameraCoach dataset research/20'});r.raise_for_status();return r
+          url=f'https://huggingface.co/api/datasets/{repo}/tree/{rev}?recursive=true&limit=1000'
+          while url:
+              r=get(url);tree.extend(r.json());url=r.links.get('next',{}).get('url')
+          write_json(root/'SOURCE_TREE.json',tree)
+          files=[v for v in tree if v['type']=='file' and (v['path'].startswith('photographer-side/') or v['path'] in ['README.md','.gitattributes'])]
+          def load(v):
+              p=root/'native'/v['path'];p.parent.mkdir(parents=True,exist_ok=True);b=get(base+requests.utils.quote(v['path'],safe='/')).content
+              if len(b)!=v['size']:raise ValueError('source-size mismatch '+v['path'])
+              p.write_bytes(b);out={'path':str(p.relative_to(root)),'native_path':v['path'],'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+              if p.suffix.lower() in ['.jpg','.jpeg','.png','.webp']:
+                  with Image.open(io.BytesIO(b)) as im:im.load();out.update(width=im.width,height=im.height,exif_orientation=im.getexif().get(274,1),format=im.format)
+              return out
+          receipts=list(concurrent.futures.ThreadPoolExecutor(max_workers=6).map(load,files));write_json(root/'SOURCE_RECEIPTS.json',receipts)
+          meta=json.loads((root/'native/photographer-side/composition_benchmark/meta_new.json').read_text());shapes=collections.Counter();decisions=collections.Counter();parsed=[];errors=[]
+          def schema(x,depth=0):
+              if depth>4:return type(x).__name__
+              if isinstance(x,dict):return {k:schema(v,depth+1) for k,v in x.items()}
+              if isinstance(x,list):return {'n':len(x),'first':schema(x[0],depth+1) if x else None}
+              return type(x).__name__
+          for id,value in meta.items():
+              obj=None
+              for parser in [json.loads,ast.literal_eval]:
+                  try:obj=parser(value) if isinstance(value,str) else value;break
+                  except (ValueError,SyntaxError,TypeError):pass
+              if not isinstance(obj,dict):errors.append({'id':id,'reason':'native value is not a literal mapping'});continue
+              parsed.append({'id':id,'value':obj});shapes[json.dumps(schema(obj),sort_keys=True)]+=1
+              for k,v in obj.items():
+                  if k.lower() in ['decision','status','action','score','composition_score']:decisions[k+':'+str(v)]+=1
+          with (root/'PARSED_NATIVE.jsonl').open('w') as f:
+              for x in parsed:f.write(json.dumps(x,ensure_ascii=False)+'\n')
+          write_json(root/'PARSE_QUARANTINE.json',errors)
+          gr='https://raw.githubusercontent.com/lijayuTnT/ShutterMuse/18b62fa2f7885f71b7acb72885686ccb027ab355/'
+          evidence=root/'source_code_reference';evidence.mkdir()
+          for path in ['README.md','evaluation/README.md','evaluation/photographer-side/utils.py','evaluation/photographer-side/evaluate_benchmark.py']:
+              b=get(gr+path).content;(evidence/path.replace('/','__')).write_bytes(b)
+              if path.endswith('.py'):
+                  text=b.decode();treepy=ast.parse(text)
+                  for node in ast.walk(treepy):
+                      if isinstance(node,ast.FunctionDef) and any(k in node.name.lower() for k in ['decision','ground','meta','load_benchmark','parse_gt']):
+                          excerpt=ast.get_source_segment(text,node)
+                          if len(excerpt)<11000:print('CC20_SOURCE_FUNCTION '+json.dumps({'file':path,'function':node.name,'code':excerpt}),flush=True)
+          images=[x for x in receipts if 'width' in x]
+          report={'repo':repo,'revision':rev,'native_files':len(receipts),'native_bytes':sum(x['bytes'] for x in receipts),'images_decoded':len(images),'unique_native_sha256':len({x['sha256'] for x in images}),'metadata_records':len(meta),'metadata_parsed':len(parsed),'metadata_unparsed':len(errors),'shape_counts':dict(shapes),'native_decision_counts':dict(decisions),'scope':'research benchmark only; no commercial license clearance','train_rows':0,'model_calls':0,'image_orientation_counts':dict(collections.Counter(str(x['exif_orientation']) for x in images))}
+          write_json(root/'NATIVE_QA.json',report);print('CC20_NATIVE_COMPLETE '+json.dumps(report),flush=True)
+          package(root,'cc20-captureguide-photographer-native')
+          PY
+      - run: npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - uses: ./.github/actions/cc17-upload
