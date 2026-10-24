@@ -1,0 +1,26 @@
+name: CameraCoach CC21 contract tests
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc21-contract-tests.yml', 'tools/dataset/cc21/test_unified.py']
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/dataset/cc21
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0'
+      - run: python tools/dataset/cc21/test_unified.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc21-contract-test-proof
+          path: CC21_UNIT_TESTS.json
+          retention-days: 30
