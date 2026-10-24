@@ -1,0 +1,30 @@
+name: CameraCoach CC21 real measured motion
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc21-real-motion.yml']
+permissions:
+  contents: read
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc21
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install data-only dependencies
+        run: |
+          python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0' requests
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+          python -m py_compile tools/dataset/cc21/tum_motion.py tools/dataset/cc21/unified_dataset.py tools/dataset/cc21/merge_sources.py
+      - name: Read native media, synchronize ground truth and verify actual batches
+        run: python -u tools/dataset/cc21/tum_motion.py
+      - uses: ./.github/actions/cc17-upload
