@@ -1,0 +1,65 @@
+name: CameraCoach CC20 source preflight
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-source-preflight.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'Pillow==11.3.0' requests
+      - name: Inspect native source bytes before acquisition
+        run: |
+          python - <<'PY'
+          import requests,json,hashlib,io,collections,sys
+          from pathlib import Path
+          from PIL import Image
+          sys.path.insert(0,'tools/dataset/cc17')
+          from release_pack import package
+          from acquire import write_json
+          repo='ShutterMuse/CaptureGuide-Bench';s=requests.Session();s.headers['User-Agent']='CameraCoach data research/20'
+          root=Path('preflight');root.mkdir()
+          def req(url):
+              r=s.get(url,timeout=60);r.raise_for_status();return r
+          info=req('https://huggingface.co/api/datasets/'+repo).json();sha=info['sha'];tree=[]
+          url=f'https://huggingface.co/api/datasets/{repo}/tree/{sha}?recursive=true&limit=1000'
+          while url:
+              r=req(url);tree.extend(r.json());url=r.links.get('next',{}).get('url')
+          write_json(root/'SOURCE_INFO.json',info);write_json(root/'SOURCE_TREE.json',tree)
+          fs=[v for v in tree if v['type']=='file'];groups=collections.Counter();byte_groups=collections.Counter()
+          for f in fs:
+              k=f['path'].split('/')[0];groups[k]+=1;byte_groups[k]+=f.get('size',0)
+          docs=[v for v in fs if v['path'].endswith(('.json','.jsonl','.md','.txt')) and v.get('size',0)<20000000]
+          for v in docs:
+              p=root/'native'/v['path'];p.parent.mkdir(parents=True,exist_ok=True);b=req(f'https://huggingface.co/datasets/{repo}/resolve/{sha}/{v["path"]}').content;p.write_bytes(b)
+              if v['path'].endswith('.json'):
+                  x=json.loads(b);items=list(x.items())[:1] if isinstance(x,dict) else x[:1]
+                  def schema(y,depth=0):
+                      if depth>=4:return type(y).__name__
+                      if isinstance(y,dict):return {k:schema(v,depth+1) for k,v in list(y.items())[:25]}
+                      if isinstance(y,list):return {'length':len(y),'item':schema(y[0],depth+1) if y else None}
+                      return type(y).__name__
+                  print('CC20_NATIVE_SHAPE '+json.dumps({'path':v['path'],'records':len(x),'schema':schema(x),'first_keys':list(x)[:3] if isinstance(x,dict) else None}),flush=True)
+          for prefix in ['photographer-side/','subject-side/paper-benchmark/','subject-side/paper-benchmark-gt/']:
+              f=next((v for v in fs if v['path'].startswith(prefix) and v['path'].lower().endswith(('.jpg','.jpeg','.png','.webp'))),None)
+              if f:
+                  b=req(f'https://huggingface.co/datasets/{repo}/resolve/{sha}/{f["path"]}').content;p=root/'sample'/f['path'];p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b)
+                  with Image.open(io.BytesIO(b)) as im:im.load();print('CC20_SAMPLE '+json.dumps({'path':f['path'],'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest(),'size':im.size,'format':im.format}))
+          summary={'repo':repo,'revision':sha,'files':len(fs),'groups':dict(groups),'byte_groups':dict(byte_groups),'gated':info.get('gated'),'card':info.get('cardData'),'native_json_files':[v['path'] for v in docs if v['path'].endswith('.json')],'training_execution':False}
+          write_json(root/'PREFLIGHT.json',summary);print('CC20_PREFLIGHT '+json.dumps(summary),flush=True)
+          package(root,'cc20-captureguide-preflight')
+          PY
+      - run: npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - uses: ./.github/actions/cc17-upload
