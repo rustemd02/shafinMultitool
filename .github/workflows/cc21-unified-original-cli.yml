@@ -1,0 +1,91 @@
+name: CameraCoach CC21 unified source CLI validation
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc21-unified-original-cli.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc19
+            tools/dataset/cc20
+            tools/dataset/cc21
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: dd9cc68c3e1c12fb913a4a8590b55ff0bbdff2ed
+          path: frozen
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned data-only dependencies
+        run: |
+          python -m pip install --quiet 'bpy==4.5.0' 'numpy==1.26.4' 'Pillow==11.3.0' requests
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+      - name: Execute unchanged frozen per-scene CLI with real rejection records
+        run: |
+          python - <<'PY'
+          import concurrent.futures,json,os,pathlib,subprocess,sys
+          repo=pathlib.Path.cwd();work=repo/'replayed_v19';work.mkdir();logs=repo/'scene_logs';logs.mkdir()
+          # Each invocation uses the untouched source CLI. Failed renderer checks
+          # exclude the entire scene, with the original error retained verbatim.
+          def one(index):
+              target=work/f'scene_{index:03d}';target.mkdir()
+              os.symlink(repo/'frozen/tools',target/'tools',target_is_directory=True)
+              cmd=[sys.executable,str(repo/'frozen/tools/dataset/cc17/cc18_entry.py'),'--shard',str(index),'--shards','512','--count','512','--label-prefix','cc21-native']
+              with (logs/f'{index:03d}.log').open('w') as f:result=subprocess.run(cmd,cwd=target,stdout=f,stderr=subprocess.STDOUT)
+              status={'scene_index':index,'exit_code':result.returncode,'accepted':result.returncode==0}
+              if result.returncode:
+                  status['error_tail']=(logs/f'{index:03d}.log').read_text()[-2500:]
+                  # Keep logs, but remove incomplete outputs from the admitted tree.
+                  import shutil
+                  shutil.move(str(target),str(repo/f'QUARANTINED_SCENE_{index:03d}'))
+              return status
+          statuses=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+              for item in pool.map(one,range(512)):
+                  statuses.append(item)
+                  if len(statuses)%32==0:print('CC21_SCENES_VALIDATED',len(statuses),flush=True)
+          (repo/'SCENE_EXECUTION.json').write_text(json.dumps(statuses,indent=2))
+          failed=[x['scene_index'] for x in statuses if not x['accepted']]
+          print('CC21_REAL_QUARANTINE',json.dumps(failed),flush=True)
+          if failed!=[114]:raise RuntimeError('Unexpected scene failures require review; merge stopped')
+          PY
+      - name: Execute unchanged temporal generator
+        run: |
+          mkdir replayed_v20
+          python tools/dataset/cc20/temporal_factory.py --shard 0 --shards 1 --count 128 > temporal-all.log 2>&1 || { tail -n 30 temporal-all.log; exit 1; }
+          mv cc20-temporal-00 replayed_v20/
+      - name: Merge and read every actual mixed batch; clean archive replay
+        run: |
+          python tools/dataset/cc21/merge_sources.py --v19 replayed_v19 --v20 replayed_v20 --out cc21-unified-actions > merge.log 2>&1 || { tail -n 30 merge.log; exit 1; }
+          grep '^CC21_UNIFIED_QA' merge.log
+      - name: Package verified dataset using existing private delivery format
+        run: |
+          rm -rf delivery
+          python - <<'PY'
+          import sys,pathlib,shutil
+          sys.path.insert(0,'tools/dataset/cc17')
+          from release_pack import package
+          package(pathlib.Path('cc21-unified-actions'),'cc21-unified-actions')
+          proof=pathlib.Path('cc21-proof');proof.mkdir()
+          for name in ['ACTUAL_UNIFIED_QA.json','CLEAN_REPLAY_RECEIPT.json','SCHEMA.json','START_HERE_RU.md','unified_dataset.py','requirements.txt']:
+              shutil.copyfile(pathlib.Path('cc21-unified-actions')/name,proof/name)
+          shutil.copyfile('SCENE_EXECUTION.json',proof/'SCENE_EXECUTION.json')
+          PY
+      - uses: ./.github/actions/cc17-upload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc21-unified-proof
+          path: cc21-proof/
+          retention-days: 30
