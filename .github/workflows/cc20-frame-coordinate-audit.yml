@@ -1,0 +1,53 @@
+name: CameraCoach CC20 frame coordinate audit
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-frame-coordinate-audit.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc19
+            tools/dataset/cc20
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: google-research-datasets/Objectron
+          ref: 46daaa0aca5b2e704bbc8deb99b0863bc9bf19a7
+          path: official_objectron
+          sparse-checkout: objectron/schema
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'numpy==1.26.4' 'protobuf==3.20.3' 'requests==2.32.5'
+      - name: Inspect source projections and completed job receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import sys,json,requests,numpy as np
+          sys.path.insert(0,'official_objectron');sys.path.insert(0,'tools/dataset/cc19')
+          from objectron.schema import annotation_data_pb2 as P
+          import recover_transport as G
+          for sid in ['book/batch-37/3','bike/batch-5/21']:
+            r=requests.get('https://storage.googleapis.com/objectron/annotations/'+sid+'.pbdata',timeout=60);r.raise_for_status();s=P.Sequence();s.ParseFromString(r.content)
+            a=s.frame_annotations[0];o=a.annotations[0]
+            print('CC20_PROJECTION '+json.dumps({'sequence':sid,'width':a.camera.image_resolution_width,'height':a.camera.image_resolution_height,'K':list(a.camera.intrinsics),'view':list(a.camera.view_matrix),'projection':list(a.camera.projection_matrix),'transform':list(a.camera.transform),'xyz':[[k.point_3d.x,k.point_3d.y,k.point_3d.z] for k in o.keypoints],'xy':[[k.point_2d.x,k.point_2d.y] for k in o.keypoints]}))
+          for run in [40095632381,40097508566,40097819221]:
+            jobs=json.loads(G.get('/actions/runs/'+str(run)+'/jobs?per_page=100'))['jobs']
+            for j in jobs:
+              print('CC20_JOB '+json.dumps({'run':run,'id':j['id'],'name':j['name'],'status':j['status'],'conclusion':j['conclusion']}))
+              if j['status']!='completed':continue
+              log=G.get('/actions/jobs/'+str(j['id'])+'/logs').decode('utf-8-sig')
+              for line in log.splitlines():
+                if any(k in line for k in [' CC20_QA {',' CC20_HANDHELD_QA {',' CC17_ARTIFACT_INDEX {','AssertionError:','HTTPError:']):print('CC20_RESULT '+json.dumps({'run':run,'job':j['id'],'line':line}))
+          PY
