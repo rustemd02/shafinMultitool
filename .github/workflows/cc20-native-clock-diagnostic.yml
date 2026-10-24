@@ -19,7 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python -m pip install --quiet --only-binary=:all: 'numpy==1.26.4' 'Pillow==11.3.0' 'requests==2.32.5' 'grpcio-tools==1.68.1'
+      - run: |
+          python -m pip install --quiet --only-binary=:all: 'numpy==1.26.4' 'Pillow==11.3.0' 'requests==2.32.5' 'grpcio-tools==1.68.1'
       - run: python -u tools/dataset/cc20/diagnose_objectron.py
       - uses: actions/upload-artifact@v4
         with:
