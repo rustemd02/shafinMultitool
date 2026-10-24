@@ -1,0 +1,33 @@
+name: CameraCoach CC20 calibrated sample
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-calibration-sample.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read native calibration structures and file sizes
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request
+          sha='006beced878d3fb7187ded8e20ee63d9c5020fcb';repo='OpenIllumination/OpenIllumination'
+          def get(u):
+            with urllib.request.urlopen(u,timeout=45) as r:return r.read()
+          def tree(p):return json.loads(get('https://huggingface.co/api/datasets/'+repo+'/tree/'+sha+'/'+p+'?limit=1000'))
+          base='https://huggingface.co/datasets/'+repo+'/resolve/'+sha+'/'
+          print('CC20_V2 '+get(base+'open_illumination_v2.py').decode())
+          for obj in ['lighting_patterns/obj_01_car','OLAT/obj_01_egg']:
+            print('CC20_TOP '+json.dumps(tree(obj)))
+            out=tree(obj+'/output');print('CC20_OUTPUT '+json.dumps(out))
+            for x in out:
+              p=x['path']
+              if x['type']=='file' and p.endswith('.json'):
+                b=get(base+p);v=json.loads(b);print('CC20_JSON '+json.dumps({'path':p,'keys':list(v) if isinstance(v,dict) else None,'sample':str(v)[:10000]}))
+              if x['type']=='directory':print('CC20_DIR '+json.dumps({'path':p,'entries':tree(p)[:5]}))
+            ls=tree(obj+'/Lights');print('CC20_LIGHTS '+json.dumps(ls[:15]));l=ls[0]['path'];print('CC20_LIGHT '+json.dumps(tree(l)))
+            print('CC20_RAW '+json.dumps(tree(l+'/raw_undistorted')[:5]))
+          PY
