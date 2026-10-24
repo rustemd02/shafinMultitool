@@ -1,0 +1,28 @@
+name: CameraCoach CC20 native clock diagnostic
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc20-native-clock-diagnostic.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc20
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet --only-binary=:all: 'numpy==1.26.4' 'Pillow==11.3.0' 'requests==2.32.5' 'grpcio-tools==1.68.1'
+      - run: python -u tools/dataset/cc20/diagnose_objectron.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc20-objectron-clock-diagnostic
+          path: objectron_clock_probe/aggregate_diagnostic.json
+          retention-days: 30
