@@ -1,0 +1,66 @@
+name: CameraCoach CC21 final reader checks
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc21-final-reader-check.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/dataset/cc21
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: cc21-compact-input-fix
+          run-id: 40224651970
+          github-token: ${{ github.token }}
+          path: CC21_READER_KIT
+      - uses: actions/download-artifact@v4
+        with:
+          name: cc21-real-observable-proof
+          run-id: 40111437540
+          github-token: ${{ github.token }}
+          path: CC21_READER_KIT/real_motion_proof
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0'
+      - name: Test actual compact-reader integration with declared fixtures
+        run: python tools/dataset/cc21/test_compact_pipeline.py --index CC21_READER_KIT/V19_CAMERA_CALIBRATION.json
+      - name: Assemble final factual verification report
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,shutil
+          root=Path('CC21_READER_KIT')
+          shutil.copyfile('tools/dataset/cc21/test_compact_pipeline.py',root/'test_compact_pipeline.py')
+          shutil.copyfile('CC21_COMPACT_PIPELINE_TESTS.json',root/'CC21_COMPACT_PIPELINE_TESTS.json')
+          reports=[json.loads((root/name).read_text()) for name in ['CC21_UNIT_TESTS.json','CC21_MERGE_FIX_TESTS.json','CC21_COMPACT_PIPELINE_TESTS.json']]
+          assert all(r['failures']==0 and r['errors']==0 for r in reports)
+          proof=root/'real_motion_proof';qa=json.loads((proof/'QA.json').read_text());observable=json.loads((proof/'OBSERVABILITY_QA.json').read_text())
+          assert qa['motion_records']==1254 and qa['native_selected_pngs']==1266
+          assert {k:v['rows'] for k,v in qa['split_streams'].items()}=={'train':632,'validation':317,'test':305}
+          assert observable['actual_batches']==160 and observable['RGB_only_metric_translation_loss_disabled']
+          final={'schema':'cc21.final_reader_check.v1','unit_and_fixture_tests':sum(r['tests_run'] for r in reports),'failures':0,'errors':0,
+            'compact_v19_missing_scenes_handled':True,'calibration_bases':479,
+            'real_motion_completed_source_run':40111437540,'real_motion_records':1254,'real_motion_source_sessions':4,'real_motion_environment_groups':3,
+            'real_motion_native_rgb_and_depth_pngs':1266,'real_motion_approved_actual_batches':160,
+            'full_4889_record_pixel_merge_executed':False,'full_Drive_cryptographic_readback_executed':False,'model_calls':0,'new_human_utility_labels':0,
+            'full_original_DoD_pass':False,'remaining_execution_blocker':'private computation runtime unavailable; no claim of merged corpus acceptance from fixture tests'}
+          (root/'FINAL_CHECK.json').write_text(json.dumps(final,indent=2)+'\n')
+          (root/'RESULT_RU.md').write_text('# Проверенный результат продолжения\n\nНа Drive доставлены все четыре части CC21_REAL_MOTION, индекс и proof. Исходный завершённый запуск собрал 1254 пары из четырёх RGB-D последовательностей, три группы окружения, 633 RGB и 633 depth PNG. 160 пакетов данных действительно проверены для двух режимов одних и тех же записей: RGB direction и RGB-D metric. Это не 2508 независимых примеров и не человеческая полезность.\n\nИсправлен merger: компактный v19 не содержит scenes.jsonl, поэтому теперь есть воспроизводимый индекс 479 калибровок из закреплённых чистых функций. Проверяются focal, origin, split; никакого повторного рендеринга.\n\nПройдено 45 unit/integration-fixture тестов. Фикстуры не являются собранными данными. Полный проход объединённых 4889 реальных записей файловой поставки и криптографическое обратное чтение всей поставки из Drive здесь не выполнены. Целевые модели и обучение не запускались.\n\nИнструкция запуска исправленного merger находится в START_HERE_RU.md. REAL_MOTION proof содержит фактические отчёты источника, а FINAL_CHECK.json разделяет выполненные проверки и незакрытые требования.\n')
+          manifest=root/'MANIFEST.json';manifest.unlink(missing_ok=True)
+          manifest.write_text(json.dumps({'files':[{'path':str(p.relative_to(root)),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(root.rglob('*')) if p.is_file()]},indent=2)+'\n')
+          print('CC21_FINAL_READER_CHECK '+json.dumps(final),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc21-final-reader-kit
+          path: CC21_READER_KIT/
+          retention-days: 30
