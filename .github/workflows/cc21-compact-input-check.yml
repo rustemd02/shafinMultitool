@@ -1,0 +1,64 @@
+name: CameraCoach CC21 compact input compatibility
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc21-compact-input-check.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc21
+            tools/dataset/cc17
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: dd9cc68c3e1c12fb913a4a8590b55ff0bbdff2ed
+          path: frozen_metadata_source
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install data-only array and image readers
+        run: python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0'
+      - name: Recover deterministic calibration metadata only
+        run: |
+          mkdir -p CC21_COMPACT_INPUT_FIX
+          python tools/dataset/cc21/calibration_index.py --source frozen_metadata_source/tools/dataset/cc17/synthetic_physical.py --out CC21_COMPACT_INPUT_FIX/V19_CAMERA_CALIBRATION.json
+          python tools/dataset/cc21/calibration_index.py --source frozen_metadata_source/tools/dataset/cc17/synthetic_physical.py --out calibration_repeat.json
+          cmp CC21_COMPACT_INPUT_FIX/V19_CAMERA_CALIBRATION.json calibration_repeat.json
+      - name: Test causal input and compact-source compatibility
+        run: |
+          python tools/dataset/cc21/test_unified.py
+          python tools/dataset/cc21/test_delivery_merge.py --index CC21_COMPACT_INPUT_FIX/V19_CAMERA_CALIBRATION.json
+      - name: Package executable fix and evidence
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,shutil
+          out=Path('CC21_COMPACT_INPUT_FIX')
+          for name in ['calibration_index.py','merge_sources.py','unified_dataset.py','observed_motion_reader.py','test_unified.py','test_delivery_merge.py','CameraActionInputsV21.swift']:
+              shutil.copyfile(Path('tools/dataset/cc21')/name,out/name)
+          shutil.copyfile('tools/dataset/cc17/restore_dataset.py',out/'restore_dataset.py')
+          for name in ['CC21_UNIT_TESTS.json','CC21_MERGE_FIX_TESTS.json']:shutil.copyfile(name,out/name)
+          (out/'requirements.txt').write_text('numpy==1.26.4\nPillow==11.3.0\n')
+          report={'fix':'compact v19 omitted scenes.jsonl; use pinned camera-basis metadata, checked against origin/split/focal',
+            'calibration_entries':479,'metadata_generation_repeat_bytes_equal':True,'model_calls':0,'render_calls':0,'new_training_records':0,
+            'full_4889_record_pixel_merge_executed_here':False,'full_original_DoD_pass':False,
+            'tests':[json.load(open(p)) for p in ['CC21_UNIT_TESTS.json','CC21_MERGE_FIX_TESTS.json']]}
+          (out/'FIX_VALIDATION.json').write_text(json.dumps(report,indent=2)+'\n')
+          (out/'START_HERE_RU.md').write_text('# Исправление совместимости фактических поставок\n\nВ компактном CC19_SELECTED_POLICY отсутствует scenes.jsonl. Старый merge_sources.py поэтому не мог прочитать его. Исправленный merger использует V19_CAMERA_CALIBRATION.json: 479 конфигураций из закреплённых чистых функций симулятора. Ни одного повторного рендера или новой метки. При наличии полных scenes.jsonl выполняется дополнительное сравнение.\n\nПосле приватного восстановления ранее сохранённых архивов:\n\n`python merge_sources.py --v19 /private/restored/cc19-policy-selected-verified --v20 /private/restored/v20 --calibration V19_CAMERA_CALIBRATION.json --out /private/unified`\n\nКаталог --v20 должен содержать только четыре восстановленных cc20-temporal-00..03; не включайте туда другие копии и test-fixtures. Код ожидает 3353+1536 существующих записей и останавливается при недостаче, дублях, SHA-несовпадении, нарушении split или искажении исходных targets.\n\nПроверяются реальные изображения всех записей; затем полный архив восстанавливается в новую папку и сопоставляются SHA потоков X/Y/M. ACTUAL_UNIFIED_QA.json создаётся только после успешного фактического прохода.\n\nВажно: в CI этого комплекта выполнены unit/metadata-тесты. Сами приватные корпуса в CI не раскрывались и не расшифровывались; полный проход 4889 записей этим отчётом не заявлен.\n\nДля реальных TUM-данных используйте observed_motion_reader.batches, а не старый диагностический tum_motion.batches. Режим rgb_direction не обучает метрам по RGB без масштаба.\n')
+          (out/'MANIFEST.json').write_text(json.dumps({'files':[{'path':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(out.iterdir()) if p.is_file()]},indent=2)+'\n')
+          print('CC21_COMPACT_FIX_VALIDATION '+json.dumps(report))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc21-compact-input-fix
+          path: CC21_COMPACT_INPUT_FIX/
+          retention-days: 30
