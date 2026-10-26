@@ -1,0 +1,130 @@
+name: CameraCoach CC21 full synthetic unified audit
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc21-full-unify.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 115
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc19
+            tools/dataset/cc20
+            tools/dataset/cc21
+            .github/actions/cc17-upload
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: dd9cc68c3e1c12fb913a4a8590b55ff0bbdff2ed
+          path: frozen
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare input readers and isolated ephemeral recipient
+        run: |
+          python -m pip install --quiet 'numpy==1.26.4' 'Pillow==11.3.0' requests
+          npm install --no-audit --no-fund --silent @actions/artifact@2.3.2
+          python -m py_compile tools/dataset/cc21/unify_secure_cloud.py tools/dataset/cc21/merge_sources.py tools/dataset/cc21/unified_dataset.py
+          python tools/dataset/cc21/test_unified.py
+          umask 077
+          openssl req -x509 -newkey rsa:3072 -nodes -keyout "$RUNNER_TEMP/audit-private.pem" -out audit-public.pem -subj '/CN=CameraCoach transient run' -days 1 >/dev/null 2>&1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-audit-public-recipient
+          path: audit-public.pem
+          retention-days: 1
+      - name: Recover all verified workers and build unified numerical batches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -u tools/dataset/cc21/unify_secure_cloud.py collect --key "$RUNNER_TEMP/audit-private.pem" > collector.log 2>&1 || { tail -n 45 collector.log; exit 1; }
+          grep '^CC21_UNIFIED_ACTUAL' collector.log
+      - uses: ./.github/actions/cc17-upload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc21-verified-unified-proof
+          path: proof/
+          retention-days: 30
+          if-no-files-found: error
+      - name: Delete transient decryption material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/audit-private.pem"
+  frozen-workers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/dataset/cc19
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: dd9cc68c3e1c12fb913a4a8590b55ff0bbdff2ed
+          path: frozen
+          sparse-checkout: tools/dataset/cc17
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'bpy==4.5.0' 'numpy==1.26.4' 'Pillow==11.3.0' requests
+      - name: Replay accepted original source scene identifiers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -u tools/dataset/cc19/secure_joint_audit.py worker --shard '${{ matrix.shard }}' > frozen.log 2>&1 || { tail -n 35 frozen.log; exit 1; }
+          grep '^CC19_REPLAY_COMPLETE' frozen.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc19-replay-shard-${{ matrix.shard }}
+          path: replay/
+          compression-level: 0
+          retention-days: 2
+          if-no-files-found: error
+  temporal-workers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0,1,2,3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc17
+            tools/dataset/cc19
+            tools/dataset/cc20
+            tools/dataset/cc21
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --quiet 'bpy==4.5.0' 'numpy==1.26.4' 'Pillow==11.3.0' requests
+      - name: Reproduce temporal task outcome sequences
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -u tools/dataset/cc21/unify_secure_cloud.py temporal --shard '${{ matrix.shard }}' > temporal.log 2>&1 || { tail -n 35 temporal.log; exit 1; }
+          grep '^CC20_TEMPORAL_QA' temporal.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cc21-unify-temporal-${{ matrix.shard }}
+          path: sealed/
+          compression-level: 0
+          retention-days: 2
+          if-no-files-found: error
