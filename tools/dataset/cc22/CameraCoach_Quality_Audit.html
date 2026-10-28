@@ -204,7 +204,7 @@ function renderList(){
  for(const r of filtered){
   const btn=H("button","case"+(r.record_id===selected?" selected":""));btn.type="button";btn.dataset.id=r.record_id;
   const image=H("div","no-preview","RGB"),url=mediaUrl(r.observations.history[2].path);
-  if(url){const im=H("img");im.src=url;im.alt="";im.loading="lazy";image.replaceWith&&null;btn.append(im)}else btn.append(image);
+  if(url){const im=H("img");im.src=url;im.alt="";im.loading="lazy";btn.append(im)}else btn.append(image);
   const body=H("div");
   body.append(H("div","case-name",sceneOf(r)));
   body.append(H("div","case-sub",sourceOf(r).toUpperCase()+" · "+(SPLIT[r.split]||r.split)+" · "+(r.observations.goal_known?"есть цель":"без цели")));
@@ -238,7 +238,7 @@ function displayMetricTimeline(container,verifier,row){
  const path=document.createElementNS(ns,"polyline");path.setAttribute("points",points.map(p=>p.join(",")).join(" "));path.setAttribute("fill","none");path.setAttribute("stroke","#7fded7");path.setAttribute("stroke-width","3");svg.append(path);
  for(const p of points){const c=document.createElementNS(ns,"circle");c.setAttribute("cx",p[0]);c.setAttribute("cy",p[1]);c.setAttribute("r","4");c.setAttribute("fill","#a6f5e9");svg.append(c)}
  out.append(H("div","muted","Доля видимых поверхностных проб в пяти моментах — не пиксельная доля и не непрерывная гарантия."));
- out.append(svg,H("div","muted","t = 0 → 1 с · "+values.map(v=>Math.round(v*100)+"%").join(" · "));container.append(out);
+ out.append(svg,H("div","muted","t = 0 → 1 с · "+values.map(v=>Math.round(v*100)+"%").join(" · ")));container.append(out);
 }
 function showDetail(row){
  const detail=$("detail");detail.replaceChildren();
