@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>CameraCoach · Dataset Quality Audit</title>
+<style>
+:root{--bg:#0b111b;--panel:#111a28;--panel2:#182438;--line:#29384d;--fg:#eef3fb;--muted:#a9b8cd;--sub:#788ca5;--accent:#7fded7;--blue:#9bbdf5;--good:#8ee2ae;--warn:#ffd194;--bad:#ff98a4;--radius:14px;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-size:14px;line-height:1.55}
+button,input,select,textarea{font:inherit;color:inherit}button,select{cursor:pointer}button{border:1px solid var(--line);background:#1b293d;border-radius:9px;padding:9px 12px}button:hover{background:#283b54;border-color:#48617c}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:var(--accent)}small,.muted{color:var(--muted)}h1,h2,h3,p{margin:0}h1{font-size:22px;line-height:1.25;letter-spacing:-.03em}h2{font-size:19px;letter-spacing:-.02em}h3{font-size:14px}
+header{padding:17px 24px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:18px;justify-content:space-between;flex-wrap:wrap;background:#0e1724}
+.brand{display:flex;align-items:center;gap:13px}.logo{background:linear-gradient(145deg,#9bece1,#5274d5);color:#061722;font-weight:900;width:39px;height:39px;border-radius:12px;display:grid;place-items:center;font-size:17px;letter-spacing:-.06em}
+.eyebrow{text-transform:uppercase;letter-spacing:.14em;font-size:10px;color:var(--accent);font-weight:800}
+.header-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.quiet{background:transparent}
+.wrap{max-width:1580px;margin:0 auto;padding:21px 24px}.intro{display:flex;justify-content:space-between;gap:15px;align-items:end;margin-bottom:18px;flex-wrap:wrap}.intro p{color:var(--muted);max-width:800px;margin-top:6px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin-bottom:16px}.stat{padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:13px}.stat strong{display:block;font-size:25px;line-height:1.2;letter-spacing:-.04em}.stat span{color:var(--muted);font-size:12px}
+.upload{background:var(--panel);border:1px dashed #41617a;border-radius:18px;padding:34px;display:grid;gap:14px;justify-items:center;text-align:center;margin-bottom:22px}.upload h2{font-size:23px}.upload p{color:var(--muted);max-width:740px}.upload .steps{font-size:12px;color:var(--sub)}.upload.active{border-color:var(--accent);background:#142a30}.upload .button-primary,.primary{background:var(--accent);color:#09202a;border:none;font-weight:800}.upload .button-primary:hover,.primary:hover{background:#a3fff2;color:#0b2430}.fileHidden{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.warn{color:var(--warn)}.error{color:var(--bad)}
+.workspace{display:grid;grid-template-columns:minmax(280px,350px) minmax(0,1fr);gap:16px;align-items:start}.sidebar,.detail{border-radius:15px;background:var(--panel);border:1px solid var(--line);min-width:0}.sidebar{position:sticky;top:12px;max-height:calc(100vh - 25px);display:flex;flex-direction:column}.sidebar-top{padding:15px;border-bottom:1px solid var(--line);display:grid;gap:10px}.filter-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}select,input[type=search],textarea,input[type=text]{width:100%;background:#0d1623;border:1px solid var(--line);border-radius:9px;padding:9px;min-width:0}
+label.field{display:grid;gap:3px;font-size:11px;color:var(--muted)}.wide{grid-column:span 2}
+.sidebar-count{color:var(--sub);font-size:12px}.cases{overflow:auto;flex:1;padding:8px}.case{display:grid;grid-template-columns:89px minmax(0,1fr);gap:11px;width:100%;padding:8px;margin:3px 0;text-align:left;background:transparent;border:1px solid transparent;border-radius:11px}.case:hover{background:#18263b}.case.selected{background:#22364c;border-color:#598fa1}.case img{width:89px;height:67px;object-fit:cover;border-radius:7px;background:#25384b}.case .no-preview{width:89px;height:67px;border-radius:7px;background:#25384b;display:grid;place-items:center;color:var(--sub);font-size:11px}.case-name{font-size:12px;overflow-wrap:anywhere;color:var(--fg);font-weight:650;line-height:1.3}.case-sub{color:var(--muted);font-size:11px;margin-top:4px}.case-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.chip{font-size:10px;line-height:1.4;padding:2px 7px;border-radius:20px;border:1px solid var(--line);background:#1b2c40;color:#b9cde2;white-space:nowrap}.chip.good{border-color:#3b7258;color:var(--good)}.chip.bad{border-color:#814652;color:var(--bad)}.chip.warning{border-color:#806346;color:var(--warn)}.chip.blue{border-color:#416187;color:var(--blue)}
+.detail{padding:20px;display:grid;gap:18px;min-height:480px}.detail-header{display:flex;gap:10px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}.detail-header p{color:var(--muted);font-size:12px;margin-top:3px;overflow-wrap:anywhere}.detail-buttons{display:flex;gap:7px;flex-wrap:wrap}
+.section{padding-top:15px;border-top:1px solid var(--line)}.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:11px;flex-wrap:wrap}.section-head small{max-width:600px}
+.filmstrip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.frame{min-width:0}.frame .image{aspect-ratio:4/3;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#0a111b;position:relative;display:grid;place-items:center}.frame img{width:100%;height:100%;object-fit:contain;display:block}.frame .frame-label{font-size:11px;color:var(--muted);margin-top:5px}.tap{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:24px;height:24px;border:2px solid #fff;background:rgba(126,224,217,.12);border-radius:100%;box-shadow:0 0 0 3px rgba(0,0,0,.4);pointer-events:none}.tap:before,.tap:after{content:"";position:absolute;background:#fff;left:50%;top:50%;transform:translate(-50%,-50%)}.tap:before{width:12px;height:2px}.tap:after{height:12px;width:2px}
+.goal-list{display:flex;gap:6px;flex-wrap:wrap}.goal{font-size:12px;border-radius:7px;border:1px solid var(--line);background:#18263a;color:#d3e0ee;padding:5px 8px}
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:13px}.compare .frame .image{min-height:165px}.compare .frame img{max-height:330px}.note{background:#172436;border:1px solid var(--line);padding:11px 13px;border-radius:10px;font-size:12px;color:var(--muted)}
+.action-top{display:flex;gap:9px;align-items:end;flex-wrap:wrap}.action-top .field{flex:1;min-width:240px}.action-facts{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}
+.metric-chart{border:1px solid var(--line);background:#0d1724;padding:8px 10px;border-radius:9px;margin-top:10px}.metric-chart svg{width:100%;height:110px;display:block}.metric-chart .muted{font-size:11px}
+.review-choices{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.review-choices button{padding:9px 6px;font-size:12px}.review-choices button.active[data-rating=correct]{background:#174630;border-color:#54ad7c;color:var(--good)}.review-choices button.active[data-rating=question]{background:#4c371d;border-color:#ce985c;color:var(--warn)}.review-choices button.active[data-rating=wrong]{background:#4e222e;border-color:#c96b80;color:var(--bad)}.review-choices button.active[data-rating=skip]{background:#28384e;border-color:#7890a5}
+.checks{display:flex;gap:11px 16px;flex-wrap:wrap;margin:12px 0}.checks label{color:var(--muted);font-size:12px;display:flex;gap:5px;align-items:center}textarea{min-height:86px;resize:vertical}.footer-note{font-size:11px;color:var(--sub)}
+.progress{width:100%;height:7px;background:#283b50;border-radius:10px;overflow:hidden}.progress>div{height:100%;background:var(--accent);width:0;transition:width .2s}
+.loading{display:flex;align-items:center;gap:12px;padding:16px;background:#142536;border:1px solid var(--line);border-radius:12px;margin-bottom:15px}.hidden{display:none!important}
+@media(max-width:950px){.workspace{grid-template-columns:1fr}.sidebar{position:static;max-height:none}.cases{max-height:285px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:550px){header,.wrap{padding-left:12px;padding-right:12px}.stats{gap:6px}.stat{padding:11px}.stat strong{font-size:22px}.detail{padding:13px}.filmstrip{gap:5px}.compare{grid-template-columns:1fr}.review-choices{grid-template-columns:1fr 1fr}}
+@media print{header,.sidebar,.review-choices,.detail-buttons,.upload{display:none!important}.workspace{display:block}.detail{border:none}.wrap{max-width:100%}}
+</style>
+</head>
+<body>
+<header>
+ <div class="brand"><div class="logo">CC</div><div><div class="eyebrow">Dataset quality · offline</div><h1>CameraCoach <span style="color:var(--muted);font-weight:450">/ Визуальный аудит</span></h1></div></div>
+ <div class="header-tools">
+  <button id="newFolder" class="quiet" title="Открыть другой корпус">Открыть папку</button>
+  <button id="blindBtn" title="Скрыть авторскую разметку для независимой проверки">Слепой режим: выкл.</button>
+  <button id="exportCsv">Экспорт CSV</button>
+  <button id="exportJson" class="primary">Экспорт JSON</button>
+ </div>
+</header>
+<main class="wrap">
+ <div class="intro"><div><h2>Проверка смысла рекомендаций</h2><p>Случайная, но воспроизводимая выборка из разных исходных сцен. Оценивай конкретную подсказку, её физическую осуществимость и соответствие замыслу. Работа полностью локальная: никакой отправки изображений.</p></div><span class="chip blue">v22 · Unified synthetic policy</span></div>
+ <div class="stats">
+  <div class="stat"><strong id="statAll">4 889</strong><span>записей в исходном выпуске (по отчёту)</span></div>
+  <div class="stat"><strong id="statCases">—</strong><span>случаев в аудит-выборке</span></div>
+  <div class="stat"><strong id="statDone">0</strong><span>проверено вручную</span></div>
+  <div class="stat"><strong id="statWrong">0</strong><span>ошибок / сомнений</span></div>
+ </div>
+ <section id="uploadSection" class="upload">
+  <div style="font-size:37px;line-height:1">▧</div>
+  <h2>Подключить восстановленный датасет</h2>
+  <p>Выбери <b>папку с <code>records.jsonl</code></b> после расшифровки комплекта CC21_UNIFIED из Google Drive. Внутри должны быть папка <code>media</code> и файл <code>verifier_sequences.jsonl</code>. Изображения читаются прямо из выбранной папки, браузер не загружает их в интернет.</p>
+  <button class="button-primary" id="openFolderBig">Выбрать папку с данными</button>
+  <button id="openFilesBig" class="quiet">Или выбрать несколько файлов вручную</button>
+  <div class="steps">Не выбирай ZIP с зашифрованными частями: сначала восстанови архив штатным <code>restore_dataset.py</code>. HTML не запрашивает приватный ключ.</div>
+  <div id="uploadMessage" class="warn" role="status"></div>
+ </section>
+ <div id="loadStatus" class="loading hidden" role="status"><span>◌</span><span id="loadMessage">Читаю записи...</span></div>
+ <div class="workspace hidden" id="workspace">
+  <aside class="sidebar">
+   <div class="sidebar-top">
+    <div style="display:flex;justify-content:space-between;align-items:center"><b>Случаи</b><span class="sidebar-count" id="listCount"></span></div>
+    <div class="filter-grid">
+     <label class="field">Источник<select id="filterSource"><option value="">Все</option><option value="v19">v19 · статические</option><option value="v20">v20 · временные</option></select></label>
+     <label class="field">Выборка<select id="filterSplit"><option value="">Все</option><option value="train">Train</option><option value="validation">Validation</option><option value="test">Test</option></select></label>
+     <label class="field">Решение<select id="filterDecision"><option value="">Все</option><option value="recommend">Рекомендовать</option><option value="keep">Оставить</option><option value="ask">Уточнить</option><option value="abstain">Воздержаться</option></select></label>
+     <label class="field">Оценка<select id="filterRating"><option value="">Все</option><option value="none">Не проверено</option><option value="correct">Верно</option><option value="question">Сомнительно</option><option value="wrong">Ошибка</option><option value="skip">Пропуск</option></select></label>
+     <label class="field">Объём выборки<select id="sampleSize"><option value="120">120</option><option value="180" selected>180</option><option value="200">200</option><option value="250">250</option></select></label>
+     <label class="field">Набор<select id="filterGroup"><option value="">Все цели</option><option value="known">Цель известна</option><option value="unknown">Нет цели</option></select></label>
+     <label class="field wide">Поиск<input type="search" id="filterSearch" placeholder="Сцена, ID, метрика..."></label>
+    </div>
+    <div class="progress" aria-label="Доля проверенных случаев"><div id="progressBar"></div></div>
+    <small id="progressText">—</small>
+   </div>
+   <div class="cases" id="caseList"></div>
+  </aside>
+  <article class="detail" id="detail" aria-live="polite">
+   <div class="muted">Выбери случай слева</div>
+  </article>
+ </div>
+ <p class="footer-note" style="margin-top:17px">Источник: зафиксированный CameraCoach v22. Синтетический результат ≠ человеческая оценка полезности. В v19 в компактной поставке отсутствуют after-кадры; интерфейс не подменяет их выдуманными изображениями. Текст заметок хранится только в браузере и включается в экспорт по твоему действию.</p>
+</main>
+<input id="folderInput" class="fileHidden" type="file" webkitdirectory directory multiple>
+<input id="filesInput" class="fileHidden" type="file" multiple accept=".jsonl,.json,.png,.jpg,.jpeg,.webp">
+<script>
+"use strict";
+(function(){
+const $=id=>document.getElementById(id);
+const DECISION={recommend:"Рекомендовать",keep:"Оставить кадр",ask:"Уточнить цель",abstain:"Воздержаться"};
+const SPLIT={train:"Обучение",validation:"Валидация",test:"Тест"};
+const METRIC={amodal_raster_height_fraction:"Крупность по маске",amodal_mesh_height_fraction:"Крупность mesh",visible_pixel_fraction:"Видимость пикселей",visible_surface_sample_fraction:"Видимость поверхности",median_display_luminance:"Яркость объекта",center_shift_l2:"Сдвиг центра",projected_frame_margin:"Запас у края",front_depth_m:"Передняя глубина, м",amodal_pixel_count:"Площадь объекта, пикс."};
+const RATINGS={correct:"Верно",question:"Сомнительно",wrong:"Ошибка",skip:"Пропуск"};
+const REASONS=["не та цель","неверный субъект","невозможное движение","вредная композиция","ошибка геометрии","артефакт синтетики","пропущен вариант keep","нужна человеческая оценка"];
+let fileMap=new Map(),imageCache=new Map(),records=[],verifiers=new Map(),sample=[],filtered=[],selected=null,chosenAction=null;
+let blind=false,loading=false,currentFingerprint="cc21-unified-actions-v22";
+const localPrefix="cameracoach-quality-audit-v1:";
+const H=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=String(text);return e};
+const fmt=n=>Number.isFinite(+n)?(+n).toLocaleString("ru-RU",{maximumFractionDigits:2}):"—";
+const h32=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0};
+const esc=s=>String(s===undefined||s===null?"":s);
+const safeId=s=>String(s).replace(/[^a-zA-Z0-9_-]/g,"_");
+function badge(text,cls){const c=H("span","chip "+(cls||""),text);return c}
+function statusText(v){return RATINGS[v]||"Не проверено"}
+function reviewKey(id){return localPrefix+currentFingerprint+":"+id}
+function getReview(row){try{return JSON.parse(localStorage.getItem(reviewKey(row.record_id)))||{}}catch(e){return {}}}
+function saveReview(row,val){try{localStorage.setItem(reviewKey(row.record_id),JSON.stringify(val))}catch(e){alert("Не удалось сохранить отметку в браузере. Используй экспорт JSON.")}}
+function sourceOf(row){return row.provenance&&row.provenance.native_source||"?"}
+function sceneOf(row){if(sourceOf(row)==="v20"){const s=row.provenance.native_record_id||row.record_id.replace(/^v20:/,"");return s.split(":")[0]}return row.origin_group}
+function tapPos(row){return row.observations.tap_xy}
+function describeGoal(row){
+ if(!row.observations.goal_known)return "Цель не задана — модель должна запросить уточнение";
+ return row.observations.goal.map(g=>{const lo=g.minimum===null?"":("≥"+fmt(g.minimum));const hi=g.maximum===null?"":("≤"+fmt(g.maximum));return (METRIC[g.metric]||g.metric)+" "+[lo,hi].filter(Boolean).join(" · ")+(g.scope==="all_five_samples"?" · весь интервал":"")}).join(" / ")||"Явная цель";
+}
+function actionLabel(a){
+ const p=a.parameters||[];
+ const arr=[];
+ if(Math.abs(p[0])>1e-5)arr.push((p[0]>0?"вправо ":"влево ")+fmt(Math.abs(p[0]))+" м");
+ if(Math.abs(p[1])>1e-5)arr.push((p[1]>0?"вперёд ":"назад ")+fmt(Math.abs(p[1]))+" м");
+ if(Math.abs(p[2])>1e-5)arr.push((p[2]>0?"вверх ":"вниз ")+fmt(Math.abs(p[2]))+" м");
+ if(Math.abs(p[3])+Math.abs(p[4])+Math.abs(p[5])>1e-5)arr.push("поворот "+fmt(Math.hypot(p[3],p[4],p[5])*180/Math.PI)+"°");
+ if(Math.abs(p[6]-1)>1e-5)arr.push("фокус ×"+fmt(p[6]));
+ if(Math.abs(p[7])>1e-5)arr.push("EV "+fmt(p[7]));
+ if(Math.abs(p[8])>1e-5)arr.push("свет "+fmt(p[8])+" Вт");
+ if(Math.abs(p[9])+Math.abs(p[10])+Math.abs(p[11])>1e-5)arr.push("сдвиг источника света");
+ return arr.length?arr.join(", "):"ничего не менять";
+}
+function relativePath(f){return String(f.webkitRelativePath||f.name).replace(/\\/g,"/").replace(/^\/+/,"")}
+function getFile(rel){return fileMap.get(String(rel).replace(/^\/+/,""))||null}
+function mediaUrl(rel){
+ if(!rel)return null;
+ if(imageCache.has(rel))return imageCache.get(rel);
+ const f=getFile(rel);if(!f)return null;
+ const u=URL.createObjectURL(f);imageCache.set(rel,u);return u
+}
+function imageInto(container,rel,alt,tap){
+ container.replaceChildren();
+ const url=mediaUrl(rel);
+ if(!url){container.append(H("span","muted","Кадр отсутствует"));return}
+ const img=H("img");img.src=url;img.alt=alt||"Кадр";img.loading="lazy";container.append(img);
+ if(tap&&tap.length===2&&tap.every(v=>Number.isFinite(v))){const dot=H("span","tap");dot.style.left=(tap[0]*100)+"%";dot.style.top=(tap[1]*100)+"%";dot.title="Выбранный субъект";container.append(dot)}
+}
+function frame(rel,label,tap){
+ const outer=H("div","frame"),imgBox=H("div","image");imageInto(imgBox,rel,label,tap);outer.append(imgBox,H("div","frame-label",label));return outer;
+}
+function sampleSource(src,quota){
+ const groups=new Map();
+ for(const row of records)if(sourceOf(row)===src){
+   if(!groups.has(row.origin_group))groups.set(row.origin_group,[]);
+   groups.get(row.origin_group).push(row);
+ }
+ const entries=[...groups].sort((a,b)=>h32(a[0]+"v22")-h32(b[0]+"v22"));
+ const picked=[];const taken=new Set();
+ const priorities=["recommend","keep","abstain","ask"];const partitions=["test","validation","train"];
+ for(const decision of priorities){
+  for(const split of partitions){
+   const target=Math.max(1,Math.round(quota/16));
+   let count=0;
+   for(const [group,rows] of entries){
+     if(count>=target||picked.length>=quota)break;
+     if(taken.has(group))continue;
+     const rr=rows.filter(r=>r.targets.decision===decision&&r.split===split);
+     if(rr.length){rr.sort((a,b)=>h32(a.record_id)-h32(b.record_id));picked.push(rr[0]);taken.add(group);count++}
+   }
+  }
+ }
+ for(const [group,rows] of entries){
+   if(picked.length>=quota)break;
+   if(taken.has(group))continue;
+   const desired=priorities[h32(group)%priorities.length];
+   rows.sort((a,b)=>(a.targets.decision===desired?-1:0)-(b.targets.decision===desired?-1:0)||h32(a.record_id)-h32(b.record_id));
+   picked.push(rows[0]);taken.add(group);
+ }
+ return picked;
+}
+function makeSample(){
+ const count=+$("sampleSize").value;
+ const availableV20=new Set(records.filter(r=>sourceOf(r)==="v20").map(r=>r.origin_group)).size;
+ const v20=Math.min(availableV20,Math.round(count*.6));
+ const v19=count-v20;
+ sample=[...sampleSource("v20",v20),...sampleSource("v19",v19)].sort((a,b)=>h32(a.record_id+"case")-h32(b.record_id+"case"));
+ $("statAll").textContent=fmt(records.length);$("statCases").textContent=fmt(sample.length);renderList();
+}
+function getFiltered(){
+ const source=$("filterSource").value,split=$("filterSplit").value,decision=$("filterDecision").value,rating=$("filterRating").value,group=$("filterGroup").value,query=$("filterSearch").value.toLowerCase().trim();
+ return sample.filter(r=>(!source||sourceOf(r)===source)&&(!split||r.split===split)&&(!decision||r.targets.decision===decision)&&(!rating||(rating==="none"?!getReview(r).rating:getReview(r).rating===rating))&&(!group||(group==="known"===r.observations.goal_known))&&(!query||(r.record_id+" "+r.origin_group+" "+describeGoal(r)).toLowerCase().includes(query)));
+}
+function refreshStats(){
+ let reviewed=0,wrong=0,correct=0;
+ for(const r of sample){const x=getReview(r).rating;if(x){reviewed++;if(x==="wrong"||x==="question")wrong++;if(x==="correct")correct++}}
+ $("statDone").textContent=fmt(reviewed);$("statWrong").textContent=fmt(wrong);$("progressBar").style.width=(sample.length?100*reviewed/sample.length:0)+"%";
+ $("progressText").textContent=reviewed+" / "+sample.length+" проверено · "+correct+" верно · "+wrong+" ошибки или сомнения";
+}
+function renderList(){
+ filtered=getFiltered();$("listCount").textContent=filtered.length+" / "+sample.length;
+ const box=$("caseList");box.replaceChildren();const frag=document.createDocumentFragment();
+ for(const r of filtered){
+  const btn=H("button","case"+(r.record_id===selected?" selected":""));btn.type="button";btn.dataset.id=r.record_id;
+  const image=H("div","no-preview","RGB"),url=mediaUrl(r.observations.history[2].path);
+  if(url){const im=H("img");im.src=url;im.alt="";im.loading="lazy";image.replaceWith&&null;btn.append(im)}else btn.append(image);
+  const body=H("div");
+  body.append(H("div","case-name",sceneOf(r)));
+  body.append(H("div","case-sub",sourceOf(r).toUpperCase()+" · "+(SPLIT[r.split]||r.split)+" · "+(r.observations.goal_known?"есть цель":"без цели")));
+  const chips=H("div","case-row");
+  if(!blind)chips.append(badge(DECISION[r.targets.decision]||r.targets.decision,"blue"));
+  const review=getReview(r);if(review.rating)chips.append(badge(statusText(review.rating),review.rating==="correct"?"good":review.rating==="wrong"?"bad":"warning"));
+  body.append(chips);btn.append(body);btn.addEventListener("click",()=>selectCase(r.record_id));frag.append(btn)
+ }
+ box.append(frag);refreshStats();
+ if(selected&&!filtered.some(r=>r.record_id===selected)){selected=null;$("detail").replaceChildren(H("div","muted","В текущих фильтрах нет выбранного случая."))}
+}
+function findVerifier(row,idx){
+ if(sourceOf(row)!=="v20"||idx===null||idx===undefined)return null;
+ const entries=verifiers.get(sceneOf(row))||[];
+ const action=row.observations.actions[idx];if(!action)return null;
+ const fromNative=entries[action.native_index];
+ if(!fromNative)return null;
+ const b=fromNative.action||{},p=action.parameters;
+ if(Math.abs((b.dx_m||0)-p[0])>1e-4||Math.abs((b.yaw_deg||0)-p[5]*180/Math.PI)>1e-3||Math.abs((b.focal_factor||1)-p[6])>1e-4)return null;
+ return fromNative;
+}
+function displayMetricTimeline(container,verifier,row){
+ const out=H("div","metric-chart");
+ const native=row.provenance.native_record_id||"";const subject=Number(native.split(":")[1]);
+ const values=(verifier.measurements||[]).map(entry=>{const m=entry[subject]||{};return m.visible_surface_fraction});
+ if(!values.length||values.some(v=>v===null||!Number.isFinite(v))){out.append(H("div","muted","Временные метрики недоступны для выбранного субъекта"));container.append(out);return}
+ const w=520,h=96,pad=20,points=values.map((v,i)=>[(pad+i*(w-2*pad)/(values.length-1)),h-12-v*(h-28)]);
+ const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");svg.setAttribute("viewBox","0 0 520 100");svg.setAttribute("aria-label","Видимость выбранного объекта по времени");
+ const ns="http://www.w3.org/2000/svg";
+ const line=document.createElementNS(ns,"line");line.setAttribute("x1",pad);line.setAttribute("x2",w-pad);line.setAttribute("y1",h-12);line.setAttribute("y2",h-12);line.setAttribute("stroke","#4b617b");svg.append(line);
+ const path=document.createElementNS(ns,"polyline");path.setAttribute("points",points.map(p=>p.join(",")).join(" "));path.setAttribute("fill","none");path.setAttribute("stroke","#7fded7");path.setAttribute("stroke-width","3");svg.append(path);
+ for(const p of points){const c=document.createElementNS(ns,"circle");c.setAttribute("cx",p[0]);c.setAttribute("cy",p[1]);c.setAttribute("r","4");c.setAttribute("fill","#a6f5e9");svg.append(c)}
+ out.append(H("div","muted","Доля видимых поверхностных проб в пяти моментах — не пиксельная доля и не непрерывная гарантия."));
+ out.append(svg,H("div","muted","t = 0 → 1 с · "+values.map(v=>Math.round(v*100)+"%").join(" · "));container.append(out);
+}
+function showDetail(row){
+ const detail=$("detail");detail.replaceChildren();
+ const head=H("div","detail-header"),headTitle=H("div");
+ headTitle.append(H("div","eyebrow",(sourceOf(row)==="v20"?"Временная симуляция":"Статическая симуляция")+" · "+(SPLIT[row.split]||row.split)));
+ headTitle.append(H("h2","",blind?("Случай #"+(sample.indexOf(row)+1)):sceneOf(row)));
+ headTitle.append(H("p","",blind?"ID скрыт до раскрытия ответа":row.record_id));
+ const navigation=H("div","detail-buttons");
+ for(const [name,offset] of [["← Предыдущий",-1],["Следующий →",1]]){const btn=H("button","",name);btn.addEventListener("click",()=>move(offset));navigation.append(btn)}
+ head.append(headTitle,navigation);detail.append(head);
+ const timeline=H("section","section"),tHead=H("div","section-head");tHead.append(H("h3","","История до действия"),H("small","","Три реально сохранённых входных кадра; отметка показывает выбранного субъекта"));
+ timeline.append(tHead);const film=H("div","filmstrip");
+ for(let i=0;i<3;i++){const a=row.observations.history[i];film.append(frame(a.path,["−0,4 с","−0,2 с","момент совета"][i],i===2?tapPos(row):null))}
+ timeline.append(film);detail.append(timeline);
+ const goalSection=H("section","section"),gh=H("div","section-head");gh.append(H("h3","","Поставленная задача"),badge(row.observations.goal_known?"Указана":"Неизвестна",row.observations.goal_known?"good":"warning"));goalSection.append(gh);
+ const goals=H("div","goal-list");if(row.observations.goal_known)for(const g of row.observations.goal){let terms=[];if(g.minimum!==null)terms.push("≥ "+fmt(g.minimum));if(g.maximum!==null)terms.push("≤ "+fmt(g.maximum));goals.append(H("span","goal",(METRIC[g.metric]||g.metric)+": "+terms.join(" и ")+(g.scope==="all_five_samples"?" · на 5 измерениях":"")))}
+ else goals.append(H("div","note","Намерение не задано. Нельзя выдумывать цель по изображению."));
+ goalSection.append(goals);if(row.observations.preserve_dark_tone)goalSection.append(badge("Защитить тёмную тональность","blue"));detail.append(goalSection);
+ const act=H("section","section"),actHead=H("div","section-head");actHead.append(H("h3","","Действие и контрфактический результат"),H("small","","Сравнение разных физических действий в одной исходной сцене"));act.append(actHead);
+ const rowTop=H("div","action-top"),field=H("label","field");field.textContent="Просматриваемое действие";const select=H("select");select.id="candidateSelect";
+ row.observations.actions.forEach((action,j)=>{const s=H("option","",String(j+1).padStart(2,"0")+". "+actionLabel(action)+(action.available?"":" · недоступно"));s.value=j;if(!action.available)s.style.color="#a9b8cd";select.append(s)});
+ if(chosenAction===null||chosenAction>=row.observations.actions.length)chosenAction=row.targets.chosen_index!==null?row.targets.chosen_index:0;
+ select.value=chosenAction;select.addEventListener("change",()=>{chosenAction=+select.value;showDetail(row)});
+ field.append(select);rowTop.append(field);act.append(rowTop);
+ const action=row.observations.actions[chosenAction],t=row.targets;
+ const badges=H("div","action-facts");
+ badges.append(badge(action.available?"Доступно":"Недоступно",action.available?"good":"bad"));
+ if(!blind){badges.append(badge("Решение oracle: "+(DECISION[t.decision]||t.decision),"blue"));badges.append(badge(t.chosen_index===null?"Действие не выбиралось":(t.chosen_index===chosenAction?"Выбранное действие":"Альтернативный кандидат"),t.chosen_index===chosenAction?"good":""))}
+ if(t.success_known[chosenAction])badges.append(badge(t.success[chosenAction]?"Цель достигнута (GT)":"Цель не достигнута (GT)",t.success[chosenAction]?"good":"bad"));
+ else badges.append(badge("Исход неизвестен / маскирован","warning"));
+ act.append(badges);
+ const before=row.observations.history[2].path;
+ const ver=findVerifier(row,chosenAction);
+ const after=ver&&ver.after_media&&ver.after_media.filter(m=>Math.abs(m.t_s-1)<.01)[0];
+ const compare=H("div","compare");compare.append(frame(before,"До · текущий кадр",tapPos(row)));
+ compare.append(frame(after?after.path:null,after?"После · 1,0 с":"После · кадр не включён в эту поставку"));
+ act.append(compare);
+ if(sourceOf(row)==="v19")act.append(H("div","note","Для v19 сохранены измеренные результаты действий, но послекадры не включены в компактный единый корпус. Изображение «после» намеренно не подменяется. Полные рендеры находятся в исходной синтетической поставке."));
+ if(sourceOf(row)==="v20"&&!ver)act.append(H("div","note","Для этого варианта не найдено подтверждённое совпадение action ↔ outcome. Проверь verifier_sequences.jsonl и сохранённые медиа. Не используй выдуманный послекадр."));
+ if(ver){const data=H("div","action-facts");data.append(badge(ver.path_feasible?"Траектория допустима":"Траектория запрещена",ver.path_feasible?"good":"bad"));act.append(data);displayMetricTimeline(act,ver,row)}
+ detail.append(act);
+ const rev=H("section","section");const rh=H("div","section-head");rh.append(H("h3","","Человеческая проверка"),H("small","","Отметки — твой аудит, а не нативная разметка датасета"));rev.append(rh);
+ const choice=H("div","review-choices"),value=getReview(row);
+ for(const [v,label] of [["correct","Верно"],["question","Сомнительно"],["wrong","Ошибка"],["skip","Пропустить"]]){
+  const button=H("button",value.rating===v?"active":"",label);button.dataset.rating=v;button.addEventListener("click",()=>{const x=getReview(row);x.rating=v;x.saved_at=new Date().toISOString();saveReview(row,x);showDetail(row);renderList()});choice.append(button)
+ }
+ rev.append(choice);
+ const checks=H("div","checks");for(const reason of REASONS){
+   const label=H("label"),cb=H("input");cb.type="checkbox";cb.checked=(value.reasons||[]).includes(reason);
+   cb.addEventListener("change",()=>{const x=getReview(row);const s=new Set(x.reasons||[]);cb.checked?s.add(reason):s.delete(reason);x.reasons=[...s];x.saved_at=new Date().toISOString();saveReview(row,x)});label.append(cb,document.createTextNode(reason));checks.append(label)
+ }
+ rev.append(checks);
+ const note=H("textarea");note.placeholder="Что конкретно не так? Какое действие было бы лучше? Можно оставить контрпример.";note.value=value.note||"";
+ note.addEventListener("input",()=>{const x=getReview(row);x.note=note.value;x.saved_at=new Date().toISOString();saveReview(row,x)});rev.append(note);
+ rev.append(H("p","footer-note","Сохраняется в localStorage этого браузера. Нажми «Экспорт JSON», чтобы не потерять оценки при очистке браузера."));
+ detail.append(rev);
+ const more=records.filter(r=>r.origin_group===row.origin_group&&r.record_id!==row.record_id).slice(0,10);
+ if(more.length){
+   const sec=H("section","section"),hh=H("div","section-head");hh.append(H("h3","","Другие цели и субъекты этой сцены"),H("small","","Можно сравнить, изменяется ли правильное действие"));sec.append(hh);
+   const choices=H("div","goal-list");for(const r of more){const b=H("button","",!blind?(DECISION[r.targets.decision]+" · "+(r.provenance.native_record_id||r.record_id).split(":").slice(-2).join(":")):"Альтернативное условие");b.addEventListener("click",()=>selectCase(r.record_id,true));choices.append(b)}sec.append(choices);detail.append(sec);
+ }
+}
+function selectCase(id,adHoc=false){
+ const row=records.find(r=>r.record_id===id);if(!row)return;
+ if(adHoc&&!sample.some(r=>r.record_id===id)){sample.push(row);$("statCases").textContent=sample.length}
+ selected=id;chosenAction=null;showDetail(row);renderList();const button=[...$("caseList").querySelectorAll("button[data-id]")].find(b=>b.dataset.id===id);if(button)button.scrollIntoView({block:"nearest"});
+}
+function move(delta){
+ if(!filtered.length)return;let i=filtered.findIndex(r=>r.record_id===selected);i=(i+delta+filtered.length)%filtered.length;selectCase(filtered[i].record_id);
+}
+function exportFile(name,content,type){
+ const b=new Blob([content],{type:type||"application/octet-stream"}),u=URL.createObjectURL(b);const a=H("a");a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);
+}
+function exportReviews(format){
+ const rows=sample.map((r,i)=>{const x=getReview(r);return {case_index:i+1,record_id:r.record_id,origin_group:r.origin_group,source:sourceOf(r),split:r.split,native_decision:r.targets.decision,native_chosen_index:r.targets.chosen_index,review_rating:x.rating||null,issues:x.reasons||[],note:x.note||"",saved_at:x.saved_at||null}});
+ if(format==="json"){exportFile("CameraCoach_quality_audit_"+new Date().toISOString().slice(0,10)+".json",JSON.stringify({schema:"cc21-audit-review.v1",dataset:currentFingerprint,exported_at:new Date().toISOString(),sample_count:sample.length,reviews:rows},null,2),"application/json");return}
+ const quote=v=>'"'+String(v===null?"":Array.isArray(v)?v.join("; "):v).replace(/"/g,'""')+'"';
+ const keys=Object.keys(rows[0]||{});const csv=[keys.join(",")].concat(rows.map(r=>keys.map(k=>quote(r[k])).join(","))).join("\r\n");
+ exportFile("CameraCoach_quality_audit_"+new Date().toISOString().slice(0,10)+".csv","\uFEFF"+csv,"text/csv;charset=utf-8")
+}
+async function loadFiles(fileList){
+ if(loading)return;loading=true;$("uploadMessage").textContent="";$("loadStatus").classList.remove("hidden");$("loadMessage").textContent="Ищу records.jsonl...";
+ try{
+  const all=Array.from(fileList||[]);if(!all.length)throw Error("Не выбраны файлы");
+  const candidate=all.filter(f=>relativePath(f).endsWith("/records.jsonl")||f.name==="records.jsonl");
+  if(candidate.length!==1)throw Error("Нужно выбрать одну папку с ровно одним records.jsonl. Найдено: "+candidate.length);
+  const path=relativePath(candidate[0]),prefix=path.slice(0,path.length-"records.jsonl".length);
+  const m=new Map();
+  for(const f of all){const p=relativePath(f);if(p.startsWith(prefix))m.set(p.slice(prefix.length),f)}
+  const source=m.get("records.jsonl");if(!source)throw Error("records.jsonl не найден в выбранной папке");
+  $("loadMessage").textContent="Разбираю разметку и историю действий...";
+  const raw=await source.text(),rs=raw.split(/\r?\n/).filter(Boolean).map((s,i)=>{try{return JSON.parse(s)}catch(e){throw Error("Неверный JSON в records.jsonl, строка "+(i+1))}});
+  if(!rs.length)throw Error("Файл records.jsonl пуст");
+  if(!rs[0].observations||!rs[0].targets||!rs[0].provenance)throw Error("Неизвестная схема записей. Ожидался CameraCoach Unified Actions.");
+  $("loadMessage").textContent="Читаю контрфактические результаты...";
+  const vf=m.get("verifier_sequences.jsonl");const vs=vf?(await vf.text()).split(/\r?\n/).filter(Boolean).map(s=>JSON.parse(s)):[];
+  const grouped=new Map();for(const v of vs){const key=v.scene_id;if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(v)}
+  const images=new Set();
+  for(const r of rs)for(const h of r.observations.history)images.add(h.path);
+  fileMap=m;records=rs;verifiers=grouped;
+  for(const u of imageCache.values())URL.revokeObjectURL(u);imageCache.clear();
+  currentFingerprint="cc21-v22-"+rs.length+"-"+h32(rs[0].record_id+"|"+rs[rs.length-1].record_id);
+  $("uploadSection").classList.add("hidden");$("loadStatus").classList.add("hidden");$("workspace").classList.remove("hidden");
+  const missing=[...images].filter(p=>!m.has(p));
+  makeSample();if(sample.length)selectCase(sample[0].record_id);
+  if(missing.length){alert("Данные загружены, но не найдено "+missing.length+" исходных изображений из "+images.size+". Скорее всего, выбрана неполная папка. Некоторые карточки будут без кадров.")}
+ }catch(error){$("uploadMessage").textContent="Не удалось загрузить: "+error.message;console.error(error)}
+ finally{loading=false;$("loadStatus").classList.add("hidden")}
+}
+$("folderInput").addEventListener("change",e=>loadFiles(e.target.files));
+$("filesInput").addEventListener("change",e=>loadFiles(e.target.files));
+$("openFolderBig").addEventListener("click",()=>$("folderInput").click());
+$("newFolder").addEventListener("click",()=>$("folderInput").click());
+$("openFilesBig").addEventListener("click",()=>$("filesInput").click());
+$("blindBtn").addEventListener("click",()=>{blind=!blind;$("blindBtn").textContent="Слепой режим: "+(blind?"вкл.":"выкл.");renderList();if(selected)showDetail(records.find(r=>r.record_id===selected))});
+$("exportCsv").addEventListener("click",()=>exportReviews("csv"));$("exportJson").addEventListener("click",()=>exportReviews("json"));
+for(const id of ["filterSource","filterSplit","filterDecision","filterRating","filterGroup"])$(id).addEventListener("change",renderList);
+$("filterSearch").addEventListener("input",renderList);
+$("sampleSize").addEventListener("change",()=>{makeSample();if(sample.length)selectCase(sample[0].record_id)});
+document.addEventListener("keydown",e=>{if(e.target.closest("input,select,textarea"))return;if(e.key==="ArrowRight"||e.key.toLowerCase()==="j")move(1);else if(e.key==="ArrowLeft"||e.key.toLowerCase()==="k")move(-1);else if(e.key.toLowerCase()==="b")$("blindBtn").click();else if("1234".includes(e.key)&&selected){const r=records.find(x=>x.record_id===selected),v=["correct","question","wrong","skip"][+e.key-1],rev=getReview(r);rev.rating=v;rev.saved_at=new Date().toISOString();saveReview(r,rev);showDetail(r);renderList()}});
+const target=$("uploadSection");for(const ev of ["dragover","dragenter"])target.addEventListener(ev,e=>{e.preventDefault();target.classList.add("active")});target.addEventListener("dragleave",()=>target.classList.remove("active"));target.addEventListener("drop",e=>{e.preventDefault();target.classList.remove("active");$("uploadMessage").textContent="Для папок используй кнопку «Выбрать папку»: обычный drag-and-drop не всегда сохраняет структуру директорий."});
+window.addEventListener("beforeunload",()=>{for(const u of imageCache.values())URL.revokeObjectURL(u)});
+})();
+</script>
+</body>
+</html>
