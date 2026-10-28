@@ -360,6 +360,28 @@ $("filterSearch").addEventListener("input",renderList);
 $("sampleSize").addEventListener("change",()=>{makeSample();if(sample.length)selectCase(sample[0].record_id)});
 document.addEventListener("keydown",e=>{if(e.target.closest("input,select,textarea"))return;if(e.key==="ArrowRight"||e.key.toLowerCase()==="j")move(1);else if(e.key==="ArrowLeft"||e.key.toLowerCase()==="k")move(-1);else if(e.key.toLowerCase()==="b")$("blindBtn").click();else if("1234".includes(e.key)&&selected){const r=records.find(x=>x.record_id===selected),v=["correct","question","wrong","skip"][+e.key-1],rev=getReview(r);rev.rating=v;rev.saved_at=new Date().toISOString();saveReview(r,rev);showDetail(r);renderList()}});
 const target=$("uploadSection");for(const ev of ["dragover","dragenter"])target.addEventListener(ev,e=>{e.preventDefault();target.classList.add("active")});target.addEventListener("dragleave",()=>target.classList.remove("active"));target.addEventListener("drop",e=>{e.preventDefault();target.classList.remove("active");$("uploadMessage").textContent="Для папок используй кнопку «Выбрать папку»: обычный drag-and-drop не всегда сохраняет структуру директорий."});
+
+function bootstrapEmbedded(){
+ const node=document.getElementById("embedded-data");
+ if(!node)return;
+ try{
+  const data=JSON.parse(node.textContent);
+  if(data.schema!=="cc22.embedded-review.v1"||!Array.isArray(data.records)||!Array.isArray(data.sample_ids)||typeof data.images!=="object")throw Error("Неподдерживаемый пакет встроенных данных");
+  records=data.records;fileMap=new Map();verifiers=new Map();imageCache=new Map(Object.entries(data.images));
+  for(const v of data.verifier_sequences||[]){if(!verifiers.has(v.scene_id))verifiers.set(v.scene_id,[]);verifiers.get(v.scene_id).push(v)}
+  const indexed=new Map(records.map(r=>[r.record_id,r]));
+  sample=data.sample_ids.map(id=>indexed.get(id)).filter(Boolean);
+  if(sample.length!==data.sample_ids.length)throw Error("Не все audit ID присутствуют в embedded records");
+  currentFingerprint=data.dataset_id||"cc21-v22-embedded-"+sample.length;
+  $("uploadSection").classList.add("hidden");$("workspace").classList.remove("hidden");
+  $("statAll").textContent=data.source_total_records||"4 889";
+  $("statCases").textContent=sample.length;
+  $("sampleSize").disabled=true;
+  renderList();if(sample.length)selectCase(sample[0].record_id);
+  if(data.missing_media&&data.missing_media.length)console.warn("В embedded-пакете отсутствуют некоторые изображения: ",data.missing_media);
+ }catch(e){$("uploadMessage").textContent="Встроенная галерея не открылась: "+e.message;console.error(e)}
+}
+bootstrapEmbedded();
 window.addEventListener("beforeunload",()=>{for(const u of imageCache.values())URL.revokeObjectURL(u)});
 })();
 </script>
