@@ -1,0 +1,65 @@
+name: CameraCoach CC22 offline HTML audit release
+on:
+  push:
+    branches: ['data/cameracoach-v17-acquisition-20261022']
+    paths: ['.github/workflows/cc22-html-audit.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/dataset/cc22
+            tools/dataset/cc17/restore_dataset.py
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify standalone Javascript syntax and no offsite scripts
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          source=Path('tools/dataset/cc22/CameraCoach_Quality_Audit.html').read_text()
+          scripts=re.findall(r'<script(?:\s+[^>]*)?>(.*?)</script>',source,re.S)
+          assert len(scripts)==1 and 'function bootstrapEmbedded' in scripts[0]
+          assert not re.search(r'<script[^>]*\bsrc\s*=',source,re.I)
+          assert not re.search(r'<link[^>]*rel=["\']stylesheet',source,re.I)
+          assert 'XMLHttpRequest' not in scripts[0] and 'fetch(' not in scripts[0]
+          Path('source.js').write_text(scripts[0])
+          print('CC22_OFFLINE_STATIC_AUDIT_PASS')
+          PY
+          node --check source.js
+          python -m py_compile tools/dataset/cc22/build_embedded_audit.py tools/dataset/cc22/test_audit.py
+      - name: Install QA dependencies
+        run: |
+          python -m pip install --quiet 'Pillow==11.3.0' 'playwright==1.58.0'
+          python -m playwright install --with-deps chromium
+      - name: Verify actual browser import and review interactions using fixture-only data
+        run: python -u tools/dataset/cc22/test_audit.py
+      - name: Build portable HTML-only source distribution
+        run: |
+          mkdir -p release
+          cp tools/dataset/cc22/CameraCoach_Quality_Audit.html release/
+          cp tools/dataset/cc22/build_embedded_audit.py release/
+          cp tools/dataset/cc22/README_RU.md release/
+          cp tools/dataset/cc17/restore_dataset.py release/
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          root=Path('release')
+          manifest={'schema':'cc22.html_source_distribution.v1','contains_user_media':False,'contains_private_key':False,'rendered_real_gallery_in_this_distribution':False,'external_network_dependencies':False,'requires_restored_images_or_private_embedded_builder':True,'files':[]}
+          for p in sorted(root.iterdir()):
+              if p.is_file():manifest['files'].append({'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          (root/'BUNDLE_MANIFEST.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
+          print('CC22_HTML_SOURCE_BUNDLE '+json.dumps(manifest,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CameraCoach_Quality_Audit_HTML
+          path: release/
+          retention-days: 30
