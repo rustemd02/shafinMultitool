@@ -1,4 +1,5 @@
 name: CameraCoach CC22 offline HTML audit release
+# verified syntax repair build
 on:
   push:
     branches: ['data/cameracoach-v17-acquisition-20261022']
