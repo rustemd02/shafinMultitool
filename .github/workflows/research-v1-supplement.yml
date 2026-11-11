@@ -1,0 +1,43 @@
+name: research-v1-evidence-supplement
+on:
+  push:
+    branches: [research/experiment-v1-20261111]
+    paths: [.github/workflows/research-v1-supplement.yml]
+permissions:
+  contents: read
+jobs:
+  supplement:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: 93f5daa3c91d791c5a5230f6731a359d74dd2946
+      - name: Export exact dependencies and original tracked benchmark images
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,pathlib,subprocess
+          out=pathlib.Path('supplement');out.mkdir()
+          sha='93f5daa3c91d791c5a5230f6731a359d74dd2946'
+          roots=('tools/camera_annotation/','shafinMultitool/Resources/DeviceBenchmark/camera_device_benchmark_pack_v1/images/','docs/implementation/human-eval/')
+          exact={'shafinMultitool/Multitool2Module/Models/CameraAnalysis/CameraAnalysisDomainContracts.swift'}
+          manifest=[];total=0
+          for line in subprocess.check_output(['git','ls-tree','-rl',sha],text=True).splitlines():
+              meta,path=line.split('\t',1);mode,kind,blob,size=meta.split()
+              pick=path.startswith(roots) or path in exact or (path.startswith('ml/camera_coach/') and path.endswith('.py') and path.count('/')==2)
+              if not pick or kind!='blob' or int(size)>10000000:continue
+              data=subprocess.check_output(['git','show',sha+':'+path]);total+=len(data)
+              if total>150000000:raise RuntimeError('Supplement limit exceeded')
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==blob
+              p=out/'store'/path;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data)
+              manifest.append({'path':path,'bytes':len(data),'git_blob':blob,'sha256':hashlib.sha256(data).hexdigest()})
+          (out/'SUPPLEMENT_MANIFEST.json').write_text(json.dumps({'commit':sha,'files':manifest,'bytes':total},indent=2))
+          print(json.dumps({'files':len(manifest),'bytes':total}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-v1-pinned-supplement
+          path: supplement/
+          retention-days: 30
+          if-no-files-found: error
