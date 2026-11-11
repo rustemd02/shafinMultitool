@@ -1,0 +1,83 @@
+name: research-v1-diagnostic-verification
+on:
+  push:
+    branches: [research/experiment-v1-20261111]
+    paths:
+      - research/cameracoach_experiment_v1/**
+      - .github/workflows/research-v1-verify.yml
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 93f5daa3c91d791c5a5230f6731a359d74dd2946
+          path: _experiment_inputs/store
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ce9344d83e81d0950af1935fcf305eab5cb61306
+          path: _experiment_inputs/data
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install pinned research dependencies
+        run: python -m pip install -r research/cameracoach_experiment_v1/requirements.txt
+      - name: Run new and legacy evaluator tests
+        run: |
+          set -euo pipefail
+          mkdir -p research-v1-outputs/logs
+          python -m pytest research/cameracoach_experiment_v1/tests -q --disable-warnings --tb=short | tee research-v1-outputs/logs/new-tests.txt
+          python -m pytest _experiment_inputs/store/docs/cameraanalysis/eval/tests -q --disable-warnings --tb=short | tee research-v1-outputs/logs/legacy-tests.txt
+      - name: Run numerical diagnostics (no VLM, no production app, no human labels)
+        run: |
+          set -euo pipefail
+          python research/cameracoach_experiment_v1/src/run_experiment.py --snapshot _experiment_inputs --out research-v1-outputs/results > research-v1-outputs/logs/diagnostics.txt
+          python research/cameracoach_experiment_v1/src/additional_checks.py --snapshot _experiment_inputs --out research-v1-outputs/results > research-v1-outputs/logs/media-and-source-holdout.txt
+          python - <<'PY'
+          import hashlib,json,pathlib,platform,sys
+          r=pathlib.Path('research-v1-outputs/results')
+          data=json.loads((r/'classification_fixed_split.json').read_text())
+          source=next(x for x in data if x['method']=='source_stratum_only')
+          assert abs(source['accuracy']-48/52)<1e-12
+          assert json.loads((r/'historical_replay.json').read_text())['exact_equal']
+          assert all(x['exact_equal'] for x in json.loads((r/'later_stored_replays.json').read_text()))
+          controls=json.loads((r/'scorer_controls.json').read_text())
+          assert controls['all_actions']['legacy']['expected_action_hit_rate']==1
+          assert controls['all_actions']['legacy']['pass_rate']==0
+          assert controls['historical_force_hidden']['strict_visible']['correction_coverage']==0
+          media=json.loads((r/'media_audit.json').read_text())
+          assert media['images_decoded']==174 and not media['errors']
+          code_root=pathlib.Path('research/cameracoach_experiment_v1')
+          code={str(p.relative_to(code_root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in code_root.rglob('*') if p.is_file() and '__pycache__' not in p.parts and '.pytest_cache' not in p.parts}
+          (r/'hosted-verification.json').write_text(json.dumps({'passed':True,'python':sys.version,'platform':platform.platform(),'source_only_correct':48,'test_n':52,'images':174,'new_vlm_calls':0,'new_human_ratings':0,'new_phone_runs':0,'code_sha256':code},indent=2)+'\n')
+          PY
+      - name: Run CC21 fixture tests, not the 4889-row payload
+        run: |
+          set -euo pipefail
+          python _experiment_inputs/data/tools/dataset/cc21/calibration_index.py --source _experiment_inputs/data/tools/dataset/cc17/synthetic_physical.py --out research-v1-outputs/results/cc21-calibration-index.json
+          mkdir -p research-v1-outputs/cc21-fixtures
+          cd research-v1-outputs/cc21-fixtures
+          python "$GITHUB_WORKSPACE/_experiment_inputs/data/tools/dataset/cc21/test_unified.py" 2>&1 | tee ../logs/cc21-contracts.txt
+          python "$GITHUB_WORKSPACE/_experiment_inputs/data/tools/dataset/cc21/test_delivery_merge.py" --index ../results/cc21-calibration-index.json 2>&1 | tee ../logs/cc21-merge.txt
+          python "$GITHUB_WORKSPACE/_experiment_inputs/data/tools/dataset/cc21/test_compact_pipeline.py" --index ../results/cc21-calibration-index.json 2>&1 | tee ../logs/cc21-compact.txt
+      - name: Upload computed results and reviewable source (no media)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-v1-diagnostics
+          path: |
+            research-v1-outputs/
+            research/cameracoach_experiment_v1/
+          retention-days: 30
+          if-no-files-found: error
